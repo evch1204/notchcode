@@ -34,6 +34,8 @@ enum CardTab: Hashable {
 /// Keys the card understands, already decoded from NSEvent.
 enum NotchKey: Equatable {
     case primary, deny, always, edit, escape, nextTab, previousTab, up, down, left, right, teleport, settings, copy
+    /// "D": open or close a request card's diff.
+    case diff
     /// "/": focus the Files tab's filter field.
     case filter
     case number(Int)
@@ -91,6 +93,18 @@ struct DiffRowItem: Identifiable, Equatable {
     var id: String { key }
     var key: String
     var file: FileChange
+}
+
+/// The one file whose diff is open inside a permission or commit card.
+struct RequestDiffTarget: Equatable {
+    var requestId: String
+    var path: String
+}
+
+/// A request card's diff moves by `delta` lines each time `seq` changes (↑↓ while it is open).
+struct RequestDiffScroll: Equatable {
+    var seq = 0
+    var delta = 0
 }
 
 /// A weekly limit for one model family ("This week · Opus"). No real source yet; the demo sets it.
@@ -165,6 +179,12 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     @Published var rowCursor = 0
     /// Diff rows whose open state differs from their default (see `isDiffOpen`).
     @Published var diffToggled: Set<String> = []
+    /// The file whose diff is open inside the current request card, if any.
+    @Published private(set) var requestDiff: RequestDiffTarget?
+    /// ↑↓ scroll commands for the request card's open diff.
+    @Published private(set) var requestDiffScroll = RequestDiffScroll()
+    /// The commit card's file row under the keyboard cursor.
+    @Published var requestRowCursor = 0
     /// Turns in the Changes tab whose file list is flipped from its default (newest open, older closed).
     @Published var turnToggled: Set<String> = []
 
@@ -369,6 +389,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     /// Height of the card below the notch row, by what it shows.
     var cardHeight: CGFloat {
         if let req = currentPending {
+            if isCardOpen, requestDiffPath(for: req) != nil { return Theme.Size.requestCardHeightExpanded }
             return req.kind == .commit ? Theme.Size.commitCardHeight : Theme.Size.requestCardHeight
         }
         if showingQuestion { return Theme.Size.questionCardHeight }
@@ -519,6 +540,48 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         if let index = changesRows.firstIndex(where: { $0.id == key }) {
             rowCursor = index
         }
+    }
+
+    // MARK: - Request card diff
+
+    /// The path whose diff is open in `request`'s card, if it is still one of its files.
+    func requestDiffPath(for request: PendingRequest) -> String? {
+        guard let target = requestDiff, target.requestId == request.id,
+              request.files.contains(where: { $0.path == target.path }) else { return nil }
+        return target.path
+    }
+
+    /// Opens `path`'s diff in the current request card, or closes it when it is the open one.
+    /// The card grows (or shrinks) with the shape's height spring.
+    func toggleRequestDiff(path: String) {
+        guard let req = currentPending,
+              let file = req.files.first(where: { $0.path == path }),
+              !Self.diffLines(file).isEmpty else { return }
+        if let index = req.files.firstIndex(where: { $0.path == path }) { requestRowCursor = index }
+        let opening = requestDiffPath(for: req) != path
+        withAnimation(Theme.Motion.requestDiff(expanding: opening && requestDiffPath(for: req) == nil)) {
+            requestDiff = opening ? RequestDiffTarget(requestId: req.id, path: path) : nil
+        }
+    }
+
+    func closeRequestDiff() {
+        guard requestDiff != nil else { return }
+        withAnimation(Theme.Motion.requestDiff(expanding: false)) { requestDiff = nil }
+    }
+
+    /// "D": the permission card's file, or the commit card's file under the cursor.
+    private func toggleRequestDiffAtCursor(_ req: PendingRequest) -> Bool {
+        let files = req.files
+        guard !files.isEmpty else { return false }
+        if let open = requestDiffPath(for: req) {
+            toggleRequestDiff(path: open)
+            return true
+        }
+        let index = req.kind == .commit ? max(0, min(files.count - 1, requestRowCursor)) : 0
+        guard !Self.diffLines(files[index]).isEmpty else { return false }
+        if !isCardOpen { openCard() }
+        toggleRequestDiff(path: files[index].path)
+        return true
     }
 
     func terminalName(for session: Session?) -> String {
@@ -703,6 +766,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         isCardOpen = false
         if !CardTab.browsable.contains(selectedTab) { selectedTab = .sessions }
         fileFilterFocused = false
+        requestDiff = nil
         refresh()
     }
 
@@ -879,7 +943,10 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
 
         if key == .escape {
             guard isCardOpen else { return false }
-            if selectedTab == .settings && currentPending == nil {
+            if let req = currentPending, requestDiffPath(for: req) != nil {
+                // Esc closes the diff first, then the card.
+                closeRequestDiff()
+            } else if selectedTab == .settings && currentPending == nil {
                 closeSettings()
             } else {
                 closeCard()
@@ -914,6 +981,22 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
             case .edit:
                 guard req.kind == .commit else { return false }
                 requestCommitEdit(id: req.id)
+            case .diff:
+                return toggleRequestDiffAtCursor(req)
+            case .up, .down:
+                guard isCardOpen else { return false }
+                let step = key == .up ? -1 : 1
+                if requestDiffPath(for: req) != nil {
+                    requestDiffScroll = RequestDiffScroll(
+                        seq: requestDiffScroll.seq + 1,
+                        delta: step * Theme.Size.requestDiffScrollLines
+                    )
+                } else if req.kind == .commit, !req.files.isEmpty {
+                    let shown = min(req.files.count, Theme.Size.commitMaxFileRows)
+                    requestRowCursor = max(0, min(shown - 1, requestRowCursor + step))
+                } else {
+                    return false
+                }
             default:
                 return false
             }
@@ -1031,17 +1114,23 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         let tool = payload["tool_name"]?.stringValue ?? "Tool"
         let input = payload["tool_input"]
         let now = Date()
-        let request = PendingRequest(
+        var request = PendingRequest(
             id: envelope.id,
             kind: .permission,
             sessionId: sessionId,
             tool: tool,
             title: Self.permissionTitle(tool: tool),
             detail: Self.permissionDetail(tool: tool, input: input),
-            reason: input?["description"]?.stringValue,
+            reason: Self.permissionReason(payload: payload),
             receivedAt: now,
             deadline: now.addingTimeInterval(Theme.Motion.permissionDeadline)
         )
+        // A file change: show what it would do, and name the file in the title.
+        if let proposed = Self.proposedChange(tool: tool, input: input, cwd: envelope.resolvedCWD, readsDisk: readsLocalFiles) {
+            request.files = [proposed.file]
+            request.title = proposed.title
+            request.detail = proposed.file.path
+        }
         enqueue(request, reply: reply)
         updateSession(sessionId) { $0.state = .needsYou }
     }
@@ -1054,7 +1143,12 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
 
         if tool == "Bash" && trimmed.hasPrefix("git commit") {
             let now = Date()
-            let latestFiles = turns(for: sessionId).first?.files ?? []
+            // A file with no recorded patch still opens to its snippet.
+            let latestFiles = (turns(for: sessionId).first?.files ?? []).map { file -> FileChange in
+                var file = file
+                if file.patch.isEmpty { file.patch = file.snippet }
+                return file
+            }
             let request = PendingRequest(
                 id: envelope.id,
                 kind: .commit,
@@ -1599,6 +1693,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         }
         handlers[request.id] = reply
         pending.append(request)
+        if pending.count == 1 { requestRowCursor = 0 }
         if prefs.systemNotifications {
             SystemNotifier.post(
                 title: request.kind == .commit ? "Commit?" : "Allow \(request.tool)?",
@@ -1648,6 +1743,10 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     /// State and card follow-up after a request left the queue.
     private func afterPendingChange(sessionId sid: String?) {
         if let sid { settle(sid) }
+        if requestDiff != nil, requestDiff?.requestId != currentPending?.id {
+            requestDiff = nil
+            requestRowCursor = 0
+        }
         if pending.isEmpty && isCardOpen && (selectedTab == .permission || selectedTab == .commit) {
             isCardOpen = false
             selectedTab = .sessions
@@ -1792,6 +1891,86 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
             if let value = input[key]?.stringValue, !value.isEmpty { return value }
         }
         return tool
+    }
+
+    /// Why the request is shown: the tool's own description, the payload's message, or what
+    /// "Always" would remember (from `permission_suggestions`).
+    static func permissionReason(payload: JSONValue) -> String? {
+        if let text = payload["tool_input"]?["description"]?.stringValue, !text.isEmpty { return text }
+        if let text = payload["message"]?.stringValue, !text.isEmpty { return text }
+        guard let suggestion = payload["permission_suggestions"]?.arrayValue?.first else { return nil }
+        let destination: String? = {
+            switch suggestion["destination"]?.stringValue {
+            case "session": return "for this session"
+            case "localSettings": return "in this project's local settings"
+            case "projectSettings": return "in this project's settings"
+            case "userSettings": return "in your user settings"
+            default: return nil
+            }
+        }()
+        var text: String?
+        switch suggestion["type"]?.stringValue {
+        case "setMode":
+            if suggestion["mode"]?.stringValue == "acceptEdits" { text = "Always accepts edits" }
+        case "addRules":
+            let rules = suggestion["rules"]?.arrayValue ?? []
+            let names = rules.compactMap { rule -> String? in
+                guard let tool = rule["toolName"]?.stringValue else { return nil }
+                if let content = rule["ruleContent"]?.stringValue, !content.isEmpty { return "\(tool)(\(content))" }
+                return tool
+            }
+            if !names.isEmpty { text = "Always allows " + names.joined(separator: ", ") }
+        case "addDirectories":
+            let dirs = (suggestion["directories"]?.arrayValue ?? []).compactMap { $0.stringValue }
+            if !dirs.isEmpty { text = "Always adds " + dirs.joined(separator: ", ") }
+        default:
+            break
+        }
+        guard let text else { return nil }
+        return [text, destination].compactMap { $0 }.joined(separator: " ") + "."
+    }
+
+    /// The diff an Edit / Write / MultiEdit / NotebookEdit request would make, and the card title.
+    static func proposedChange(tool: String, input: JSONValue?, cwd: String, readsDisk: Bool) -> (file: FileChange, title: String)? {
+        guard let input else { return nil }
+        switch tool {
+        case "Edit":
+            guard let path = input["file_path"]?.stringValue,
+                  let old = input["old_string"]?.stringValue,
+                  let new = input["new_string"]?.stringValue else { return nil }
+            let file = DiffBuilder.forEdit(cwd: cwd, filePath: path, oldString: old, newString: new,
+                                           replaceAll: input["replace_all"]?.boolValue ?? false, readsDisk: readsDisk)
+            let title = file.kind == "new" ? "Write a new file?" : "Edit \(Format.fileName(file.path))?"
+            return (file, title)
+        case "Write":
+            guard let path = input["file_path"]?.stringValue,
+                  let content = input["content"]?.stringValue else { return nil }
+            let file = DiffBuilder.forWrite(cwd: cwd, filePath: path, content: content, readsDisk: readsDisk)
+            let title = file.kind == "new" ? "Write a new file?" : "Rewrite \(Format.fileName(file.path))?"
+            return (file, title)
+        case "MultiEdit":
+            guard let path = input["file_path"]?.stringValue,
+                  let list = input["edits"]?.arrayValue else { return nil }
+            let edits = list.compactMap { edit -> (old: String, new: String, replaceAll: Bool)? in
+                guard let old = edit["old_string"]?.stringValue, let new = edit["new_string"]?.stringValue else { return nil }
+                return (old, new, edit["replace_all"]?.boolValue ?? false)
+            }
+            guard !edits.isEmpty else { return nil }
+            let file = DiffBuilder.forMultiEdit(cwd: cwd, filePath: path, edits: edits, readsDisk: readsDisk)
+            let name = Format.fileName(file.path)
+            let title = file.kind == "new" ? "Write a new file?"
+                : edits.count > 1 ? "Edit \(edits.count) places in \(name)?" : "Edit \(name)?"
+            return (file, title)
+        case "NotebookEdit":
+            // The notebook on disk is JSON, not the cell: show the new cell source as added lines.
+            guard let path = input["notebook_path"]?.stringValue ?? input["file_path"]?.stringValue,
+                  let source = input["new_source"]?.stringValue else { return nil }
+            var file = DiffBuilder.forWrite(cwd: cwd, filePath: path, content: source, readsDisk: false)
+            file.kind = "edit"
+            return (file, "Edit \(Format.fileName(file.path))?")
+        default:
+            return nil
+        }
     }
 
     /// Pulls the subject line out of `git commit -m "..."` or a heredoc message.

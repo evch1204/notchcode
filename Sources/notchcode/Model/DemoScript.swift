@@ -163,6 +163,32 @@ final class DemoScript {
             "tool_input": .object(["command": .string("npm test -- --watch=false")]),
         ])
 
+        // +3 s: an Edit that needs permission. The card shows its diff (D opens it).
+        await pause(3)
+        let editId = UUID().uuidString
+        let themePath = (ponyfishCWD as NSString).appendingPathComponent("Sources/notchcode/Theme.swift")
+        send(.permission, session: ponyfish, cwd: ponyfishCWD, id: editId, payload: [
+            "tool_name": .string("Edit"),
+            "tool_input": .object([
+                "file_path": .string(themePath),
+                "old_string": .string(themeEditOld),
+                "new_string": .string(themeEditNew),
+            ]),
+            "permission_suggestions": .array([
+                .object([
+                    "type": .string("setMode"),
+                    "mode": .string("acceptEdits"),
+                    "destination": .string("session"),
+                ]),
+            ]),
+        ])
+        // The demo reads no files, so the diff numbers from 1; move it to where the block really sits.
+        if let request = state.pending.first(where: { $0.id == editId }) {
+            state.setFiles(request.files.map { shifted($0, by: themeEditLine - 1) }, forRequest: editId)
+        }
+        await waitUntilAnswered(editId)
+        if Task.isCancelled { return }
+
         // +3 s: a commit request with three files.
         await pause(3)
         let commitId = UUID().uuidString
@@ -173,11 +199,7 @@ final class DemoScript {
                 "description": .string("Commit the hook and the transport."),
             ]),
         ])
-        state.setFiles([
-            FileChange(path: "hooks/notchcode-hook.sh", added: 48, removed: 0, kind: "new"),
-            FileChange(path: "Sources/notchcode/Transport/SocketServer.swift", added: 131, removed: 4, kind: "edit"),
-            FileChange(path: "Sources/notchcode/Model/AppState.swift", added: 22, removed: 9, kind: "edit"),
-        ], forRequest: commitId)
+        state.setFiles(commitFiles(), forRequest: commitId)
         await waitUntilAnswered(commitId)
         if Task.isCancelled { return }
 
@@ -192,6 +214,122 @@ final class DemoScript {
         send(.stop, session: sidecar, cwd: sidecarCWD, payload: [:])
         await pause(3)
         send(.stop, session: bluefin, cwd: bluefinCWD, payload: [:])
+    }
+
+    // MARK: - Edit request sample
+
+    /// Where `themeEditOld` starts in Theme.swift.
+    private let themeEditLine = 364
+
+    private let themeEditOld = """
+            // Diff view.
+            static let diffLineHeight: CGFloat = 16
+            static let diffMaxHeight: CGFloat = 220
+            static let diffLineNumberWidth: CGFloat = 30
+            static let diffGutterSpacing: CGFloat = 4
+            static let diffVPadding: CGFloat = 4
+            static let groupHeaderTopPadding: CGFloat = 6
+    """
+
+    private let themeEditNew = """
+            // Diff view.
+            static let diffLineHeight: CGFloat = 16
+            static let diffMaxHeight: CGFloat = 240
+            static let diffLineNumberWidth: CGFloat = 30
+            static let diffGutterSpacing: CGFloat = 4
+            static let diffVPadding: CGFloat = 4
+            static let groupHeaderTopPadding: CGFloat = 6
+            /// Inside a request card the diff takes what is left above the pills, up to this.
+            static let requestDiffMaxHeight: CGFloat = 260
+            /// ... and never less than this (a short diff is shorter still).
+            static let requestDiffMinHeight: CGFloat = 72
+    """
+
+    /// The same diff `offset` lines further down the file: numbers and hunk headers move.
+    private func shifted(_ file: FileChange, by offset: Int) -> FileChange {
+        func move(_ lines: [DiffLine]) -> [DiffLine] {
+            lines.map { line in
+                var line = line
+                line.oldLine = line.oldLine.map { $0 + offset }
+                line.newLine = line.newLine.map { $0 + offset }
+                if line.kind == .hunk {
+                    // "@@ -a,b +c,d @@"
+                    let parts = line.text.split(separator: " ")
+                    if parts.count >= 3 {
+                        func bump(_ part: Substring) -> String {
+                            let sign = part.prefix(1)
+                            let fields = part.dropFirst().split(separator: ",")
+                            guard let start = fields.first.flatMap({ Int($0) }) else { return String(part) }
+                            return sign + String(start + offset) + (fields.count > 1 ? "," + fields[1] : "")
+                        }
+                        line.text = "@@ \(bump(parts[1])) \(bump(parts[2])) @@"
+                    }
+                }
+                return line
+            }
+        }
+        var file = file
+        file.patch = move(file.patch)
+        file.snippet = move(file.snippet)
+        return file
+    }
+
+    /// The commit's three files, each with a patch the card can open.
+    private func commitFiles() -> [FileChange] {
+        [
+            file("hooks/notchcode-hook.sh", kind: "new", hunks: [
+                (0, 1, [
+                    "+#!/bin/sh",
+                    "+# notchcode hook: forwards Claude Code hook input to the app over a Unix socket.",
+                    "+# Prints nothing, needs nothing, exits 0 even when the app is not running.",
+                    "+",
+                    "+kind=\"$1\"",
+                    "+sock=\"$HOME/Library/Application Support/notchcode/notchcode.sock\"",
+                    "+[ -S \"$sock\" ] || exit 0",
+                    "+",
+                    "+input=$(cat)",
+                    "+id=$(uuidgen 2>/dev/null || date +%s%N)",
+                    "+ts=$(date +%s)",
+                    "+",
+                ]),
+            ], truncatedExtra: 36),
+            file("Sources/notchcode/Transport/SocketServer.swift", kind: "edit", hunks: [
+                (1, 1, [
+                    " // SocketServer.swift",
+                    "-// Placeholder transport.",
+                    "+// Listens on a Unix domain socket, one JSON envelope per line. Blocking kinds",
+                    "+// keep the connection open until the owner answers or the hook goes away.",
+                    " ",
+                    " import Foundation",
+                ]),
+                (58, 59, [
+                    "     func start() throws {",
+                    "-        // TODO",
+                    "+        try FileManager.default.createDirectory(at: NotchcodePaths.supportDirectory,",
+                    "+                                                withIntermediateDirectories: true)",
+                    "+        unlink(NotchcodePaths.socketURL.path)",
+                    "+        fd = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)",
+                    "+        guard fd >= 0 else { throw TransportError.socket(errno) }",
+                    "     }",
+                ]),
+            ], truncatedExtra: 120),
+            file("Sources/notchcode/Model/AppState.swift", kind: "edit", hunks: [
+                (1029, 1029, [
+                    "     private func handlePermission(_ envelope: HookEnvelope, sessionId: String, reply: @escaping ReplyHandler) {",
+                    "         let payload = envelope.payload",
+                    "-        let tool = \"Tool\"",
+                    "+        let tool = payload[\"tool_name\"]?.stringValue ?? \"Tool\"",
+                    "+        let input = payload[\"tool_input\"]",
+                    "         let now = Date()",
+                ]),
+                (1044, 1045, [
+                    "         enqueue(request, reply: reply)",
+                    "-        state = .needsYou",
+                    "+        updateSession(sessionId) { $0.state = .needsYou }",
+                    "     }",
+                ]),
+            ]),
+        ]
     }
 
     // MARK: - Helpers

@@ -10,6 +10,14 @@ import SwiftUI
 @MainActor
 struct DiffView: View {
     let file: FileChange
+    /// Inside a request card: the diff takes what room is left, up to this, instead of a fixed height.
+    var maxHeight: CGFloat? = nil
+    /// Inside a request card: ↑↓ arrive here as line steps.
+    var scroll: RequestDiffScroll? = nil
+
+    /// The line at the top of the viewport; the scroll wheel moves it too.
+    @State private var topLine: Int?
+    @State private var viewportHeight: CGFloat = 0
 
     private var lines: [DiffLine] { AppState.diffLines(file) }
 
@@ -17,15 +25,24 @@ struct DiffView: View {
         let lines = self.lines
         let contentHeight = CGFloat(lines.count) * Theme.Size.diffLineHeight + 2 * Theme.Size.diffVPadding
         VStack(alignment: .leading, spacing: 0) {
-            ScrollView(.vertical, showsIndicators: false) {
+            sized(ScrollView(.vertical, showsIndicators: false) {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(lines.enumerated()), id: \.offset) { item in
                         DiffLineRow(line: item.element)
                     }
                 }
+                .scrollTargetLayout()
                 .padding(.vertical, Theme.Size.diffVPadding)
             }
-            .frame(height: min(contentHeight, Theme.Size.diffMaxHeight))
+            .scrollPosition(id: $topLine), contentHeight: contentHeight)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewportHeight = $0 }
+            .onChange(of: scroll) { _, command in
+                guard let command else { return }
+                let visible = max(1, Int(viewportHeight / Theme.Size.diffLineHeight) - 1)
+                let last = max(0, lines.count - visible)
+                let next = max(0, min(last, (topLine ?? 0) + command.delta))
+                withAnimation(Theme.Motion.tap) { topLine = next }
+            }
 
             if file.patchTruncated {
                 Text(moreLinesText)
@@ -43,6 +60,18 @@ struct DiffView: View {
                 .fill(Theme.Colors.inset)
         )
         .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.snippet, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func sized(_ view: some View, contentHeight: CGFloat) -> some View {
+        if let maxHeight {
+            view.frame(
+                minHeight: min(contentHeight, Theme.Size.requestDiffMinHeight),
+                maxHeight: min(contentHeight, maxHeight)
+            )
+        } else {
+            view.frame(height: min(contentHeight, Theme.Size.diffMaxHeight))
+        }
     }
 
     /// "… 212 more lines in the editor": changed lines the counts know about but the patch left out.
@@ -143,37 +172,7 @@ struct FileDiffRow: View {
                 guard hasDiff else { return }
                 withAnimation(Theme.Motion.tap) { state.toggleDiff(item.key) }
             } label: {
-                HStack(spacing: Theme.Size.spaceM) {
-                    Image(systemName: Theme.Symbols.chevron)
-                        .font(Theme.Fonts.chevron)
-                        .foregroundStyle(Theme.Colors.inkTertiary)
-                        .rotationEffect(.degrees(open ? Theme.Motion.chevronOpenDegrees : 0))
-                        .opacity(hasDiff ? 1 : 0)
-                    HStack(spacing: 0) {
-                        if showDirectory {
-                            Text(Format.directory(file.path))
-                                .foregroundStyle(Theme.Colors.inkTertiary)
-                                .lineLimit(1)
-                                .truncationMode(.head)
-                        }
-                        Text(Format.fileName(file.path))
-                            .foregroundStyle(Theme.Colors.ink)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                            .layoutPriority(1)
-                    }
-                    .font(Theme.Fonts.monoCaption)
-                    Spacer(minLength: Theme.Size.spaceM)
-                    DiffCells(added: file.added, removed: file.removed)
-                    DiffCounts(added: file.added, removed: file.removed)
-                }
-                .padding(.horizontal, Theme.Size.rowHPadding)
-                .padding(.vertical, Theme.Size.rowVPadding)
-                .background(
-                    RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous)
-                        .fill(isCursor ? Theme.Colors.rowCursor : Color.clear)
-                )
-                .contentShape(Rectangle())
+                FileRowLabel(file: file, open: open, hasDiff: hasDiff, isCursor: isCursor, showDirectory: showDirectory)
             }
             .buttonStyle(.plain)
 
@@ -182,5 +181,49 @@ struct FileDiffRow: View {
             }
         }
         .id(item.key)
+    }
+}
+
+/// "▸ Sources/notchcode/Theme.swift   ▮▮▮▯▯ +12 −3": the row a diff opens under.
+@MainActor
+struct FileRowLabel: View {
+    let file: FileChange
+    let open: Bool
+    let hasDiff: Bool
+    let isCursor: Bool
+    var showDirectory = false
+
+    var body: some View {
+        HStack(spacing: Theme.Size.spaceM) {
+            Image(systemName: Theme.Symbols.chevron)
+                .font(Theme.Fonts.chevron)
+                .foregroundStyle(Theme.Colors.inkTertiary)
+                .rotationEffect(.degrees(open ? Theme.Motion.chevronOpenDegrees : 0))
+                .opacity(hasDiff ? 1 : 0)
+            HStack(spacing: 0) {
+                if showDirectory {
+                    Text(Format.directory(file.path))
+                        .foregroundStyle(Theme.Colors.inkTertiary)
+                        .lineLimit(1)
+                        .truncationMode(.head)
+                }
+                Text(Format.fileName(file.path))
+                    .foregroundStyle(Theme.Colors.ink)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .layoutPriority(1)
+            }
+            .font(Theme.Fonts.monoCaption)
+            Spacer(minLength: Theme.Size.spaceM)
+            DiffCells(added: file.added, removed: file.removed)
+            DiffCounts(added: file.added, removed: file.removed)
+        }
+        .padding(.horizontal, Theme.Size.rowHPadding)
+        .padding(.vertical, Theme.Size.rowVPadding)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous)
+                .fill(isCursor ? Theme.Colors.rowCursor : Color.clear)
+        )
+        .contentShape(Rectangle())
     }
 }

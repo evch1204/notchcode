@@ -219,6 +219,8 @@ enum Theme {
         static let cardHeight: CGFloat = 424
         static let cardFooterHeight: CGFloat = 20
         static let requestCardHeight: CGFloat = 310
+        /// A permission or commit card with its diff open. Keeps the panel (504) clear of the notch row plus shadow.
+        static let requestCardHeightExpanded: CGFloat = 440
         static let commitCardHeight: CGFloat = 356
         static let questionCardHeight: CGFloat = 296
 
@@ -366,6 +368,14 @@ enum Theme {
         static let diffGutterSpacing: CGFloat = 4
         static let diffVPadding: CGFloat = 4
         static let groupHeaderTopPadding: CGFloat = 6
+        /// Inside a request card the diff takes what is left above the pills, up to this.
+        static let requestDiffMaxHeight: CGFloat = 260
+        /// ... and never less than this (a short diff is shorter still).
+        static let requestDiffMinHeight: CGFloat = 72
+        /// ↑↓ move a request card's diff by this many lines.
+        static let requestDiffScrollLines: Int = 4
+        /// The commit card lists at most this many files, then "N more".
+        static let commitMaxFileRows: Int = 5
 
         // Sessions tab: one slim sticky header per repository.
         static let repoHeaderHeight: CGFloat = 22
@@ -507,6 +517,23 @@ enum Theme {
         static let foldTotal: Double = 0.9
 
         static let tap = Animation.easeOut(duration: 0.12)
+
+        // A request card's diff: the card grows with the same springs as the shape
+        // (height follows after the axis delay), and the diff rises in over 0.2 s.
+        @MainActor static func requestDiff(expanding: Bool) -> Animation {
+            expanding ? height.delay(axisDelay) : closeHeight
+        }
+        static let requestDiffRevealDuration: Double = 0.2
+        /// Opacity plus the 10 pt rise; Reduce Motion crossfades.
+        @MainActor static var requestDiffTransition: AnyTransition {
+            let insertion: AnyTransition = reduceMotion
+                ? .opacity
+                : AnyTransition.opacity.combined(with: .offset(y: contentRise))
+            return .asymmetric(
+                insertion: insertion.animation(.easeOut(duration: requestDiffRevealDuration)),
+                removal: AnyTransition.opacity.animation(.easeIn(duration: contentOutDuration))
+            )
+        }
 
         // Files tab.
         /// Folder disclosure: the chevron turns 90° and the children rise in, 40 ms apart.
@@ -650,6 +677,7 @@ enum Theme {
         static let edit = "E"
         static let settings = "⌘,"
         static let copy = "Y"
+        static let diff = "D"
         static let optionEnter = "⌥⏎"
         static let minus = "\u{2212}"
         static let plus = "+"

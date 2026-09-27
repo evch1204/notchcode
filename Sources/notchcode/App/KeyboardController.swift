@@ -72,6 +72,7 @@ final class KeyboardController {
         case "a": return .always
         case "e": return .edit
         case "y": return .copy
+        case "d": return .diff
         case "/": return .filter
         default: return nil
         }

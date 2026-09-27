@@ -60,13 +60,48 @@ private struct RequestFooter: View {
     }
 }
 
+/// "+12 −3 · Show changes   D": opens the request's diff inside the card.
+@MainActor
+private struct ShowChangesRow: View {
+    let file: FileChange
+    let open: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: Theme.Size.spaceM) {
+                Image(systemName: Theme.Symbols.chevron)
+                    .font(Theme.Fonts.chevron)
+                    .foregroundStyle(Theme.Colors.inkTertiary)
+                    .rotationEffect(.degrees(open ? Theme.Motion.chevronOpenDegrees : 0))
+                HStack(spacing: 0) {
+                    DiffCounts(added: file.added, removed: file.removed)
+                    Text(Theme.Glyphs.separator + (open ? "Hide changes" : "Show changes"))
+                        .font(Theme.Fonts.caption)
+                        .foregroundStyle(Theme.Colors.inkSecondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: Theme.Size.spaceM)
+                Keycap(Theme.Keys.diff)
+            }
+            .padding(.horizontal, Theme.Size.rowHPadding)
+            .padding(.vertical, Theme.Size.rowVPadding)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 @MainActor
 struct PermissionCard: View {
     @ObservedObject var state: AppState
     let request: PendingRequest
     let width: CGFloat
 
+    private var file: FileChange? { request.files.first }
+
     var body: some View {
+        let open = state.requestDiffPath(for: request) != nil
         VStack(alignment: .leading, spacing: Theme.Size.spaceL) {
             HStack(alignment: .center) {
                 Text(request.title)
@@ -83,21 +118,36 @@ struct PermissionCard: View {
                     Text(request.detail)
                         .font(Theme.Fonts.mono)
                         .foregroundStyle(Theme.Colors.ink)
-                        .lineLimit(4)
+                        .lineLimit(file == nil ? 4 : 2)
                         .truncationMode(.middle)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     ToolChip(tool: request.tool)
                 }
             }
 
+            if let file, !AppState.diffLines(file).isEmpty {
+                ShowChangesRow(file: file, open: open) {
+                    state.toggleRequestDiff(path: file.path)
+                }
+                .padding(.vertical, -Theme.Size.spaceS)
+            }
+
+            if open, let file {
+                // Takes the room left above the pills, which never move.
+                DiffView(file: file, maxHeight: Theme.Size.requestDiffMaxHeight, scroll: state.requestDiffScroll)
+                    .layoutPriority(-1)
+                    .transition(Theme.Motion.requestDiffTransition)
+            }
+
             if let reason = request.reason, !reason.isEmpty {
                 Text(reason)
                     .font(Theme.Fonts.body)
                     .foregroundStyle(Theme.Colors.inkSecondary)
-                    .lineLimit(2)
+                    .lineLimit(open ? 1 : 2)
             }
 
             Spacer(minLength: 0)
+                .layoutPriority(-2)
 
             ActionRow(
                 width: width,
@@ -117,14 +167,45 @@ struct CommitCard: View {
     let request: PendingRequest
     let width: CGFloat
 
+    /// A file row like the Changes tab's; click (or D on the cursor row) opens its diff under it.
+    @ViewBuilder
+    private func fileRow(_ file: FileChange, index: Int, openPath: String?) -> some View {
+        let hasDiff = !AppState.diffLines(file).isEmpty
+        let open = openPath == file.path
+        let cursorShown = request.files.count > 1 && hasDiff
+        VStack(alignment: .leading, spacing: Theme.Size.spaceS) {
+            Button {
+                state.requestRowCursor = index
+                state.toggleRequestDiff(path: file.path)
+            } label: {
+                FileRowLabel(
+                    file: file,
+                    open: open,
+                    hasDiff: hasDiff,
+                    isCursor: cursorShown && state.requestRowCursor == index,
+                    showDirectory: true
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(!hasDiff)
+
+            if open {
+                DiffView(file: file, maxHeight: Theme.Size.requestDiffMaxHeight, scroll: state.requestDiffScroll)
+                    .layoutPriority(-1)
+                    .transition(Theme.Motion.requestDiffTransition)
+            }
+        }
+    }
+
     var body: some View {
+        let openPath = state.requestDiffPath(for: request)
         VStack(alignment: .leading, spacing: Theme.Size.spaceL) {
             HStack(alignment: .center) {
                 Text(request.title)
                     .font(Theme.Fonts.hero)
                     .tracking(Theme.Fonts.heroTracking)
                     .foregroundStyle(Theme.Colors.ink)
-                    .lineLimit(2)
+                    .lineLimit(openPath == nil ? 2 : 1)
                 Spacer(minLength: Theme.Size.spaceM)
                 DeadlineCountdown(request: request, ringSize: Theme.Size.countdownRingLarge, font: Theme.Fonts.bodyMedium)
             }
@@ -137,21 +218,21 @@ struct CommitCard: View {
                             .foregroundStyle(Theme.Colors.inkSecondary)
                             .lineLimit(3)
                     } else {
-                        ForEach(request.files) { file in
-                            HStack(spacing: Theme.Size.spaceM) {
-                                Text(file.path)
-                                    .font(Theme.Fonts.monoCaption)
-                                    .foregroundStyle(Theme.Colors.ink)
-                                    .lineLimit(1)
-                                    .truncationMode(.head)
-                                Spacer(minLength: Theme.Size.spaceM)
-                                DiffCells(added: file.added, removed: file.removed)
-                                DiffCounts(added: file.added, removed: file.removed)
-                            }
+                        let shown = Array(request.files.prefix(Theme.Size.commitMaxFileRows))
+                        ForEach(Array(shown.enumerated()), id: \.element.id) { item in
+                            fileRow(item.element, index: item.offset, openPath: openPath)
+                        }
+                        if request.files.count > shown.count {
+                            Text("\(request.files.count - shown.count) more files")
+                                .font(Theme.Fonts.caption)
+                                .foregroundStyle(Theme.Colors.inkTertiary)
+                                .padding(.horizontal, Theme.Size.rowHPadding)
                         }
                     }
                 }
+                .padding(-Theme.Size.spaceS)
             }
+            .layoutPriority(openPath == nil ? 0 : -1)
 
             HStack(spacing: Theme.Size.spaceM) {
                 Text(request.detail)
@@ -160,10 +241,19 @@ struct CommitCard: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Spacer(minLength: 0)
+                if request.files.contains(where: { !AppState.diffLines($0).isEmpty }) {
+                    HStack(spacing: Theme.Size.spaceS) {
+                        Text(openPath == nil ? "Show changes" : "Hide changes")
+                            .font(Theme.Fonts.caption)
+                            .foregroundStyle(Theme.Colors.inkTertiary)
+                        Keycap(Theme.Keys.diff)
+                    }
+                }
                 ToolChip(tool: request.tool)
             }
 
             Spacer(minLength: 0)
+                .layoutPriority(-2)
 
             ActionRow(
                 width: width,
