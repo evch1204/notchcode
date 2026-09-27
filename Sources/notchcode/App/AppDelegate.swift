@@ -1,0 +1,307 @@
+// AppDelegate.swift
+// Builds the panel, starts the socket, registers ⌥space (when the owner wants
+// it), opens on hover (when the owner wants it), and keeps the panel's mouse
+// and key behaviour in step with the notch state.
+
+import AppKit
+import Carbon
+import Combine
+import SwiftUI
+
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    let state = AppState()
+    private var appState: AppState?
+    private var panel: NotchPanel?
+    private var server: SocketServer?
+    private var hotKey: HotKey?
+    private var keyboard: KeyboardController?
+    private var demo: DemoScript?
+    private var watcher: TranscriptWatcher?
+    private var cancellables = Set<AnyCancellable>()
+    private var eventMonitors: [Any] = []
+    private var screenObserver: NSObjectProtocol?
+    private var lastMode: NotchMode = .closed
+    private var previousApp: NSRunningApplication?
+    private var mouseInside = false
+    private var hoverOpenWork: DispatchWorkItem?
+    private var hoverCloseWork: DispatchWorkItem?
+    /// Mouse over the shape right now, and the pending 250 ms dwell before the rim lights.
+    private var rimInside = false
+    private var rimWork: DispatchWorkItem?
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.accessory)
+
+        let state = self.state
+        appState = state
+
+        let panel = NotchPanel(rootView: NotchRootView(state: state))
+        self.panel = panel
+        reposition()
+        panel.orderFrontRegardless()
+
+        let server = SocketServer(sink: state)
+        do {
+            try server.start()
+        } catch {
+            // The notch still works without the socket (demo, UI); hooks just get no reply.
+        }
+        self.server = server
+
+        updateHotKey(enabled: state.prefs.hotkeyEnabled)
+
+        keyboard = KeyboardController { [weak self] key in
+            self?.appState?.handleKey(key) ?? false
+        }
+
+        installObservers(state)
+        syncPanel()
+
+        if CommandLine.arguments.contains("--demo") {
+            let script = DemoScript(state: state)
+            demo = script
+            script.start()
+        } else {
+            // Sessions from the last hours, read straight from ~/.claude/projects.
+            let watcher = TranscriptWatcher(sink: state)
+            self.watcher = watcher
+            watcher.start()
+        }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        server?.stop()
+        watcher?.stop()
+        keyboard?.remove()
+        for monitor in eventMonitors { NSEvent.removeMonitor(monitor) }
+        eventMonitors.removeAll()
+    }
+
+    // MARK: - Observers
+
+    private func updateHotKey(enabled: Bool) {
+        if !enabled {
+            hotKey = nil
+            return
+        }
+        guard hotKey == nil else { return }
+        hotKey = HotKey(keyCode: UInt32(kVK_Space), modifiers: UInt32(optionKey)) { [weak self] in
+            MainActor.assumeIsolated {
+                self?.appState?.toggleFromNotchTap()
+            }
+        }
+    }
+
+    private func installObservers(_ state: AppState) {
+        state.$prefs
+            .map(\.hotkeyEnabled)
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] enabled in
+                MainActor.assumeIsolated {
+                    self?.updateHotKey(enabled: enabled)
+                }
+            }
+            .store(in: &cancellables)
+
+        state.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.syncPanel()
+                }
+            }
+            .store(in: &cancellables)
+
+        screenObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.reposition()
+            }
+        }
+
+        // Mouse pass-through: the panel takes the mouse only over the drawn shape.
+        let globalMove = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged], handler: { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.updateMousePassthrough()
+            }
+        })
+        let localMove = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged], handler: { [weak self] event in
+            MainActor.assumeIsolated {
+                self?.updateMousePassthrough()
+            }
+            return event
+        })
+        // A click in another app closes the card.
+        let globalClick = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown], handler: { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.clickedElsewhere()
+            }
+        })
+        for monitor in [globalMove, localMove, globalClick] {
+            if let monitor { eventMonitors.append(monitor) }
+        }
+    }
+
+    // MARK: - Panel state
+
+    private func reposition() {
+        guard let panel, let appState else { return }
+        let geometry = NotchGeometry.current()
+        appState.setNotch(width: geometry.notchWidth, height: geometry.notchHeight)
+        let frame = NSRect(
+            x: geometry.notchFrame.midX - Theme.Size.panelWidth / 2,
+            y: geometry.screen.frame.maxY - Theme.Size.panelHeight,
+            width: Theme.Size.panelWidth,
+            height: Theme.Size.panelHeight
+        )
+        panel.setFrame(frame, display: true)
+        if CommandLine.arguments.contains("--debug-log") {
+            let hosting = panel.contentView?.subviews.first
+            let line = "\(Date()) panel=\(panel.frame) screen=\(geometry.screen.frame) notch=\(geometry.notchFrame) contentSafe=\(String(describing: panel.contentView?.safeAreaInsets)) hostingSafe=\(String(describing: hosting?.safeAreaInsets)) hostingFrame=\(String(describing: hosting?.frame)) scale=\(geometry.screen.backingScaleFactor)\n"
+            let url = NotchcodePaths.supportDirectory.appendingPathComponent("debug.log")
+            if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write(line.data(using: .utf8)!); try? h.close() }
+            else { try? line.write(to: url, atomically: true, encoding: .utf8) }
+        }
+        syncPanel()
+    }
+
+    private func syncPanel() {
+        guard let panel, let appState else { return }
+        let mode = appState.mode
+        panel.container.interactiveSize = appState.layout.outerSize(for: mode, cardHeight: appState.cardHeight)
+        updateMousePassthrough()
+
+        if mode != lastMode {
+            lastMode = mode
+            updateKeyFocus(for: mode)
+            if mode == .card || mode == .attention {
+                keyboard?.install()
+            } else {
+                keyboard?.remove()
+            }
+        }
+    }
+
+    private func updateMousePassthrough() {
+        guard let panel else { return }
+        let inside = panel.interactiveScreenRect().contains(NSEvent.mouseLocation)
+        if panel.ignoresMouseEvents == inside {
+            panel.ignoresMouseEvents = !inside
+        }
+        updateRim(inside: inside)
+        updateHover(inside: inside)
+    }
+
+    // MARK: - Hover rim
+
+    /// Always on, whatever the open gesture: after the mouse rests on the shape for
+    /// `Theme.Motion.rimDelay`, `hovering` turns on; leaving turns it off at once.
+    private func updateRim(inside: Bool) {
+        guard let appState else { return }
+        guard inside != rimInside else { return }
+        rimInside = inside
+        rimWork?.cancel()
+        rimWork = nil
+        if inside {
+            let work = DispatchWorkItem { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self, self.rimInside else { return }
+                    self.rimWork = nil
+                    self.appState?.setHovering(true)
+                }
+            }
+            rimWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + Theme.Motion.rimDelay, execute: work)
+        } else {
+            appState.setHovering(false)
+        }
+    }
+
+    // MARK: - Hover to open
+
+    /// Open after the mouse rests on the shape; close after it has left the card.
+    private func updateHover(inside: Bool) {
+        guard let appState, appState.prefs.openGesture == .hover else {
+            cancelHover()
+            mouseInside = false
+            return
+        }
+        let changed = inside != mouseInside
+        mouseInside = inside
+        let open = appState.mode == .card
+
+        if inside {
+            hoverCloseWork?.cancel()
+            hoverCloseWork = nil
+            guard !open, changed || hoverOpenWork == nil else { return }
+            hoverOpenWork?.cancel()
+            let work = DispatchWorkItem { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self, let state = self.appState else { return }
+                    self.hoverOpenWork = nil
+                    guard self.mouseInside, state.mode != .card, state.prefs.openGesture == .hover else { return }
+                    state.toggleFromNotchTap()
+                }
+            }
+            hoverOpenWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + Theme.Motion.hoverOpenDelay, execute: work)
+        } else {
+            hoverOpenWork?.cancel()
+            hoverOpenWork = nil
+            guard open, hoverCloseWork == nil else { return }
+            let work = DispatchWorkItem { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self, let state = self.appState else { return }
+                    self.hoverCloseWork = nil
+                    guard !self.mouseInside, state.mode == .card, state.prefs.openGesture == .hover else { return }
+                    state.closeCard()
+                }
+            }
+            hoverCloseWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + Theme.Motion.hoverCloseDelay, execute: work)
+        }
+    }
+
+    private func cancelHover() {
+        hoverOpenWork?.cancel()
+        hoverOpenWork = nil
+        hoverCloseWork?.cancel()
+        hoverCloseWork = nil
+    }
+
+    /// The panel takes key focus only while the card is open, so return, delete
+    /// and friends work there; otherwise focus stays in the terminal.
+    private func updateKeyFocus(for mode: NotchMode) {
+        guard let panel else { return }
+        if mode == .card {
+            guard !panel.allowsKey else { return }
+            let front = NSWorkspace.shared.frontmostApplication
+            if front?.processIdentifier != ProcessInfo.processInfo.processIdentifier {
+                previousApp = front
+            }
+            panel.allowsKey = true
+            panel.makeKeyAndOrderFront(nil)
+        } else if panel.allowsKey {
+            panel.allowsKey = false
+            // Teleport already brought a terminal forward; do not steal focus back from it.
+            if appState?.takeSkipFocusReturn() == true { previousApp = nil }
+            if panel.isKeyWindow {
+                // Give key status back without hiding the notch.
+                panel.orderOut(nil)
+                panel.orderFrontRegardless()
+            }
+            previousApp?.activate()
+            previousApp = nil
+        }
+    }
+
+    private func clickedElsewhere() {
+        guard let appState, appState.mode == .card else { return }
+        appState.closeCard()
+    }
+}
