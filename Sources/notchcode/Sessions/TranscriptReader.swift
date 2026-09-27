@@ -21,8 +21,53 @@ enum TranscriptReader {
 
     /// Cheap to call every couple of seconds: results are cached per path and keyed by
     /// (inode, mtime, size). When the file only grew, just the appended lines are parsed.
+    ///
+    /// Edits and tokens of subagents (Agent tool) belong to the turn that started them. Their
+    /// lines live in `<transcript dir>/<session id>/subagents/agent-<agentId>.jsonl`, not in the
+    /// main file; each is parsed incrementally through its own cache, nested agents included.
+    /// The merged result is cached against the stamps of the main file and every subagent file.
     static func turns(transcriptPath: String) throws -> [TranscriptTurn] {
-        try turnCache.value(for: transcriptPath)
+        let mainStamp = FileStamp(path: transcriptPath)
+        let raw = try turnCache.value(for: transcriptPath)
+        let dir = subagentsDirectory(forTranscript: transcriptPath)
+        let metaIds = subagentToolUseMap(directory: dir)
+
+        // Each turn's subagent logs, depth first in launch order.
+        var signature: [FileStamp?] = [mainStamp]
+        var perTurn: [[EditLog]] = []
+        perTurn.reserveCapacity(raw.count)
+        for turn in raw {
+            var logs: [EditLog] = []
+            var visited = Set<String>()
+            func collect(_ log: EditLog, depth: Int) {
+                guard depth < 8 else { return }
+                for toolId in log.agentToolUses {
+                    guard let agentId = log.agentIds[toolId] ?? metaIds[toolId],
+                          visited.insert(agentId).inserted else { continue }
+                    let path = dir + "/agent-" + agentId + ".jsonl"
+                    let stamp = FileStamp(path: path)
+                    signature.append(stamp)
+                    guard stamp != nil, let sub = try? subagentCache.value(for: path) else { continue }
+                    logs.append(sub)
+                    collect(sub, depth: depth + 1)
+                }
+            }
+            collect(turn.log, depth: 0)
+            perTurn.append(logs)
+        }
+
+        mergedLock.lock()
+        if let hit = merged[transcriptPath], hit.signature == signature {
+            mergedLock.unlock()
+            return hit.turns
+        }
+        mergedLock.unlock()
+
+        let turns = zip(raw, perTurn).map { EditLog.turn($0, subagents: $1) }
+        mergedLock.lock()
+        merged[transcriptPath] = (signature, turns)
+        mergedLock.unlock()
+        return turns
     }
 
     /// Exact context size for a turn: input + cache read + cache write of the LAST assistant
@@ -43,15 +88,62 @@ enum TranscriptReader {
         }
     }
 
-    private static let turnCache = IncrementalCache<TurnBuilder, [TranscriptTurn]>(
+    private static let turnCache = IncrementalCache<TurnBuilder, [RawTurn]>(
         make: { TurnBuilder() },
         consume: { $0.consume($1) },
         finish: { builder in
             var copy = builder
             let turns = copy.finish()
-            recordLastMessageContext(copy.lastMessageContext)
+            var contexts: [String: Int] = [:]
+            for t in turns { if let c = t.lastContext { contexts[t.id] = c } }
+            recordLastMessageContext(contexts)
             return turns
         })
+
+    private static let subagentCache = IncrementalCache<SubagentBuilder, EditLog>(
+        make: { SubagentBuilder() },
+        consume: { $0.consume($1) },
+        finish: { $0.log })
+
+    private static let mergedLock = NSLock()
+    private static var merged: [String: (signature: [FileStamp?], turns: [TranscriptTurn])] = [:]
+
+    /// `<dir>/<session id>/subagents` for `<dir>/<session id>.jsonl`.
+    private static func subagentsDirectory(forTranscript path: String) -> String {
+        let url = URL(fileURLWithPath: path)
+        return url.deletingPathExtension().appendingPathComponent("subagents").path
+    }
+
+    private static let metaLock = NSLock()
+    private static var metaCache: [String: (mtime: Double, map: [String: String])] = [:]
+
+    /// tool_use id -> agentId from the `agent-<id>.meta.json` files, so a foreground agent's
+    /// edits show while it runs, before its tool result (which carries agentId) is written.
+    /// Re-read only when the directory's mtime changes (a new agent file appears).
+    private static func subagentToolUseMap(directory: String) -> [String: String] {
+        guard let stamp = FileStamp(path: directory) else { return [:] }
+        metaLock.lock()
+        if let hit = metaCache[directory], hit.mtime == stamp.mtime {
+            metaLock.unlock()
+            return hit.map
+        }
+        metaLock.unlock()
+
+        var map: [String: String] = [:]
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: directory)) ?? []
+        for name in names where name.hasPrefix("agent-") && name.hasSuffix(".meta.json") {
+            let agentId = String(name.dropFirst("agent-".count).dropLast(".meta.json".count))
+            guard let data = FileManager.default.contents(atPath: directory + "/" + name),
+                  let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                  let toolId = obj["toolUseId"] as? String, !toolId.isEmpty
+            else { continue }
+            map[toolId] = agentId
+        }
+        metaLock.lock()
+        metaCache[directory] = (stamp.mtime, map)
+        metaLock.unlock()
+        return map
+    }
 
     private static let agentCache = IncrementalCache<AgentBuilder, [Agent]>(
         make: { AgentBuilder() },
@@ -347,53 +439,38 @@ enum TranscriptDates {
 
 // MARK: - Turn building
 
+/// One turn as parsed from the main transcript, before its subagents' edits are merged in.
+fileprivate struct RawTurn {
+    var id: String
+    var prompt: String
+    var startedAt: Date
+    var endedAt: Date?
+    var summary: String?
+    var model: String?
+    var log: EditLog
+    var cwd: String?
+    var lastContext: Int?
+}
+
 private struct TurnBuilder {
-    private struct Edit {
-        var path: String
-        var kind: String            // "edit", "write", "new"
-        var added: Int
-        var removed: Int
-        var hunks: [DiffLine]?      // from structuredPatch, when the tool result is seen; capped
-        var truncated = false       // hunks stopped at the cap
-    }
-
-    private struct Pending {
-        var id: String
-        var prompt: String
-        var startedAt: Date
-        var endedAt: Date?
-        var summary: String?
-        var model: String?
-        var usageByMessage: [String: TokenUsage] = [:]
-        var anonymousUsage = TokenUsage()
-        var edits: [String: Edit] = [:]     // by tool_use id
-        var editOrder: [String] = []
-        var lastContext: Int?               // input-side tokens of the latest assistant message
-    }
-
-    private var turns: [TranscriptTurn] = []
-    private var current: Pending?
+    private var turns: [RawTurn] = []
+    private var current: RawTurn?
     private var cwd: String?
-    /// Turn id -> input + cache read + cache write of the turn's last assistant message.
-    private(set) var lastMessageContext: [String: Int] = [:]
-
-    static let summaryLength = 160
-    static let snippetLimit = 8     // changed lines; below this the card shows the snippet
-    static let patchLimit = 400     // lines kept in FileChange.patch
 
     mutating func consume(_ line: [String: Any]) {
         if (line["isSidechain"] as? Bool) == true { return }
         if let c = line["cwd"] as? String, !c.isEmpty { cwd = c }
-        let date = Self.date(line["timestamp"])
+        let date = TranscriptDates.parse(line["timestamp"])
         let type = line["type"] as? String
 
         if type == "user", let prompt = JSONLines.promptText(line) {
             closeCurrent()
-            current = Pending(
+            current = RawTurn(
                 id: (line["uuid"] as? String) ?? UUID().uuidString,
                 prompt: prompt,
                 startedAt: date ?? Date(timeIntervalSince1970: 0),
-                endedAt: date
+                endedAt: date,
+                log: EditLog()
             )
             return
         }
@@ -403,25 +480,93 @@ private struct TurnBuilder {
 
         switch type {
         case "assistant":
-            consumeAssistant(line)
+            guard let message = line["message"] as? [String: Any] else { return }
+            if let model = message["model"] as? String, !model.hasPrefix("<") { current!.model = model }
+            if let context = current!.log.consumeAssistant(message) { current!.lastContext = context }
+            if current!.summary == nil, let blocks = message["content"] as? [[String: Any]] {
+                for block in blocks where (block["type"] as? String) == "text" {
+                    guard let text = block["text"] as? String else { continue }
+                    let trimmed = Self.summarize(text)
+                    if !trimmed.isEmpty { current!.summary = trimmed; break }
+                }
+            }
         case "user":
-            consumeToolResult(line)
+            current!.log.consumeToolResult(line)
         default:
             break
         }
     }
 
-    mutating func finish() -> [TranscriptTurn] {
+    mutating func finish() -> [RawTurn] {
         closeCurrent()
         return turns
     }
 
-    // MARK: Line kinds
+    private mutating func closeCurrent() {
+        guard var p = current else { return }
+        current = nil
+        p.cwd = cwd
+        turns.append(p)
+    }
 
-    private mutating func consumeAssistant(_ line: [String: Any]) {
-        guard let message = line["message"] as? [String: Any] else { return }
-        if let model = message["model"] as? String, !model.hasPrefix("<") { current!.model = model }
+    static let summaryLength = 160
 
+    private static func summarize(_ text: String) -> String {
+        let flat = text
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        guard flat.count > summaryLength else { return flat }
+        return String(flat.prefix(summaryLength - 1)).trimmingCharacters(in: .whitespaces) + "…"
+    }
+}
+
+/// A subagent's own transcript (`<session>/subagents/agent-<id>.jsonl`): every line is
+/// sidechain, and all of it belongs to the parent turn that started the agent.
+fileprivate struct SubagentBuilder {
+    var log = EditLog()
+
+    mutating func consume(_ line: [String: Any]) {
+        switch line["type"] as? String {
+        case "assistant":
+            if let message = line["message"] as? [String: Any] { _ = log.consumeAssistant(message) }
+        case "user":
+            log.consumeToolResult(line)
+        default:
+            break
+        }
+    }
+}
+
+// MARK: - Edit log
+
+/// File edits, token usage and started subagents, gathered from one run of transcript lines
+/// (a main-thread turn or a whole subagent file). Several logs merge into one turn.
+fileprivate struct EditLog {
+    struct Edit {
+        var path: String
+        var kind: String            // "edit", "write", "new"
+        var added: Int
+        var removed: Int
+        var hunks: [DiffLine]?      // from structuredPatch, when the tool result is seen; capped
+        var truncated = false       // hunks stopped at the cap
+    }
+
+    var edits: [String: Edit] = [:]         // by tool_use id
+    var editOrder: [String] = []
+    var usageByMessage: [String: TokenUsage] = [:]
+    var anonymousUsage = TokenUsage()
+    var agentToolUses: [String] = []        // Agent / Task tool_use ids, in launch order
+    var agentIds: [String: String] = [:]    // tool_use id -> agentId, from the tool result
+
+    static let snippetLimit = 8     // changed lines; below this the card shows the snippet
+    static let patchLimit = 400     // lines kept in FileChange.patch
+
+    /// Usage, edits and agent launches of one assistant line. Returns the message's
+    /// input-side token count (input + cache read + cache write) when it has usage.
+    mutating func consumeAssistant(_ message: [String: Any]) -> Int? {
+        var context: Int?
         if let usage = message["usage"] as? [String: Any] {
             let u = TokenUsage(
                 input: Self.int(usage["input_tokens"]),
@@ -430,36 +575,31 @@ private struct TurnBuilder {
                 cacheWrite: Self.int(usage["cache_creation_input_tokens"])
             )
             if let id = message["id"] as? String {
-                current!.usageByMessage[id] = u        // repeated lines of one message: keep the last
+                usageByMessage[id] = u        // repeated lines of one message: keep the last
             } else {
-                current!.anonymousUsage = Self.add(current!.anonymousUsage, u)
+                anonymousUsage = Self.add(anonymousUsage, u)
             }
-            let context = u.input + u.cacheRead + u.cacheWrite
-            if context > 0 { current!.lastContext = context }
+            let c = u.input + u.cacheRead + u.cacheWrite
+            if c > 0 { context = c }
         }
-
-        guard let blocks = message["content"] as? [[String: Any]] else { return }
-        for block in blocks {
-            switch block["type"] as? String {
-            case "text":
-                if current!.summary == nil, let text = block["text"] as? String {
-                    let trimmed = Self.summarize(text)
-                    if !trimmed.isEmpty { current!.summary = trimmed }
-                }
-            case "tool_use":
+        if let blocks = message["content"] as? [[String: Any]] {
+            for block in blocks where (block["type"] as? String) == "tool_use" {
                 consumeToolUse(block)
-            default:
-                break
             }
         }
+        return context
     }
 
     private mutating func consumeToolUse(_ block: [String: Any]) {
-        guard let name = block["name"] as? String,
-              let input = block["input"] as? [String: Any],
+        guard let name = block["name"] as? String else { return }
+        let toolId = (block["id"] as? String) ?? UUID().uuidString
+        if name == "Agent" || name == "Task" {
+            if !agentToolUses.contains(toolId) { agentToolUses.append(toolId) }
+            return
+        }
+        guard let input = block["input"] as? [String: Any],
               let path = input["file_path"] as? String, !path.isEmpty
         else { return }
-        let toolId = (block["id"] as? String) ?? UUID().uuidString
 
         var edit: Edit
         switch name {
@@ -480,19 +620,25 @@ private struct TurnBuilder {
         default:
             return
         }
-        if current!.edits[toolId] == nil { current!.editOrder.append(toolId) }
-        edit.hunks = current!.edits[toolId]?.hunks
-        current!.edits[toolId] = edit
+        if edits[toolId] == nil { editOrder.append(toolId) }
+        edit.hunks = edits[toolId]?.hunks
+        edits[toolId] = edit
     }
 
-    /// A tool_result line: replace the estimate with exact counts from structuredPatch.
-    private mutating func consumeToolResult(_ line: [String: Any]) {
+    /// A tool_result line: replace the estimate with exact counts from structuredPatch,
+    /// or note the agentId of a started subagent.
+    mutating func consumeToolResult(_ line: [String: Any]) {
         guard let result = line["toolUseResult"] as? [String: Any],
               let message = line["message"] as? [String: Any],
               let blocks = message["content"] as? [[String: Any]],
-              let toolId = blocks.first(where: { ($0["type"] as? String) == "tool_result" })?["tool_use_id"] as? String,
-              var edit = current!.edits[toolId]
+              let toolId = blocks.first(where: { ($0["type"] as? String) == "tool_result" })?["tool_use_id"] as? String
         else { return }
+
+        if let agentId = result["agentId"] as? String, !agentId.isEmpty, agentToolUses.contains(toolId) {
+            agentIds[toolId] = agentId
+            return
+        }
+        guard var edit = edits[toolId] else { return }
 
         if (result["type"] as? String) == "create" { edit.kind = "new" }
         if let patch = result["structuredPatch"] as? [[String: Any]] {
@@ -514,7 +660,80 @@ private struct TurnBuilder {
                 edit.hunks = []
             }
         }
-        current!.edits[toolId] = edit
+        edits[toolId] = edit
+    }
+
+    // MARK: Merging into a turn
+
+    /// Builds the turn from its main-thread log plus the logs of its subagents (in order).
+    /// Usage is counted once per message id across all logs; repeated edits of one file merge.
+    static func turn(_ raw: RawTurn, subagents: [EditLog]) -> TranscriptTurn {
+        let logs = [raw.log] + subagents
+
+        var tokens = TokenUsage()
+        var seen = Set<String>()
+        for log in logs {
+            tokens = add(tokens, log.anonymousUsage)
+            for (id, u) in log.usageByMessage where seen.insert(id).inserted { tokens = add(tokens, u) }
+        }
+
+        // Merge repeated edits of one file, in first-touched order; patches concatenate in order.
+        var order: [String] = []
+        var merged: [String: (change: FileChange, hunks: [DiffLine], exact: Bool, truncated: Bool)] = [:]
+        for log in logs {
+            for toolId in log.editOrder {
+                guard let e = log.edits[toolId] else { continue }
+                let path = relative(e.path, cwd: raw.cwd)
+                if var m = merged[path] {
+                    m.change.added += e.added
+                    m.change.removed += e.removed
+                    m.change.kind = strongerKind(m.change.kind, e.kind)
+                    if let h = e.hunks {
+                        if m.hunks.count <= patchLimit { m.hunks += h }
+                    } else {
+                        m.exact = false
+                    }
+                    m.truncated = m.truncated || e.truncated
+                    merged[path] = m
+                } else {
+                    order.append(path)
+                    merged[path] = (change: FileChange(path: path, added: e.added, removed: e.removed, kind: e.kind),
+                                    hunks: e.hunks ?? [], exact: e.hunks != nil, truncated: e.truncated)
+                }
+            }
+        }
+        let files: [FileChange] = order.compactMap { path in
+            guard var m = merged[path] else { return nil }
+            let changed = m.change.added + m.change.removed
+            if m.exact, changed > 0, changed < snippetLimit {
+                m.change.snippet = m.hunks
+            }
+            if m.hunks.count > patchLimit {
+                m.change.patch = Array(m.hunks.prefix(patchLimit))
+                m.change.patchTruncated = true
+            } else {
+                m.change.patch = m.hunks
+                m.change.patchTruncated = m.truncated
+            }
+            return m.change
+        }
+
+        return TranscriptTurn(
+            id: raw.id,
+            prompt: raw.prompt,
+            startedAt: raw.startedAt,
+            endedAt: raw.endedAt,
+            assistantSummary: raw.summary,
+            files: files,
+            tokens: tokens,
+            model: raw.model
+        )
+    }
+
+    private static func relative(_ path: String, cwd: String?) -> String {
+        guard let cwd, !cwd.isEmpty else { return path }
+        let base = cwd.hasSuffix("/") ? cwd : cwd + "/"
+        return path.hasPrefix(base) ? String(path.dropFirst(base.count)) : path
     }
 
     // MARK: Diff lines
@@ -527,7 +746,7 @@ private struct TurnBuilder {
 
         /// Counts every line, keeps at most `patchLimit` (one over, so the merge sees the overflow).
         mutating func append(_ line: DiffLine) {
-            if lines.count > TurnBuilder.patchLimit { truncated = true; return }
+            if lines.count > EditLog.patchLimit { truncated = true; return }
             lines.append(line)
         }
     }
@@ -587,73 +806,6 @@ private struct TurnBuilder {
         return diff
     }
 
-    // MARK: Closing a turn
-
-    private mutating func closeCurrent() {
-        guard let p = current else { return }
-        current = nil
-
-        var tokens = p.anonymousUsage
-        for u in p.usageByMessage.values { tokens = Self.add(tokens, u) }
-
-        // Merge repeated edits of one file, in first-touched order; patches concatenate in order.
-        var order: [String] = []
-        var merged: [String: (change: FileChange, hunks: [DiffLine], exact: Bool, truncated: Bool)] = [:]
-        for toolId in p.editOrder {
-            guard let e = p.edits[toolId] else { continue }
-            let path = relative(e.path)
-            if var m = merged[path] {
-                m.change.added += e.added
-                m.change.removed += e.removed
-                m.change.kind = Self.strongerKind(m.change.kind, e.kind)
-                if let h = e.hunks {
-                    if m.hunks.count <= Self.patchLimit { m.hunks += h }
-                } else {
-                    m.exact = false
-                }
-                m.truncated = m.truncated || e.truncated
-                merged[path] = m
-            } else {
-                order.append(path)
-                merged[path] = (change: FileChange(path: path, added: e.added, removed: e.removed, kind: e.kind),
-                                hunks: e.hunks ?? [], exact: e.hunks != nil, truncated: e.truncated)
-            }
-        }
-        let files: [FileChange] = order.compactMap { path in
-            guard var m = merged[path] else { return nil }
-            let changed = m.change.added + m.change.removed
-            if m.exact, changed > 0, changed < Self.snippetLimit {
-                m.change.snippet = m.hunks
-            }
-            if m.hunks.count > Self.patchLimit {
-                m.change.patch = Array(m.hunks.prefix(Self.patchLimit))
-                m.change.patchTruncated = true
-            } else {
-                m.change.patch = m.hunks
-                m.change.patchTruncated = m.truncated
-            }
-            return m.change
-        }
-        if let context = p.lastContext { lastMessageContext[p.id] = context }
-
-        turns.append(TranscriptTurn(
-            id: p.id,
-            prompt: p.prompt,
-            startedAt: p.startedAt,
-            endedAt: p.endedAt,
-            assistantSummary: p.summary,
-            files: files,
-            tokens: tokens,
-            model: p.model
-        ))
-    }
-
-    private func relative(_ path: String) -> String {
-        guard let cwd, !cwd.isEmpty else { return path }
-        let base = cwd.hasSuffix("/") ? cwd : cwd + "/"
-        return path.hasPrefix(base) ? String(path.dropFirst(base.count)) : path
-    }
-
     // MARK: Small helpers
 
     private static func strongerKind(_ a: String, _ b: String) -> String {
@@ -673,8 +825,6 @@ private struct TurnBuilder {
         return 0
     }
 
-    private static func date(_ any: Any?) -> Date? { TranscriptDates.parse(any) }
-
     /// Lines in a string: "" is 0, "a" is 1, "a\nb" is 2, "a\n" is 1.
     private static func lineCount(_ s: String?) -> Int {
         guard let s, !s.isEmpty else { return 0 }
@@ -682,15 +832,5 @@ private struct TurnBuilder {
         for scalar in s.unicodeScalars where scalar == "\n" { n += 1 }
         if s.hasSuffix("\n") { n -= 1 }
         return n
-    }
-
-    private static func summarize(_ text: String) -> String {
-        let flat = text
-            .components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-            .joined(separator: " ")
-        guard flat.count > summaryLength else { return flat }
-        return String(flat.prefix(summaryLength - 1)).trimmingCharacters(in: .whitespaces) + "…"
     }
 }

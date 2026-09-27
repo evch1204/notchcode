@@ -217,6 +217,23 @@ protocol TranscriptWatcherSink: AnyObject {
     func transcriptsChanged(_ sessions: [DiscoveredSession])
 }
 
+/// One entry of a repository's file tree, for the Files tab. Built by Sessions/RepoFiles.swift.
+struct FileTreeNode: Identifiable, Equatable {
+    var id: String { path }
+    var path: String                // relative to the session's cwd
+    var name: String
+    var isDirectory: Bool
+    var children: [FileTreeNode] = []
+}
+
+/// A file's text for the preview pane, capped. Built by Sessions/RepoFiles.swift.
+struct FilePreview: Equatable {
+    var path: String
+    var lines: [String]
+    var truncated: Bool
+    var isBinary: Bool
+}
+
 /// Limits and cost, when a source provides them. Every field optional: the UI degrades.
 struct UsageSnapshot: Equatable {
     var fiveHourPercent: Double?
