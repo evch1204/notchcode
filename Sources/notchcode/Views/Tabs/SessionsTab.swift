@@ -1,0 +1,293 @@
+// SessionsTab.swift
+// Every session at a glance: waiting first (amber), then working, done, idle.
+// Row: state dot, worktree + repo · branch, the current prompt, state word,
+// turn clock while working. Two sessions in one folder also show their model
+// and start time, and the one with the newest transcript gets a "newest" tag. Clicking a row (or ⏎) selects the session and shows its Changes.
+// The chevron (or ⌥⏎) teleports to its terminal. Each subagent gets a lane with
+// its own colour square; finished ones collapse into "N done", which opens on
+// click. Counts live in the card footer (CardView).
+
+import SwiftUI
+
+@MainActor
+struct SessionsTab: View {
+    @ObservedObject var state: AppState
+    /// Sessions whose finished agents are expanded.
+    @State private var expandedDone: Set<String> = []
+
+    var body: some View {
+        let pendingIds = Set(state.pending.map { $0.sessionId })
+        let ordered = state.orderedSessions
+        if ordered.isEmpty {
+            EmptyNote(text: "No Claude Code sessions in the last few hours")
+        } else {
+            ScrollViewReader { proxy in
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: Theme.Size.spaceXS) {
+                        ForEach(Array(ordered.enumerated()), id: \.element.id) { item in
+                            sessionBlock(
+                                item.element,
+                                index: item.offset,
+                                isPending: pendingIds.contains(item.element.id)
+                            )
+                            .id(item.element.id)
+                        }
+                    }
+                }
+                .onChange(of: state.sessionCursor) { _, cursor in
+                    guard ordered.indices.contains(cursor) else { return }
+                    withAnimation(Theme.Motion.tap) { proxy.scrollTo(ordered[cursor].id) }
+                }
+            }
+        }
+    }
+
+    private func sessionBlock(_ session: Session, index: Int, isPending: Bool) -> some View {
+        let all = state.agents(for: session.id)
+        let running = all.enumerated().filter { $0.element.isRunning }
+        let finished = all.enumerated().filter { !$0.element.isRunning }
+        let expanded = expandedDone.contains(session.id)
+        let isCursor = index == state.sessionCursor
+        let isFocused = state.focusedSession?.id == session.id
+
+        return VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                Button {
+                    state.selectSession(session)
+                } label: {
+                    SessionRow(
+                        session: session,
+                        prompt: state.currentPrompt(for: session.id),
+                        turnStart: state.turnStart(for: session),
+                        isPending: isPending,
+                        isFocused: isFocused,
+                        twin: state.isAmbiguous(session) ? SessionRow.Twin(
+                            startedAt: state.startTime(for: session),
+                            model: state.modelShortName(for: session.id),
+                            isNewest: state.isNewest(session)
+                        ) : nil
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    state.sessionCursor = index
+                    state.teleport(session: session)
+                } label: {
+                    Image(systemName: Theme.Symbols.chevron)
+                        .font(Theme.Fonts.chevron)
+                        .foregroundStyle(Theme.Colors.inkSecondary)
+                        .frame(width: Theme.Size.chevronColumn + Theme.Size.rowHPadding, height: Theme.Size.pillHeight)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Open in \(state.terminalName(for: session)) (\(Theme.Keys.optionEnter))")
+            }
+            .background(
+                RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous)
+                    .fill(isPending ? Theme.Colors.amberHighlight : (isCursor ? Theme.Colors.selection : Color.clear))
+            )
+
+            ForEach(running, id: \.element.id) { entry in
+                AgentLane(agent: entry.element, colorIndex: entry.offset)
+            }
+
+            if !finished.isEmpty {
+                Button {
+                    withAnimation(Theme.Motion.tap) {
+                        if expanded { expandedDone.remove(session.id) } else { expandedDone.insert(session.id) }
+                    }
+                } label: {
+                    DoneLane(count: finished.count, expanded: expanded)
+                }
+                .buttonStyle(.plain)
+
+                if expanded {
+                    ForEach(finished, id: \.element.id) { entry in
+                        AgentLane(agent: entry.element, colorIndex: entry.offset)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@MainActor
+private struct SessionRow: View {
+    /// What tells two sessions in the same folder apart.
+    struct Twin {
+        var startedAt: Date
+        var model: String?
+        var isNewest: Bool
+    }
+
+    let session: Session
+    let prompt: String?
+    let turnStart: Date?
+    let isPending: Bool
+    let isFocused: Bool
+    let twin: Twin?
+
+    private var shownState: SessionState { isPending ? .needsYou : session.state }
+    private var repoBranch: String { Format.sessionSubtitle(session, extra: twin?.model) }
+    private var secondLine: String {
+        let text = prompt ?? ""
+        guard let twin else { return text.isEmpty ? " " : text }
+        return Format.started(twin.startedAt) + (text.isEmpty ? "" : Theme.Glyphs.separator + text)
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: Theme.Size.spaceM) {
+            StatusDot(state: shownState)
+                .frame(width: Theme.Size.glyph)
+
+            VStack(alignment: .leading, spacing: Theme.Size.spaceXS) {
+                HStack(alignment: .firstTextBaseline, spacing: Theme.Size.spaceM) {
+                    Text(session.displayName)
+                        .font(Theme.Fonts.bodySemibold)
+                        .foregroundStyle(Theme.Colors.ink)
+                        .lineLimit(1)
+                        .layoutPriority(1)
+                    if !repoBranch.isEmpty {
+                        Text(repoBranch)
+                            .font(Theme.Fonts.monoSmall)
+                            .foregroundStyle(Theme.Colors.inkSecondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    if twin?.isNewest == true {
+                        SmallTag(text: "newest")
+                    }
+                    if isFocused {
+                        SmallTag(text: "Showing")
+                    }
+                }
+                Text(secondLine)
+                    .font(Theme.Fonts.caption)
+                    .foregroundStyle(Theme.Colors.inkTertiary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+
+            Spacer(minLength: Theme.Size.spaceM)
+
+            HStack(spacing: Theme.Size.spaceM) {
+                Text(Format.stateText(session, pending: isPending))
+                    .font(Theme.Fonts.captionMedium)
+                    .foregroundStyle(stateColor)
+                    .lineLimit(1)
+                if shownState == .working, let turnStart {
+                    ElapsedText(since: turnStart, color: Theme.Colors.inkTertiary)
+                } else {
+                    Text(Format.ago(session.lastEventAt))
+                        .font(Theme.Fonts.caption)
+                        .foregroundStyle(Theme.Colors.inkTertiary)
+                        .lineLimit(1)
+                }
+            }
+            .fixedSize()
+        }
+        .padding(.leading, Theme.Size.rowHPadding)
+        .padding(.vertical, Theme.Size.rowVPadding)
+    }
+
+    private var stateColor: Color {
+        switch shownState {
+        case .needsYou: return Theme.Colors.amberText
+        case .working: return Theme.Colors.clay
+        case .done: return Theme.Colors.green
+        case .idle: return Theme.Colors.inkTertiary
+        }
+    }
+}
+
+/// A small tertiary capsule: "Showing", "newest".
+@MainActor
+private struct SmallTag: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(Theme.Fonts.caption)
+            .foregroundStyle(Theme.Colors.inkTertiary)
+            .padding(.horizontal, Theme.Size.smallPillHPadding)
+            .frame(height: Theme.Size.smallPillHeight)
+            .background(Capsule(style: .continuous).fill(Theme.Colors.doneChipFill))
+            .fixedSize()
+    }
+}
+
+/// One subagent under its session: colour square, type, description, elapsed (or how long it ran).
+@MainActor
+private struct AgentLane: View {
+    let agent: Agent
+    let colorIndex: Int
+
+    var body: some View {
+        HStack(spacing: Theme.Size.spaceM) {
+            Rectangle()
+                .fill(Theme.Colors.laneLine)
+                .frame(width: Theme.Size.laneLineWidth)
+                .frame(maxHeight: .infinity)
+            AgentSquare(colorIndex: colorIndex, finished: !agent.isRunning)
+            Text(agent.type)
+                .font(Theme.Fonts.captionSemibold)
+                .foregroundStyle(agent.isRunning ? Theme.Colors.ink : Theme.Colors.inkSecondary)
+                .lineLimit(1)
+                .fixedSize()
+            if let description = agent.description, !description.isEmpty {
+                Text(description)
+                    .font(Theme.Fonts.caption)
+                    .foregroundStyle(agent.isRunning ? Theme.Colors.inkSecondary : Theme.Colors.inkTertiary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            Spacer(minLength: Theme.Size.spaceM)
+            if let ended = agent.endedAt {
+                Text(Format.duration(ended.timeIntervalSince(agent.startedAt)))
+                    .font(Theme.Fonts.caption)
+                    .foregroundStyle(Theme.Colors.inkTertiary)
+                    .fixedSize()
+            } else {
+                ElapsedText(since: agent.startedAt, color: Theme.Colors.inkTertiary)
+            }
+        }
+        .padding(.leading, Theme.Size.laneIndent)
+        .padding(.trailing, Theme.Size.rowHPadding + Theme.Size.chevronColumn)
+        .padding(.vertical, Theme.Size.laneVPadding)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// "▸ 3 done": finished agents, collapsed. Click to show their lanes.
+@MainActor
+private struct DoneLane: View {
+    let count: Int
+    let expanded: Bool
+
+    var body: some View {
+        HStack(spacing: Theme.Size.spaceM) {
+            Rectangle()
+                .fill(Theme.Colors.laneLine)
+                .frame(width: Theme.Size.laneLineWidth)
+                .frame(maxHeight: .infinity)
+            HStack(spacing: Theme.Size.spaceS) {
+                Image(systemName: Theme.Symbols.chevron)
+                    .font(Theme.Fonts.chevron)
+                    .rotationEffect(.degrees(expanded ? Theme.Motion.chevronOpenDegrees : 0))
+                Text("\(count) done")
+                    .font(Theme.Fonts.caption)
+            }
+            .foregroundStyle(Theme.Colors.inkTertiary)
+            .padding(.horizontal, Theme.Size.smallPillHPadding)
+            .frame(height: Theme.Size.smallPillHeight)
+            .background(Capsule(style: .continuous).fill(Theme.Colors.doneChipFill))
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, Theme.Size.laneIndent)
+        .padding(.vertical, Theme.Size.laneVPadding)
+        .fixedSize(horizontal: false, vertical: true)
+        .contentShape(Rectangle())
+    }
+}

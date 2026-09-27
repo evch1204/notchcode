@@ -1,0 +1,348 @@
+// SettingsPage.swift
+// Settings as a page inside the card (gear in the footer, or ⌘,). Never a
+// separate window. Compact rows in inset groups, scrollable, "‹ Back" (or esc)
+// returns to the tab it came from. Every control writes straight into
+// AppState.prefs, which saves itself.
+
+import SwiftUI
+
+@MainActor
+struct SettingsPage: View {
+    @ObservedObject var state: AppState
+
+    @State private var hookStatus: HooksInstaller.Status = .notConnected
+    @State private var hookError: String?
+    @State private var working = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Size.spaceM) {
+            HStack(spacing: Theme.Size.spaceM) {
+                Button {
+                    state.closeSettings()
+                } label: {
+                    HStack(spacing: Theme.Size.spaceS) {
+                        Image(systemName: Theme.Symbols.back)
+                            .font(Theme.Fonts.chevron)
+                        Text("Back")
+                    }
+                }
+                .buttonStyle(SmallPillStyle())
+                Keycap(Theme.Keys.escape)
+                Spacer(minLength: Theme.Size.spaceM)
+                Text("Settings")
+                    .font(Theme.Fonts.bodySemibold)
+                    .foregroundStyle(Theme.Colors.ink)
+                Spacer(minLength: Theme.Size.spaceM)
+                Keycap(Theme.Keys.settings)
+            }
+
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: Theme.Size.settingsGroupSpacing) {
+                    connectGroup
+
+                    SettingsGroup(title: "When idle") {
+                        SettingsRow(label: "Notch") {
+                            SegmentedPills(selection: $state.prefs.idleStyle, options: [
+                                (.wings, "Resting row"),
+                                (.closed, "Pure notch"),
+                            ])
+                        }
+                    }
+
+                    SettingsGroup(title: "When Claude needs you") {
+                        SettingsRow(label: "Style") {
+                            SegmentedPills(selection: $state.prefs.attentionStyle, options: [
+                                (.twoRow, "Two rows"),
+                                (.wings, "Wings only"),
+                            ])
+                        }
+                        SettingsRow(label: "Also post a macOS notification") {
+                            SmallSwitch(isOn: $state.prefs.systemNotifications)
+                        }
+                    }
+
+                    SettingsGroup(title: "Passive events") {
+                        SettingsRow(label: "Peek when a turn or subagent finishes") {
+                            SmallSwitch(isOn: $state.prefs.showPeeks)
+                        }
+                        SettingsRow(label: "Also peek each file edit", enabled: state.prefs.showPeeks) {
+                            SmallSwitch(isOn: $state.extraPrefs.peekEdits)
+                                .opacity(state.prefs.showPeeks ? 1 : Theme.Opacity.disabled)
+                                .disabled(!state.prefs.showPeeks)
+                        }
+                        SettingsRow(label: "Peek length", enabled: state.prefs.showPeeks) {
+                            KeycapStepper(
+                                value: $state.prefs.peekSeconds,
+                                range: Theme.Motion.peekSecondsRange,
+                                step: Theme.Motion.peekSecondsStep,
+                                text: { "\(Int($0)) s" },
+                                enabled: state.prefs.showPeeks
+                            )
+                        }
+                    }
+
+                    SettingsGroup(title: "Opening") {
+                        SettingsRow(label: "Open the card on") {
+                            SegmentedPills(selection: $state.prefs.openGesture, options: [
+                                (.click, "Click"),
+                                (.hover, "Hover"),
+                            ])
+                        }
+                        SettingsRow(label: "\(Theme.Keys.option) space opens the notch from anywhere") {
+                            SmallSwitch(isOn: $state.prefs.hotkeyEnabled)
+                        }
+                    }
+
+                    SettingsGroup(title: "Agents") {
+                        SettingsRow(label: "Show running agents in the notch") {
+                            SmallSwitch(isOn: $state.prefs.showAgentsInWings)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .onAppear(perform: refreshStatus)
+    }
+
+    // MARK: Connect
+
+    private var connectGroup: some View {
+        SettingsGroup(title: "Connect") {
+            HStack(spacing: Theme.Size.spaceM) {
+                Circle()
+                    .fill(statusColor)
+                    .frame(width: Theme.Size.dot, height: Theme.Size.dot)
+                Text(statusText)
+                    .font(Theme.Fonts.body)
+                    .foregroundStyle(Theme.Colors.ink)
+                    .lineLimit(1)
+                Spacer(minLength: Theme.Size.spaceM)
+                Button(hookStatus == .connected ? "Disconnect" : "Connect") {
+                    toggleConnection()
+                }
+                .buttonStyle(SmallPillStyle(primary: hookStatus != .connected))
+                .disabled(working)
+            }
+            .frame(minHeight: Theme.Size.settingsRowHeight)
+            VStack(alignment: .leading, spacing: Theme.Size.settingsLabelSpacing) {
+                Text(HooksInstaller.settingsPath)
+                    .font(Theme.Fonts.monoSmall)
+                    .foregroundStyle(Theme.Colors.inkTertiary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text("Adds our hooks beside your own. Your other hooks are never changed. New Claude Code sessions pick this up; running ones keep their old hooks.")
+                    .font(Theme.Fonts.caption)
+                    .foregroundStyle(Theme.Colors.inkTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let hookError {
+                    Text(hookError)
+                        .font(Theme.Fonts.caption)
+                        .foregroundStyle(Theme.Colors.settingsError)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    private var statusText: String {
+        switch hookStatus {
+        case .connected: return "Connected to Claude Code"
+        case .notConnected: return "Not connected"
+        case .partial: return "Partly connected"
+        }
+    }
+
+    private var statusColor: Color {
+        switch hookStatus {
+        case .connected: return Theme.Colors.settingsConnected
+        case .notConnected: return Theme.Colors.settingsDisconnected
+        case .partial: return Theme.Colors.settingsPartial
+        }
+    }
+
+    private func refreshStatus() {
+        hookStatus = HooksInstaller.status()
+    }
+
+    private func toggleConnection() {
+        working = true
+        defer {
+            working = false
+            refreshStatus()
+        }
+        do {
+            // "Partly connected" connects the rest.
+            if hookStatus == .connected {
+                try HooksInstaller.disconnect()
+            } else {
+                try HooksInstaller.connect()
+            }
+            hookError = nil
+        } catch {
+            hookError = error.localizedDescription
+        }
+    }
+}
+
+// MARK: - Settings building blocks
+
+/// A caption title over an inset group of rows.
+@MainActor
+private struct SettingsGroup<Content: View>: View {
+    let title: String
+    let content: Content
+
+    init(title: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Size.settingsLabelSpacing) {
+            Text(title)
+                .font(Theme.Fonts.captionMedium)
+                .foregroundStyle(Theme.Colors.inkTertiary)
+                .padding(.leading, Theme.Size.insetPadding)
+            InsetGroup {
+                VStack(alignment: .leading, spacing: 0) {
+                    content
+                }
+            }
+        }
+    }
+}
+
+/// Label on the left, control on the right.
+@MainActor
+private struct SettingsRow<Control: View>: View {
+    let label: String
+    var enabled = true
+    let control: Control
+
+    init(label: String, enabled: Bool = true, @ViewBuilder control: () -> Control) {
+        self.label = label
+        self.enabled = enabled
+        self.control = control()
+    }
+
+    var body: some View {
+        HStack(spacing: Theme.Size.spaceM) {
+            Text(label)
+                .font(Theme.Fonts.body)
+                .foregroundStyle(enabled ? Theme.Colors.ink : Theme.Colors.inkTertiary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: Theme.Size.spaceM)
+            control
+                .fixedSize()
+        }
+        .frame(minHeight: Theme.Size.settingsRowHeight)
+    }
+}
+
+/// A picker as a row of pills in a capsule track.
+@MainActor
+struct SegmentedPills<Value: Hashable>: View {
+    @Binding var selection: Value
+    let options: [(Value, String)]
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(options.enumerated()), id: \.offset) { item in
+                let selected = item.element.0 == selection
+                Button {
+                    withAnimation(Theme.Motion.tap) { selection = item.element.0 }
+                } label: {
+                    Text(item.element.1)
+                        .font(Theme.Fonts.captionMedium)
+                        .foregroundStyle(selected ? Theme.Colors.ink : Theme.Colors.inkSecondary)
+                        .lineLimit(1)
+                        .padding(.horizontal, Theme.Size.segmentHPadding)
+                        .frame(height: Theme.Size.segmentHeight - 2 * Theme.Size.segmentInset)
+                        .background(Capsule(style: .continuous).fill(selected ? Theme.Colors.segmentSelected : Color.clear))
+                        .contentShape(Capsule(style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(Theme.Size.segmentInset)
+        .background(Capsule(style: .continuous).fill(Theme.Colors.segmentTrack))
+    }
+}
+
+/// A small on/off switch.
+@MainActor
+struct SmallSwitch: View {
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Button {
+            withAnimation(Theme.Motion.tap) { isOn.toggle() }
+        } label: {
+            ZStack(alignment: isOn ? .trailing : .leading) {
+                Capsule(style: .continuous)
+                    .fill(isOn ? Theme.Colors.switchOn : Theme.Colors.switchOff)
+                Circle()
+                    .fill(Theme.Colors.switchKnob)
+                    .padding(Theme.Size.switchKnobInset)
+            }
+            .frame(width: Theme.Size.switchWidth, height: Theme.Size.switchHeight)
+            .contentShape(Capsule(style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// − value + with keycap buttons.
+@MainActor
+struct KeycapStepper: View {
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let step: Double
+    let text: (Double) -> String
+    var enabled = true
+
+    var body: some View {
+        HStack(spacing: Theme.Size.spaceS) {
+            Button {
+                value = max(range.lowerBound, value - step)
+            } label: {
+                Keycap(Theme.Keys.minus)
+            }
+            .buttonStyle(.plain)
+            .disabled(!enabled || value <= range.lowerBound)
+
+            Text(text(value))
+                .font(Theme.Fonts.captionMedium)
+                .foregroundStyle(Theme.Colors.ink)
+                .frame(width: Theme.Size.stepperValueWidth)
+
+            Button {
+                value = min(range.upperBound, value + step)
+            } label: {
+                Keycap(Theme.Keys.plus)
+            }
+            .buttonStyle(.plain)
+            .disabled(!enabled || value >= range.upperBound)
+        }
+        .opacity(enabled ? 1 : Theme.Opacity.disabled)
+    }
+}
+
+/// Compact capsule button: white when primary, ghost otherwise.
+@MainActor
+struct SmallPillStyle: ButtonStyle {
+    var primary = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(Theme.Fonts.captionMedium)
+            .foregroundStyle(primary ? Theme.Colors.primaryText : Theme.Colors.ink)
+            .padding(.horizontal, Theme.Size.backPillHPadding)
+            .frame(height: Theme.Size.backPillHeight)
+            .background(Capsule(style: .continuous).fill(primary ? Theme.Colors.primaryFill : Theme.Colors.ghostFill))
+            .contentShape(Capsule(style: .continuous))
+            .opacity(configuration.isPressed ? Theme.Opacity.pressed : 1)
+    }
+}
