@@ -122,6 +122,27 @@ enum Theme {
         /// The selected file row in Changes and Files (keyboard cursor).
         static let rowCursor = Color.white.opacity(0.06)
 
+        // Files tab.
+        /// The file whose preview is showing.
+        static let treeOpened = Color.white.opacity(0.10)
+        static let treeFolder = inkSecondary
+        static let treeFile = ink
+        static let treeChevron = inkTertiary
+        static let filterFill = Color.white.opacity(0.07)
+        static let filterPlaceholder = inkTertiary
+        static let paneDivider = hairline
+        static let badgeFill = Color.white.opacity(0.07)
+        static let previewLineNumber = inkTertiary
+        static let previewText = inkSecondary
+        static let previewAddedBackground = Color(hex: 0x30D158, opacity: 0.12)
+        static let previewRemovedMark = red
+        static let previewAddedNumber = green
+
+        // Sessions tab group header (it sticks, so it carries the card's own black).
+        static let groupHeaderBackground = notch
+        static let groupHeaderName = inkSecondary
+        static let groupHeaderCount = inkTertiary
+
         /// Hover rim light on the closed and resting shape, and its soft glow.
         static let rim = Color.white.opacity(0.55)
         static let rimGlow = Color.white.opacity(0.12)
@@ -346,6 +367,37 @@ enum Theme {
         static let diffVPadding: CGFloat = 4
         static let groupHeaderTopPadding: CGFloat = 6
 
+        // Sessions tab: one slim sticky header per repository.
+        static let repoHeaderHeight: CGFloat = 22
+        static let repoGroupSpacing: CGFloat = 6
+
+        // Changes tab: one-line turn header.
+        static let turnHeaderVPadding: CGFloat = 5
+        static let turnFilesIndent: CGFloat = 14
+
+        // Files tab: the tree on the left, the preview on the right.
+        /// The tree column's share of the card's content width.
+        static let fileTreeShare: CGFloat = 0.4
+        static let filesColumnGap: CGFloat = 10
+        static let filterHeight: CGFloat = 22
+        static let filterHPadding: CGFloat = 8
+        static let treeRowHeight: CGFloat = 20
+        static let treeIndent: CGFloat = 12
+        static let treeChevronWidth: CGFloat = 10
+        static let treeRowHPadding: CGFloat = 6
+        static let badgeHPadding: CGFloat = 4
+        static let badgeHeight: CGFloat = 14
+        static let previewLineHeight: CGFloat = 16
+        static let previewNumberWidth: CGFloat = 34
+        static let previewGutterSpacing: CGFloat = 8
+        static let previewHPadding: CGFloat = 6
+        static let previewVPadding: CGFloat = 4
+        static let removedMarkWidth: CGFloat = 2
+        /// Children beyond this index rise in together, so a big folder never trickles in.
+        static let maxStaggeredChildren: Int = 12
+        /// File previews kept in memory for flipping back and forth.
+        static let maxCachedPreviews: Int = 8
+
         static let shadowRadius: CGFloat = 18
         static let shadowY: CGFloat = 8
     }
@@ -561,6 +613,9 @@ enum Theme {
         static let delete = "⌫"
         static let option = "⌥"
         static let space = "space"
+        static let treeChevron = Font.system(size: treeChevronSize, weight: .semibold)
+        static let badge = Font.system(size: tinySize, design: .monospaced)
+        static let groupHeader = Font.system(size: captionSize, weight: .semibold).monospacedDigit()
         static let tab = "⇥"
         static let escape = "esc"
         static let always = "A"

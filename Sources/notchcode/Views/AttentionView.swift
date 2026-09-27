@@ -25,11 +25,11 @@ struct AttentionView: View {
                     }
                 } right: {
                     HStack(spacing: Theme.Size.wingSpacing) {
-                        Text(state.session(id: request.sessionId)?.displayName ?? "")
+                        Text(state.session(id: request.sessionId)?.displayFull ?? "")
                             .font(Theme.Fonts.caption)
                             .foregroundStyle(Theme.Colors.inkSecondary)
                             .lineLimit(1)
-                            .truncationMode(.tail)
+                            .truncationMode(.middle)
                         DeadlineCountdown(request: request)
                             .fixedSize()
                             .layoutPriority(1)

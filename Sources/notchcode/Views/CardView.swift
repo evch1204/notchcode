@@ -72,10 +72,11 @@ struct CardView: View {
                     .frame(width: Theme.Size.iconCircle, height: Theme.Size.iconCircle)
                 }
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(session?.displayName ?? "notchcode")
+                    Text(session?.displayFull ?? "notchcode")
                         .font(Theme.Fonts.bodySemibold)
                         .foregroundStyle(Theme.Colors.ink)
                         .lineLimit(1)
+                        .truncationMode(.middle)
                     if let session {
                         headerSubtitle(session)
                     }

@@ -28,7 +28,7 @@ struct WingsView: View {
     private func left(session: Session?, shown: SessionState) -> some View {
         HStack(spacing: Theme.Size.wingSpacing) {
             WingStateGlyph(state: shown)
-            Text(session?.displayName ?? "notchcode")
+            Text(session?.displayFull ?? "notchcode")
                 .font(Theme.Fonts.captionMedium)
                 .foregroundStyle(Theme.Colors.wingsName)
                 .lineLimit(1)

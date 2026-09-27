@@ -11,9 +11,16 @@ final class DemoScript {
     private var task: Task<Void, Never>?
 
     private let ponyfish = "demo-ponyfish"
+    private let bluefin = "demo-bluefin"
     private let sidecar = "demo-sidecar-pane"
-    private let ponyfishCWD = "/Users/evanchang/orca/workspaces/notchcode/ponyfish"
-    private let sidecarCWD = "/Users/evanchang/orca/workspaces/sidecar-pane"
+    // Two worktrees of one repo and a plain checkout, under a generic ~/code.
+    private let ponyfishCWD = DemoScript.home("code/notchcode/ponyfish")
+    private let bluefinCWD = DemoScript.home("code/notchcode/bluefin")
+    private let sidecarCWD = DemoScript.home("code/sidecar-pane")
+
+    private static func home(_ relative: String) -> String {
+        (NSHomeDirectory() as NSString).appendingPathComponent(relative)
+    }
 
     init(state: AppState) {
         self.state = state
@@ -62,6 +69,21 @@ final class DemoScript {
         send(.preTool, session: sidecar, cwd: sidecarCWD, payload: [
             "tool_name": .string("Read"),
             "tool_input": .object(["file_path": .string("src/pane.ts")]),
+        ])
+
+        // A second worktree of notchcode, so the Sessions tab groups two rows under one repo.
+        send(.sessionStart, session: bluefin, cwd: bluefinCWD, payload: [:])
+        state.mutateSession(bluefin) {
+            $0.branch = "feat/socket"
+            $0.repoName = "notchcode"
+        }
+        state.setTurns(bluefinTurns(), for: bluefin)
+        send(.userPrompt, session: bluefin, cwd: bluefinCWD, payload: [
+            "prompt": .string("Retry the socket connect with backoff"),
+        ])
+        send(.preTool, session: bluefin, cwd: bluefinCWD, payload: [
+            "tool_name": .string("Edit"),
+            "tool_input": .object(["file_path": .string("Sources/notchcode/Transport/SocketServer.swift")]),
         ])
 
         // +3 s: editing, and an edit lands.
@@ -168,6 +190,8 @@ final class DemoScript {
         // pure notch when the owner picked that in Settings.
         await pause(6)
         send(.stop, session: sidecar, cwd: sidecarCWD, payload: [:])
+        await pause(3)
+        send(.stop, session: bluefin, cwd: bluefinCWD, payload: [:])
     }
 
     // MARK: - Helpers
@@ -374,6 +398,46 @@ final class DemoScript {
                 ],
                 tokens: TokenUsage(input: 4_200, output: 2_100, cacheRead: 96_000, cacheWrite: 8_000),
                 model: "claude-opus-4-1"
+            ),
+        ]
+    }
+
+    /// bluefin: one finished turn without file changes, and the current one editing the socket.
+    private func bluefinTurns() -> [TranscriptTurn] {
+        let now = Date()
+        return [
+            TranscriptTurn(
+                id: "demo-bluefin-1",
+                prompt: "Why does the hook sometimes time out on the first event?",
+                startedAt: now.addingTimeInterval(-18 * 60),
+                endedAt: now.addingTimeInterval(-16 * 60),
+                assistantSummary: "The socket is created after the first hook fires.",
+                files: [],
+                tokens: TokenUsage(input: 3_100, output: 1_400, cacheRead: 52_000, cacheWrite: 6_000),
+                model: "claude-sonnet-4-5"
+            ),
+            TranscriptTurn(
+                id: "demo-bluefin-2",
+                prompt: "Retry the socket connect with backoff",
+                startedAt: now.addingTimeInterval(-60),
+                endedAt: nil,
+                assistantSummary: nil,
+                files: [
+                    file("Sources/notchcode/Transport/SocketServer.swift", kind: "edit", hunks: [
+                        (88, 88, [
+                            "     func start() {",
+                            "-        bind()",
+                            "+        var delay = 0.05",
+                            "+        while !bind() && delay < 2 {",
+                            "+            Thread.sleep(forTimeInterval: delay)",
+                            "+            delay *= 2",
+                            "+        }",
+                            "     }",
+                        ]),
+                    ]),
+                ],
+                tokens: TokenUsage(input: 2_000, output: 900, cacheRead: 40_000, cacheWrite: 3_000),
+                model: "claude-sonnet-4-5"
             ),
         ]
     }

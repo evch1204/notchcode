@@ -51,6 +51,7 @@ struct PeekView: View {
                     .font(Theme.Fonts.captionMedium)
                     .foregroundStyle(Theme.Colors.ink)
                     .lineLimit(1)
+                    .truncationMode(.middle)
             case .agent:
                 AgentSquare(colorIndex: peek.colorIndex ?? 0)
                 Text(peek.title)
@@ -93,10 +94,11 @@ struct PeekView: View {
                     CountUpPill(count: removed, format: Format.removed, tint: Theme.Colors.red, fill: Theme.Colors.redFill)
                 }
             case .agent:
-                Text(state.session(id: peek.sessionId)?.displayName ?? "")
+                Text(state.session(id: peek.sessionId)?.displayFull ?? "")
                     .font(Theme.Fonts.caption)
                     .foregroundStyle(Theme.Colors.inkSecondary)
                     .lineLimit(1)
+                    .truncationMode(.middle)
             }
         }
     }

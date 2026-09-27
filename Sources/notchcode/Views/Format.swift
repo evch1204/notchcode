@@ -98,13 +98,22 @@ enum Format {
         return dir.isEmpty ? "" : dir + "/"
     }
 
-    /// "ponyfish · main · Editing": the worktree (when it differs from the repo), the branch, then extras.
+    /// "main · Editing": the branch, then extras. The worktree is already in `displayFull`.
     static func sessionSubtitle(_ session: Session, extra: String? = nil) -> String {
         var parts: [String] = []
-        if let sub = session.displaySub { parts.append(sub) }
         if let branch = session.branch { parts.append(branch) }
         if let extra, !extra.isEmpty { parts.append(extra) }
         return parts.joined(separator: Theme.Glyphs.separator)
+    }
+
+    /// "1 worktree", "2 worktrees".
+    static func worktrees(_ count: Int) -> String {
+        count == 1 ? "1 worktree" : "\(count) worktrees"
+    }
+
+    /// "1 session", "3 sessions".
+    static func sessions(_ count: Int) -> String {
+        count == 1 ? "1 session" : "\(count) sessions"
     }
 
     /// "1 agent", "3 agents".
@@ -156,4 +165,12 @@ extension Session {
         guard let repo = repoName, repo != worktreeName else { return nil }
         return worktreeName
     }
+    /// "notchcode · ponyfish" for a worktree, "notchcode" for a plain checkout. Views show it
+    /// with middle truncation, so a long pair keeps both ends.
+    var displayFull: String {
+        guard let sub = displaySub else { return displayName }
+        return displayName + Theme.Glyphs.separator + sub
+    }
+    /// The name of the row inside its repository group: the worktree folder.
+    var rowName: String { worktreeName }
 }

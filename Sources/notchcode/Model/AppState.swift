@@ -39,6 +39,37 @@ enum NotchKey: Equatable {
 
 /// A one-line passive notice shown for a few seconds.
 /// Peeks mark completions: a finished turn, a finished subagent, and (if the owner opts in) each edit.
+/// One repository in the Sessions tab: its worktrees' sessions, most urgent first.
+struct SessionGroup: Identifiable, Equatable {
+    var id: String
+    var name: String
+    var sessions: [Session]
+    /// Distinct working folders in the group.
+    var worktreeCount: Int { Set(sessions.map { $0.cwd }).count }
+    /// A worktree checkout, or more than one folder: the header counts worktrees.
+    var hasWorktrees: Bool { worktreeCount > 1 || sessions.contains { $0.displaySub != nil } }
+}
+
+/// A file preview as loaded for the pane, with the line count when RepoFiles capped it.
+struct LoadedPreview: Equatable {
+    var preview: FilePreview
+    /// Lines in the whole file, when the preview was truncated and the count is known.
+    var totalLines: Int?
+}
+
+/// One row of the Changes tab: a turn's one-line header, or one of its files.
+enum ChangesRow: Identifiable, Equatable {
+    case turn(TranscriptTurn)
+    case file(DiffRowItem)
+
+    var id: String {
+        switch self {
+        case .turn(let turn): return AppState.turnRowKey(turn)
+        case .file(let item): return item.key
+        }
+    }
+}
+
 struct Peek: Identifiable, Equatable {
     enum Kind: Equatable { case edit, done, agent }
     var id = UUID()
@@ -327,9 +358,9 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         sessions.first { $0.id == id }
     }
 
-    /// Sessions in the order the Sessions tab lists them: waiting on the owner first,
-    /// then working, done, idle; most recent first inside each group.
-    var orderedSessions: [Session] {
+    /// Sessions by urgency: waiting on the owner first, then working, done, idle;
+    /// most recent first inside each state.
+    private var sessionsByUrgency: [Session] {
         let pendingIds = Set(pending.map { $0.sessionId })
         func rank(_ s: Session) -> Int {
             pendingIds.contains(s.id) ? Self.urgency(.needsYou) + 1 : Self.urgency(s.state)
@@ -364,6 +395,35 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     }
 
     /// Stable colour slot: the agent's index among all agents its session has had.
+    /// The Sessions tab's groups, one per repository. Worktrees of one repo share its name
+    /// (`repoName`); a folder that is not a git worktree of anything is its own group.
+    /// The group with the most urgent session comes first; inside a group, by urgency.
+    var sessionGroups: [SessionGroup] {
+        var groups: [SessionGroup] = []
+        var index: [String: Int] = [:]
+        for session in sessionsByUrgency {
+            let key = Self.groupKey(session)
+            if let i = index[key] {
+                groups[i].sessions.append(session)
+            } else {
+                index[key] = groups.count
+                groups.append(SessionGroup(id: key, name: session.displayName, sessions: [session]))
+            }
+        }
+        return groups
+    }
+
+    static func groupKey(_ session: Session) -> String {
+        if let repo = session.repoName { return "repo|" + repo }
+        return "dir|" + (session.cwd.isEmpty ? session.id : session.cwd)
+    }
+
+    /// Sessions in the order the Sessions tab lists them: group by group, as `sessionGroups`.
+    /// The keyboard cursor (`sessionCursor`) indexes this list.
+    var orderedSessions: [Session] {
+        sessionGroups.flatMap { $0.sessions }
+    }
+
     func agentColorIndex(_ agent: Agent) -> Int {
         agents(for: agent.sessionId).firstIndex { $0.id == agent.id } ?? 0
     }
@@ -1495,7 +1555,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         if prefs.systemNotifications {
             SystemNotifier.post(
                 title: request.kind == .commit ? "Commit?" : "Allow \(request.tool)?",
-                subtitle: session(id: request.sessionId)?.worktreeName,
+                subtitle: session(id: request.sessionId)?.displayFull,
                 body: request.kind == .commit ? request.title : request.detail,
                 id: request.id
             )
@@ -1555,7 +1615,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     /// "Done · ponyfish" with the turn's file count and line totals. Falls back to the newest
     /// transcript turn when no PostToolUse was seen (the app started mid-turn).
     private func donePeek(for sid: String) -> Peek {
-        let name = session(id: sid)?.worktreeName ?? ""
+        let name = session(id: sid)?.displayFull ?? ""
         var fileCount = turnFiles[sid]?.count ?? 0
         var added = turnLineCounts[sid]?.added ?? 0
         var removed = turnLineCounts[sid]?.removed ?? 0

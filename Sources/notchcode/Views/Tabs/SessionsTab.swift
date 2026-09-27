@@ -19,20 +19,24 @@ struct SessionsTab: View {
 
     var body: some View {
         let pendingIds = Set(state.pending.map { $0.sessionId })
-        let ordered = state.orderedSessions
+        let groups = state.sessionGroups
+        let ordered = groups.flatMap { $0.sessions }
         if ordered.isEmpty {
             EmptyNote(text: "No Claude Code sessions in the last few hours")
         } else {
             ScrollViewReader { proxy in
                 ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: Theme.Size.spaceXS) {
-                        ForEach(Array(ordered.enumerated()), id: \.element.id) { item in
-                            sessionBlock(
-                                item.element,
-                                index: item.offset,
-                                isPending: pendingIds.contains(item.element.id)
-                            )
-                            .id(item.element.id)
+                    LazyVStack(spacing: Theme.Size.spaceXS, pinnedViews: [.sectionHeaders]) {
+                        ForEach(groups) { group in
+                            Section {
+                                ForEach(group.sessions) { session in
+                                    let index = ordered.firstIndex { $0.id == session.id } ?? 0
+                                    sessionBlock(session, index: index, isPending: pendingIds.contains(session.id))
+                                        .id(session.id)
+                                }
+                            } header: {
+                                RepoHeader(group: group)
+                            }
                         }
                     }
                 }
@@ -61,11 +65,11 @@ struct SessionsTab: View {
                         session: session,
                         prompt: state.currentPrompt(for: session.id),
                         turnStart: state.turnStart(for: session),
+                        model: state.modelShortName(for: session.id),
                         isPending: isPending,
                         isFocused: isFocused,
                         twin: state.isAmbiguous(session) ? SessionRow.Twin(
                             startedAt: state.startTime(for: session),
-                            model: state.modelShortName(for: session.id),
                             isNewest: state.isNewest(session)
                         ) : nil
                     )
@@ -115,24 +119,60 @@ struct SessionsTab: View {
     }
 }
 
+/// "notchcode · 2 worktrees": slim, pinned while its rows scroll. Carries the card's black so
+/// rows pass cleanly beneath it.
+@MainActor
+private struct RepoHeader: View {
+    let group: SessionGroup
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Text(group.name)
+                .font(Theme.Fonts.groupHeader)
+                .foregroundStyle(Theme.Colors.groupHeaderName)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            if let detail {
+                Text(Theme.Glyphs.separator + detail)
+                    .font(Theme.Fonts.caption)
+                    .foregroundStyle(Theme.Colors.groupHeaderCount)
+                    .lineLimit(1)
+                    .fixedSize()
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, Theme.Size.rowHPadding)
+        .frame(height: Theme.Size.repoHeaderHeight)
+        .frame(maxWidth: .infinity)
+        .background(Theme.Colors.groupHeaderBackground)
+    }
+
+    /// "2 worktrees", plus "3 sessions" when a worktree runs more than one.
+    private var detail: String? {
+        var parts: [String] = []
+        if group.hasWorktrees { parts.append(Format.worktrees(group.worktreeCount)) }
+        if group.sessions.count > group.worktreeCount { parts.append(Format.sessions(group.sessions.count)) }
+        return parts.isEmpty ? nil : parts.joined(separator: Theme.Glyphs.separator)
+    }
+}
+
 @MainActor
 private struct SessionRow: View {
     /// What tells two sessions in the same folder apart.
     struct Twin {
         var startedAt: Date
-        var model: String?
         var isNewest: Bool
     }
 
     let session: Session
     let prompt: String?
     let turnStart: Date?
+    let model: String?
     let isPending: Bool
     let isFocused: Bool
     let twin: Twin?
 
     private var shownState: SessionState { isPending ? .needsYou : session.state }
-    private var repoBranch: String { Format.sessionSubtitle(session, extra: twin?.model) }
     private var secondLine: String {
         let text = prompt ?? ""
         guard let twin else { return text.isEmpty ? " " : text }
@@ -146,17 +186,24 @@ private struct SessionRow: View {
 
             VStack(alignment: .leading, spacing: Theme.Size.spaceXS) {
                 HStack(alignment: .firstTextBaseline, spacing: Theme.Size.spaceM) {
-                    Text(session.displayName)
+                    Text(session.rowName)
                         .font(Theme.Fonts.bodySemibold)
                         .foregroundStyle(Theme.Colors.ink)
                         .lineLimit(1)
-                        .layoutPriority(1)
-                    if !repoBranch.isEmpty {
-                        Text(repoBranch)
+                        .layoutPriority(2)
+                    if let branch = session.branch {
+                        Text(branch)
                             .font(Theme.Fonts.monoSmall)
                             .foregroundStyle(Theme.Colors.inkSecondary)
                             .lineLimit(1)
                             .truncationMode(.middle)
+                    }
+                    if let model {
+                        Text(model)
+                            .font(Theme.Fonts.caption)
+                            .foregroundStyle(Theme.Colors.inkTertiary)
+                            .lineLimit(1)
+                            .fixedSize()
                     }
                     if twin?.isNewest == true {
                         SmallTag(text: "newest")

@@ -20,7 +20,7 @@ struct RestingView: View {
                     .fill(session?.state == .done ? Theme.Colors.restingDone : Theme.Colors.restingIdle)
                     .frame(width: Theme.Size.dot, height: Theme.Size.dot)
                     .frame(width: Theme.Size.glyph, height: Theme.Size.glyph)
-                Text(session?.displayName ?? "notchcode")
+                Text(session?.displayFull ?? "notchcode")
                     .font(Theme.Fonts.captionMedium)
                     .foregroundStyle(Theme.Colors.wingsName)
                     .opacity(state.hovering ? Theme.Opacity.restingHover : Theme.Opacity.resting)
