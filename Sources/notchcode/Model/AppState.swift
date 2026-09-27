@@ -37,8 +37,6 @@ enum NotchKey: Equatable {
     case number(Int)
 }
 
-/// A one-line passive notice shown for a few seconds.
-/// Peeks mark completions: a finished turn, a finished subagent, and (if the owner opts in) each edit.
 /// One repository in the Sessions tab: its worktrees' sessions, most urgent first.
 struct SessionGroup: Identifiable, Equatable {
     var id: String
@@ -72,6 +70,8 @@ enum ChangesRow: Identifiable, Equatable {
 
 struct Peek: Identifiable, Equatable {
     enum Kind: Equatable { case edit, done, agent }
+/// A one-line passive notice shown for a few seconds.
+/// Peeks mark completions: a finished turn, a finished subagent, and (if the owner opts in) each edit.
     var id = UUID()
     var kind: Kind
     var sessionId: String
@@ -444,56 +444,35 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         return (turnsBySession[sessionId] ?? []).sorted { $0.startedAt > $1.startedAt }
     }
 
-    /// Files the session touched today, merged by path: counts summed, patches joined
-    /// oldest first. Sorted by directory, then file name, the order the Files tab groups them.
-    func filesToday(for sessionId: String?) -> [FileChange] {
-        guard let sessionId else { return [] }
-        var merged: [String: FileChange] = [:]
-        let calendar = Calendar.current
-        let turns = (turnsBySession[sessionId] ?? []).sorted { $0.startedAt < $1.startedAt }
-        for turn in turns where calendar.isDateInToday(turn.startedAt) {
-            for file in turn.files {
-                if var existing = merged[file.path] {
-                    existing.added += file.added
-                    existing.removed += file.removed
-                    existing.patch += file.patch
-                    existing.patchTruncated = existing.patchTruncated || file.patchTruncated
-                    if existing.snippet.isEmpty { existing.snippet = file.snippet }
-                    merged[file.path] = existing
-                } else {
-                    merged[file.path] = file
-                }
-            }
-        }
-        return merged.values.sorted {
-            let da = Format.directory($0.path), db = Format.directory($1.path)
-            if da != db { return da < db }
-            return Format.fileName($0.path) < Format.fileName($1.path)
+    /// The Changes tab's rows in display order: each turn's header, then its file rows when
+    /// the turn is open. The keyboard cursor (`rowCursor`) indexes this list.
+    var changesRows: [ChangesRow] {
+        var rows: [ChangesRow] = []
+        for (index, turn) in turns(for: focusedSession?.id).enumerated() {
+            rows.append(.turn(turn))
+            guard isTurnOpen(turn, newest: index == 0) else { continue }
+            rows += turn.files.map { .file(DiffRowItem(key: Self.changesRowKey(turn: turn, file: $0), file: $0)) }
         }
     }
 
-    /// The expandable file rows of a tab, in display order.
-    func diffRows(for tab: CardTab) -> [DiffRowItem] {
-        let sid = focusedSession?.id
-        switch tab {
-        case .changes:
-            return turns(for: sid).flatMap { turn in
-                turn.files.map { DiffRowItem(key: Self.changesRowKey(turn: turn, file: $0), file: $0) }
-            }
-        case .files:
-            return filesToday(for: sid).map { DiffRowItem(key: Self.filesRowKey($0), file: $0) }
-        default:
-            return []
-        }
+    nonisolated static func changesRowKey(turn: TranscriptTurn, file: FileChange) -> String { "c|\(turn.id)|\(file.path)" }
+    nonisolated static func turnRowKey(_ turn: TranscriptTurn) -> String { "t|\(turn.id)" }
+
+    /// The newest turn's files show by default; older turns start folded. A turn without files never opens.
+    func isTurnOpen(_ turn: TranscriptTurn, newest: Bool) -> Bool {
+        guard !turn.files.isEmpty else { return false }
+        return newest != turnToggled.contains(turn.id)
     }
 
-    static func changesRowKey(turn: TranscriptTurn, file: FileChange) -> String { "c|\(turn.id)|\(file.path)" }
-    static func filesRowKey(_ file: FileChange) -> String { "f|\(file.path)" }
+    func toggleTurn(_ id: String) {
+        if turnToggled.contains(id) { turnToggled.remove(id) } else { turnToggled.insert(id) }
+    }
 
     /// The key of the row under the keyboard cursor in the current tab.
     var cursorRowKey: String? {
-        let rows = diffRows(for: selectedTab)
-        return rows.indices.contains(rowCursor) ? rows[rowCursor].key : nil
+        guard selectedTab == .changes else { return nil }
+        let rows = changesRows
+        return rows.indices.contains(rowCursor) ? rows[rowCursor].id : nil
     }
 
     /// The lines a diff row shows: the whole patch, or the snippet when no patch was recorded.
@@ -514,7 +493,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
 
     /// Moves the keyboard cursor to a row the owner clicked.
     func setRowCursor(key: String) {
-        if let index = diffRows(for: selectedTab).firstIndex(where: { $0.key == key }) {
+        if let index = changesRows.firstIndex(where: { $0.id == key }) {
             rowCursor = index
         }
     }
@@ -604,6 +583,8 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
             }
             turnStarts[sid] = Date()
             turnTitles[sid] = prompt
+            // Turns include subagent edits; the transcript may be the only record of them.
+            reloadTurns(for: sid)
             turnFiles[sid] = []
             turnLineCounts[sid] = nil
             if question?.sessionId == sid { question = nil }
@@ -654,6 +635,8 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
 
     func deny(id: String) {
         resolve(id, with: HookReply(id: id, decision: .deny, reason: "The owner denied this from notchcode."))
+            // The agent's edits are in the turns now.
+            reloadTurns(for: sid)
     }
 
     func allowAlways(id: String) {
@@ -745,10 +728,15 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
 
     /// "y" in Changes or Files: copies `path:line` of the first changed line of the row under the cursor.
     func copyCursorLocation() -> Bool {
-        let rows = diffRows(for: selectedTab)
-        guard rows.indices.contains(rowCursor) else { return false }
-        let file = rows[rowCursor].file
-        var path = file.path
+        let rows = changesRows
+        guard rows.indices.contains(rowCursor), case .file(let item) = rows[rowCursor] else { return false }
+        copyLocation(path: item.file.path, line: Self.firstChangedLine(item.file))
+        return true
+    }
+
+    /// Puts `/abs/path:line` on the pasteboard and says so in the footer.
+    func copyLocation(path relative: String, line: Int) {
+        var path = relative
         if !path.hasPrefix("/"), let cwd = focusedSession?.cwd, !cwd.isEmpty {
             path = (cwd as NSString).appendingPathComponent(path)
         }
@@ -941,7 +929,14 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
                 guard ordered.indices.contains(sessionCursor) else { return false }
                 selectSession(ordered[sessionCursor])
             } else if rows.indices.contains(rowCursor) {
-                toggleDiff(rows[rowCursor].key)
+                switch rows[rowCursor] {
+                case .turn(let turn):
+                    guard !turn.files.isEmpty else { return false }
+                    withAnimation(Theme.Motion.disclosure) { toggleTurn(turn.id) }
+                case .file(let item):
+                    guard !Self.diffLines(item.file).isEmpty else { return false }
+                    withAnimation(Theme.Motion.tap) { toggleDiff(item.key) }
+                }
             } else {
                 return false
             }
@@ -1497,6 +1492,12 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         if index == nil, let type {
             // Unknown id: end the oldest running agent of that type.
             index = list.firstIndex(where: { $0.isRunning && $0.type == type })
+        // A background subagent can keep editing while the main transcript stays quiet:
+        // re-read turns for every session with a running agent (cheap when nothing changed).
+        let changedSet = Set(changed)
+        for s in sessions where !changedSet.contains(s.id) && !runningAgents(for: s.id).isEmpty {
+            reloadTurns(for: s.id)
+        }
         }
         guard let index else { return nil }
         list[index].endedAt = date
