@@ -289,7 +289,7 @@ struct UsageBar: View {
 struct CountdownRing: View {
     let fraction: Double
     var size: CGFloat = Theme.Size.countdownRing
-    var tint: Color = Theme.Colors.amber
+    var tint: Color = Theme.Colors.attention
 
     var body: some View {
         ZStack {
@@ -321,7 +321,7 @@ struct DeadlineCountdown: View {
                 CountdownRing(fraction: remaining / total, size: ringSize)
                 Text(Format.clock(remaining))
                     .font(font)
-                    .foregroundStyle(Theme.Colors.amberText)
+                    .foregroundStyle(Theme.Colors.attentionText)
                     .fixedSize()
             }
         }
@@ -375,7 +375,7 @@ struct SparkleGlyph: View {
     }
 }
 
-/// Amber warning triangle with a slow breathing glow.
+/// Clay warning triangle with a slow breathing glow.
 @MainActor
 struct BreathingTriangle: View {
     var size: CGFloat = Theme.Size.glyph
@@ -384,9 +384,9 @@ struct BreathingTriangle: View {
     var body: some View {
         Image(systemName: Theme.Symbols.attention)
             .font(Theme.Fonts.symbol(size))
-            .foregroundStyle(Theme.Colors.amber)
+            .foregroundStyle(Theme.Colors.attention)
             .shadow(
-                color: bright ? Theme.Colors.amberGlow : Theme.Colors.amberGlowDim,
+                color: bright ? Theme.Colors.attentionGlow : Theme.Colors.attentionGlowDim,
                 radius: Theme.Motion.breatheRadius
             )
             .onAppear {
@@ -654,7 +654,7 @@ struct HintText: View {
         if let text {
             Text(text)
                 .font(Theme.Fonts.captionMedium)
-                .foregroundStyle(Theme.Colors.amberText)
+                .foregroundStyle(Theme.Colors.attentionText)
                 .lineLimit(1)
                 .transition(.opacity)
         }

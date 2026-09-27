@@ -63,7 +63,7 @@ struct CardView: View {
         return WingRow(layout: state.layout, bodyWidth: bodySize.width) {
             HStack(spacing: Theme.Size.spaceM) {
                 if needsYou {
-                    CircleGlyph(symbol: Theme.Symbols.attention, tint: Theme.Colors.amber, size: Theme.Size.iconCircle)
+                    CircleGlyph(symbol: Theme.Symbols.attention, tint: Theme.Colors.attention, size: Theme.Size.iconCircle)
                 } else {
                     ZStack {
                         Circle().fill(Theme.Colors.inset)

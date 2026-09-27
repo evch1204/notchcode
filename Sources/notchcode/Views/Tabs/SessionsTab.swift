@@ -1,11 +1,13 @@
 // SessionsTab.swift
-// Every session at a glance: waiting first (amber), then working, done, idle.
-// Row: state dot, worktree + repo · branch, the current prompt, state word,
-// turn clock while working. Two sessions in one folder also show their model
-// and start time, and the one with the newest transcript gets a "newest" tag. Clicking a row (or ⏎) selects the session and shows its Changes.
-// The chevron (or ⌥⏎) teleports to its terminal. Each subagent gets a lane with
-// its own colour square; finished ones collapse into "N done", which opens on
-// click. Counts live in the card footer (CardView).
+// Every session at a glance, grouped by repository: a slim header per repo
+// ("notchcode · 2 worktrees") that sticks while its rows scroll, then one row per
+// session: state dot, the worktree name bold, branch in mono, model, state word and
+// clock on the right, the current prompt dimmed below. A plain checkout is its own
+// group with one row named after its folder. Groups with someone waiting come first.
+// Two sessions in one folder also show their start time, and the newest gets a tag.
+// Clicking a row (or ⏎) selects the session and shows its Changes; the chevron (or ⌥⏎)
+// teleports to its terminal. Each subagent gets a lane with its own colour square;
+// finished ones collapse into "N done", which opens on click. Counts live in the footer.
 
 import SwiftUI
 
@@ -86,7 +88,7 @@ struct SessionsTab: View {
             }
             .background(
                 RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous)
-                    .fill(isPending ? Theme.Colors.amberHighlight : (isCursor ? Theme.Colors.selection : Color.clear))
+                    .fill(isPending ? Theme.Colors.attentionHighlight : (isCursor ? Theme.Colors.selection : Color.clear))
             )
 
             ForEach(running, id: \.element.id) { entry in
@@ -194,7 +196,7 @@ private struct SessionRow: View {
 
     private var stateColor: Color {
         switch shownState {
-        case .needsYou: return Theme.Colors.amberText
+        case .needsYou: return Theme.Colors.attentionText
         case .working: return Theme.Colors.clay
         case .done: return Theme.Colors.green
         case .idle: return Theme.Colors.inkTertiary

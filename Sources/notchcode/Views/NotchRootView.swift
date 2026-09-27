@@ -2,7 +2,7 @@
 // One black shape that morphs between states. Width leads on the way out,
 // height leads on the way back. Content fades and rises in after the shape moves.
 // Around the shape: the hover rim light (closed and resting), the attention
-// breath and amber bleed, and the teleport fold.
+// breath and clay bleed, and the teleport fold.
 
 import SwiftUI
 import os
@@ -21,7 +21,7 @@ struct NotchRootView: View {
 
     /// Bumped on each attention arrival; drives the 3% breath.
     @State private var breathTrigger = 0
-    /// Amber bleed opacity under the shape (0 outside attention).
+    /// Clay bleed opacity under the shape (0 outside attention).
     @State private var bleed: Double = 0
     /// Guards the delayed bleed settle against a newer arrival or departure.
     @State private var bleedGeneration = 0
@@ -57,7 +57,7 @@ struct NotchRootView: View {
             }
             .frame(width: shapeWidth, height: shapeHeight, alignment: .top)
             // The glow lives in a background so its size can never move the shape.
-            .background(alignment: .top) { amberBleed }
+            .background(alignment: .top) { attentionBleed }
             .background(GeometryReader { g in
                 Color.clear.onChange(of: g.frame(in: .global), initial: true) { _, f in
                     debugLog("rendered shape frame=\(f) size=\(g.size)")
@@ -89,11 +89,11 @@ struct NotchRootView: View {
             .allowsHitTesting(false)
     }
 
-    /// A blurred amber ellipse behind the shape, centred just below its bottom edge,
+    /// A blurred clay ellipse behind the shape, centred just below its bottom edge,
     /// so only the glow below the black shows.
-    private var amberBleed: some View {
+    private var attentionBleed: some View {
         Ellipse()
-            .fill(Theme.Colors.amberBleed)
+            .fill(Theme.Colors.attentionBleed)
             .frame(width: shapeWidth * Theme.Size.bleedWidthFactor, height: Theme.Size.bleedHeight)
             .blur(radius: Theme.Size.bleedBlur)
             .offset(y: shapeHeight - Theme.Size.bleedHeight / 2 + Theme.Size.bleedDrop)
@@ -201,7 +201,7 @@ struct NotchRootView: View {
         }
     }
 
-    /// The breath from the top edge and the amber bleed: 0 → 100% in 0.3 s, then 40% by 1 s.
+    /// The breath from the top edge and the clay bleed: 0 → 100% in 0.3 s, then 40% by 1 s.
     /// Reduce Motion: no breath, a static 40% bleed.
     private func attentionArrived() {
         bleedGeneration += 1

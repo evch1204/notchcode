@@ -1,5 +1,5 @@
 // AttentionView.swift
-// Two rows, amber. Row 1 in the wings: Action required · session · countdown.
+// Two rows, clay. Row 1 in the wings: Action required · session · countdown.
 // Row 2 below the notch: what Claude wants, and how to open the card.
 
 import SwiftUI
@@ -20,7 +20,7 @@ struct AttentionView: View {
                         BreathingTriangle()
                         Text("Action required")
                             .font(Theme.Fonts.captionMedium)
-                            .foregroundStyle(Theme.Colors.amberText)
+                            .foregroundStyle(Theme.Colors.attentionText)
                             .lineLimit(1)
                     }
                 } right: {

@@ -40,11 +40,13 @@ enum Theme {
         static let cellEmpty = Color.white.opacity(0.14)
 
         static let clay = Color(hex: 0xD97757)
-        static let amber = Color(hex: 0xFF9F0A)
-        static let amberText = Color(hex: 0xFFB340)
-        static let amberHighlight = Color(hex: 0xFF9F0A, opacity: 0.14)
-        static let amberGlow = Color(hex: 0xFF9F0A, opacity: 0.85)
-        static let amberGlowDim = Color(hex: 0xFF9F0A, opacity: 0.15)
+        /// "Needs you": Claude's clay. The triangle glyph, the two-row shape and the words
+        /// "Needs you" tell it apart from the working spark, which is clay too.
+        static let attention = Color(hex: 0xD97757)
+        static let attentionText = Color(hex: 0xF0A080)
+        static let attentionHighlight = Color(hex: 0xD97757, opacity: 0.14)
+        static let attentionGlow = Color(hex: 0xD97757, opacity: 0.60)
+        static let attentionGlowDim = Color(hex: 0xD97757, opacity: 0.15)
         static let green = Color(hex: 0x30D158)
         static let greenFill = Color(hex: 0x30D158, opacity: 0.18)
         static let red = Color(hex: 0xFF6961)
@@ -106,7 +108,7 @@ enum Theme {
         // Settings page inside the card.
         static let settingsError = red
         static let settingsConnected = green
-        static let settingsPartial = amber
+        static let settingsPartial = attention
         static let settingsDisconnected = inkTertiary
         static let switchOn = green
         static let switchOff = Color.white.opacity(0.18)
@@ -123,8 +125,8 @@ enum Theme {
         /// Hover rim light on the closed and resting shape, and its soft glow.
         static let rim = Color.white.opacity(0.55)
         static let rimGlow = Color.white.opacity(0.12)
-        /// Amber bleed under the shape when attention arrives (scaled by the bleed opacity).
-        static let amberBleed = Color(hex: 0xFF9F0A, opacity: 0.55)
+        /// Clay bleed under the shape when attention arrives (scaled by the bleed opacity).
+        static let attentionBleed = Color(hex: 0xD97757, opacity: 0.35)
         /// The resting dot: green when the session finished, grey when idle.
         static let restingDone = green
         static let restingIdle = Color.white.opacity(0.42)
@@ -132,7 +134,7 @@ enum Theme {
         static func state(_ state: SessionState) -> Color {
             switch state {
             case .working: return clay
-            case .needsYou: return amber
+            case .needsYou: return attention
             case .done: return green
             case .idle: return inkTertiary
             }
@@ -282,7 +284,7 @@ enum Theme {
         /// The rim sits this far inside the shape's edge so the stroke never leaves the black.
         static let rimInset: CGFloat = 1
 
-        // Amber bleed under the attention shape.
+        // Clay bleed under the attention shape.
         static let bleedWidthFactor: CGFloat = 0.8
         static let bleedHeight: CGFloat = 44
         static let bleedBlur: CGFloat = 22
@@ -358,7 +360,7 @@ enum Theme {
         /// The resting state's worktree name; hover brings it to full.
         static let resting: Double = 0.6
         static let restingHover: Double = 1
-        /// Amber bleed: peak on arrival, then where it settles.
+        /// Clay bleed: peak on arrival, then where it settles.
         static let bleedPeak: Double = 1
         static let bleedRest: Double = 0.4
         /// Fill behind a symbol in a tinted circle.
@@ -411,7 +413,7 @@ enum Theme {
         static var rimIn: Animation { .easeOut(duration: 0.18) }
         static var rimOut: Animation { .easeIn(duration: 0.25) }
 
-        // Attention arrival: a 3% breath from the top edge and an amber bleed.
+        // Attention arrival: a 3% breath from the top edge and a clay bleed.
         static let breathScale: CGFloat = 1.03
         static let breathDuration: Double = 0.5
         static let bleedInDuration: Double = 0.3

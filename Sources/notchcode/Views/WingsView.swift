@@ -69,7 +69,7 @@ struct WingsView: View {
 
     private func wordColor(_ shown: SessionState) -> Color {
         switch shown {
-        case .needsYou: return Theme.Colors.amberText
+        case .needsYou: return Theme.Colors.attentionText
         case .working: return Theme.Colors.wingsWorkingText
         case .done: return Theme.Colors.wingsDoneText
         case .idle: return Theme.Colors.wingsIdleText
@@ -77,7 +77,7 @@ struct WingsView: View {
     }
 }
 
-/// Spark pulsing while working, amber triangle when it needs you, green check when done, dim dot when idle.
+/// Spark pulsing while working, clay triangle when it needs you, green check when done, dim dot when idle.
 @MainActor
 private struct WingStateGlyph: View {
     let state: SessionState
