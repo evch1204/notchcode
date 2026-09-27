@@ -132,11 +132,12 @@ While the card is open the notch takes the keyboard; the moment it closes, focus
 | `y` | copy `path:line` of the first changed line |
 | `⌥⏎` | jump to the session's terminal |
 | `⌘,` | Settings |
+| `⌘Q` | quit notchcode (while the card is open) |
 | `esc` | back, or close |
 
 ## Settings
 
-A page inside the card, never a separate window. What shows when idle (the resting row, or a pure notch), how "needs you" looks (two rows, or wings only), whether finished turns and agents peek and for how long, whether every file edit peeks too, click or hover to open, the `⌥ space` hotkey, agents in the wings, an optional macOS notification for blocking requests, and Connect / Disconnect with live status.
+A page inside the card, never a separate window. What shows when idle (the resting row, or a pure notch), how "needs you" looks (two rows, or wings only), whether finished turns and agents peek and for how long, whether every file edit peeks too, click or hover to open, the `⌥ space` hotkey, agents in the wings, an optional macOS notification for blocking requests, and Connect / Disconnect with live status. Quit lives here too, or `⌘Q` while the card is open; `esc` only closes the card.
 
 ## Development
 

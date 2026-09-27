@@ -35,6 +35,7 @@ final class KeyboardController {
     nonisolated static func decode(_ event: NSEvent) -> NotchKey? {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         if flags.contains(.command) && Int(event.keyCode) == kVK_ANSI_Comma { return .settings }
+        if flags.contains(.command) && Int(event.keyCode) == kVK_ANSI_Q { return .quit }
         if flags.contains(.command) || flags.contains(.control) { return nil }
         let option = flags.contains(.option)
         let shift = flags.contains(.shift)

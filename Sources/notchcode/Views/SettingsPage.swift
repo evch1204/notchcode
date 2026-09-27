@@ -98,6 +98,15 @@ struct SettingsPage: View {
                             SmallSwitch(isOn: $state.prefs.showAgentsInWings)
                         }
                     }
+
+                    SettingsGroup(title: "Quit") {
+                        SettingsRow(label: "Quit notchcode. Relaunch it with scripts/dev.sh, or it starts with your next Claude Code session when the plugin is installed.") {
+                            Button("Quit") { state.quit() }
+                                .buttonStyle(SmallPillStyle(primary: false))
+                                .keyboardShortcut("q", modifiers: .command)
+                                .help("⌘Q while the card is open")
+                        }
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }

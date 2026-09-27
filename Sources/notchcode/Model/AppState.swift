@@ -33,7 +33,7 @@ enum CardTab: Hashable {
 
 /// Keys the card understands, already decoded from NSEvent.
 enum NotchKey: Equatable {
-    case primary, deny, always, edit, escape, nextTab, previousTab, up, down, left, right, teleport, settings, copy
+    case primary, deny, always, edit, escape, nextTab, previousTab, up, down, left, right, teleport, settings, copy, quit
     /// "D": open or close a request card's diff.
     case diff
     /// "/": focus the Files tab's filter field.
@@ -923,8 +923,15 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     }
 
     /// Returns true when the key was used.
+    /// ⌘Q while the card is open, or the Quit button in Settings. Pending requests are left
+    /// unanswered on purpose: their hooks time out and the terminal prompt takes over.
+    func quit() {
+        NSApp.terminate(nil)
+    }
+
     func handleKey(_ key: NotchKey) -> Bool {
         guard mode == .card || mode == .attention else { return false }
+        if key == .quit { quit(); return true }
 
         let filesOpen = isCardOpen && currentPending == nil && selectedTab == .files
         if key == .escape, filesOpen, fileFilterFocused || !fileFilter.isEmpty {

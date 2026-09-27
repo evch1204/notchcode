@@ -676,6 +676,7 @@ enum Theme {
         static let always = "A"
         static let edit = "E"
         static let settings = "⌘,"
+        static let quit = "⌘Q"
         static let copy = "Y"
         static let diff = "D"
         static let optionEnter = "⌥⏎"
