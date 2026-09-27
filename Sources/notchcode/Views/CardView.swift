@@ -249,14 +249,24 @@ struct CardView: View {
     @ViewBuilder
     private var footerKeys: some View {
         switch state.selectedTab {
-        case .changes, .files:
+        case .changes:
             HStack(spacing: Theme.Size.spaceS) {
                 Keycap(Theme.Keys.enter)
-                footerLabel("diff")
-                if state.selectedTab == .files {
-                    Keycap(Theme.Keys.copy)
-                    footerLabel("copy path:line")
-                }
+                footerLabel("open")
+                Keycap(Theme.Keys.copy)
+                footerLabel("copy path:line")
+            }
+            .fixedSize()
+        case .files:
+            HStack(spacing: Theme.Size.spaceS) {
+                Keycap(Theme.Keys.enter)
+                footerLabel("open")
+                Keycap(Theme.Keys.slash)
+                footerLabel("filter")
+                Keycap(Theme.Keys.copy)
+                footerLabel("copy path:line")
+                Keycap(Theme.Keys.optionEnter)
+                footerLabel("terminal")
             }
             .fixedSize()
         case .sessions:

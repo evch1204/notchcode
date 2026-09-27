@@ -33,7 +33,9 @@ enum CardTab: Hashable {
 
 /// Keys the card understands, already decoded from NSEvent.
 enum NotchKey: Equatable {
-    case primary, deny, always, edit, escape, nextTab, previousTab, up, down, teleport, settings, copy
+    case primary, deny, always, edit, escape, nextTab, previousTab, up, down, left, right, teleport, settings, copy
+    /// "/": focus the Files tab's filter field.
+    case filter
     case number(Int)
 }
 
@@ -68,10 +70,10 @@ enum ChangesRow: Identifiable, Equatable {
     }
 }
 
-struct Peek: Identifiable, Equatable {
-    enum Kind: Equatable { case edit, done, agent }
 /// A one-line passive notice shown for a few seconds.
 /// Peeks mark completions: a finished turn, a finished subagent, and (if the owner opts in) each edit.
+struct Peek: Identifiable, Equatable {
+    enum Kind: Equatable { case edit, done, agent }
     var id = UUID()
     var kind: Kind
     var sessionId: String
@@ -141,7 +143,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     /// cwd -> the session id of the most recently written transcript in that folder.
     @Published private(set) var newestSessionByCWD: [String: String] = [:]
     @Published var turnsBySession: [String: [TranscriptTurn]] = [:]
-    @Published var selectedTab: CardTab = .changes
+    @Published var selectedTab: CardTab = .sessions
     /// The last tab change moved right in tab order (panes slide in from the trailing edge).
     @Published private(set) var tabMovedForward = true
     /// The mouse has rested on the shape (AppDelegate sets it after `Theme.Motion.rimDelay`).
@@ -153,7 +155,9 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         didSet {
             guard focusedSessionId != oldValue else { return }
             rowCursor = 0
+            fileFilter = ""
             recomputeUsage()
+            if selectedTab == .files { loadRepoTree() }
         }
     }
     @Published var sessionCursor = 0
@@ -161,6 +165,24 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     @Published var rowCursor = 0
     /// Diff rows whose open state differs from their default (see `isDiffOpen`).
     @Published var diffToggled: Set<String> = []
+    /// Turns in the Changes tab whose file list is flipped from its default (newest open, older closed).
+    @Published var turnToggled: Set<String> = []
+
+    // Files tab. Per session: the tree cursor, the file being previewed, and the folders
+    // flipped from their default (top level open, deeper closed).
+    /// cwd -> the repository tree, as RepoFiles last read it.
+    @Published var repoTrees: [String: [FileTreeNode]] = [:]
+    /// cwds whose tree is being read right now.
+    @Published var repoTreesLoading: Set<String> = []
+    @Published var treeCursor: [String: String] = [:]
+    @Published var openedFile: [String: String] = [:]
+    @Published var treeToggled: [String: Set<String>] = [:]
+    /// The Files tab's name filter. Esc clears it.
+    @Published var fileFilter = ""
+    /// The filter field has keyboard focus: typed keys go to it, not to the card's shortcuts.
+    @Published var fileFilterFocused = false
+    /// The preview of the opened file, keyed "cwd|path". Only the newest few are kept.
+    @Published var previews: [String: LoadedPreview] = [:]
     /// A short inline hint ("No terminal found", "Copied …") that clears itself.
     @Published private(set) var hint: String?
 
@@ -373,28 +395,6 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         }
     }
 
-    func agents(for sessionId: String) -> [Agent] {
-        agents[sessionId] ?? []
-    }
-
-    func runningAgents(for sessionId: String) -> [Agent] {
-        agents(for: sessionId).filter { $0.isRunning }
-    }
-
-    func finishedAgentCount(for sessionId: String) -> Int {
-        agents(for: sessionId).filter { !$0.isRunning }.count
-    }
-
-    var runningAgentCount: Int {
-        agents.values.reduce(0) { $0 + $1.filter { $0.isRunning }.count }
-    }
-
-    /// Every running agent, most urgent session first, in start order inside a session.
-    var allRunningAgents: [Agent] {
-        orderedSessions.flatMap { runningAgents(for: $0.id) }
-    }
-
-    /// Stable colour slot: the agent's index among all agents its session has had.
     /// The Sessions tab's groups, one per repository. Worktrees of one repo share its name
     /// (`repoName`); a folder that is not a git worktree of anything is its own group.
     /// The group with the most urgent session comes first; inside a group, by urgency.
@@ -424,6 +424,28 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         sessionGroups.flatMap { $0.sessions }
     }
 
+    func agents(for sessionId: String) -> [Agent] {
+        agents[sessionId] ?? []
+    }
+
+    func runningAgents(for sessionId: String) -> [Agent] {
+        agents(for: sessionId).filter { $0.isRunning }
+    }
+
+    func finishedAgentCount(for sessionId: String) -> Int {
+        agents(for: sessionId).filter { !$0.isRunning }.count
+    }
+
+    var runningAgentCount: Int {
+        agents.values.reduce(0) { $0 + $1.filter { $0.isRunning }.count }
+    }
+
+    /// Every running agent, most urgent session first, in start order inside a session.
+    var allRunningAgents: [Agent] {
+        orderedSessions.flatMap { runningAgents(for: $0.id) }
+    }
+
+    /// Stable colour slot: the agent's index among all agents its session has had.
     func agentColorIndex(_ agent: Agent) -> Int {
         agents(for: agent.sessionId).firstIndex { $0.id == agent.id } ?? 0
     }
@@ -453,6 +475,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
             guard isTurnOpen(turn, newest: index == 0) else { continue }
             rows += turn.files.map { .file(DiffRowItem(key: Self.changesRowKey(turn: turn, file: $0), file: $0)) }
         }
+        return rows
     }
 
     nonisolated static func changesRowKey(turn: TranscriptTurn, file: FileChange) -> String { "c|\(turn.id)|\(file.path)" }
@@ -468,7 +491,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         if turnToggled.contains(id) { turnToggled.remove(id) } else { turnToggled.insert(id) }
     }
 
-    /// The key of the row under the keyboard cursor in the current tab.
+    /// The key of the row under the keyboard cursor in the Changes tab.
     var cursorRowKey: String? {
         guard selectedTab == .changes else { return nil }
         let rows = changesRows
@@ -560,6 +583,8 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
 
         case .postTool:
             handlePostTool(payload, sessionId: sid)
+            // Turns include subagent edits; the transcript may be the only record of them.
+            reloadTurns(for: sid)
 
         case .notification:
             handleNotification(payload, sessionId: sid)
@@ -583,8 +608,6 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
             }
             turnStarts[sid] = Date()
             turnTitles[sid] = prompt
-            // Turns include subagent edits; the transcript may be the only record of them.
-            reloadTurns(for: sid)
             turnFiles[sid] = []
             turnLineCounts[sid] = nil
             if question?.sessionId == sid { question = nil }
@@ -612,6 +635,8 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
                     colorIndex: agentColorIndex(agent)
                 ))
             }
+            // The agent's edits are in the turns now.
+            reloadTurns(for: sid)
 
         case .sessionEnd, .statusline:
             break
@@ -635,8 +660,6 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
 
     func deny(id: String) {
         resolve(id, with: HookReply(id: id, decision: .deny, reason: "The owner denied this from notchcode."))
-            // The agent's edits are in the turns now.
-            reloadTurns(for: sid)
     }
 
     func allowAlways(id: String) {
@@ -668,6 +691,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         if let id = focusedSessionId, let index = orderedSessions.firstIndex(where: { $0.id == id }) {
             sessionCursor = index
         }
+        if selectedTab == .files { loadRepoTree() }
         isCardOpen = true
         skipFocusReturn = false
         recomputeUsage()
@@ -678,6 +702,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         guard isCardOpen else { return }
         isCardOpen = false
         if !CardTab.browsable.contains(selectedTab) { selectedTab = .sessions }
+        fileFilterFocused = false
         refresh()
     }
 
@@ -726,7 +751,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         }
     }
 
-    /// "y" in Changes or Files: copies `path:line` of the first changed line of the row under the cursor.
+    /// "y" in Changes: copies `path:line` of the first changed line of the file row under the cursor.
     func copyCursorLocation() -> Bool {
         let rows = changesRows
         guard rows.indices.contains(rowCursor), case .file(let item) = rows[rowCursor] else { return false }
@@ -740,11 +765,9 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         if !path.hasPrefix("/"), let cwd = focusedSession?.cwd, !cwd.isEmpty {
             path = (cwd as NSString).appendingPathComponent(path)
         }
-        let location = "\(path):\(Self.firstChangedLine(file))"
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(location, forType: .string)
-        flash("Copied " + Format.fileName(file.path) + ":\(Self.firstChangedLine(file))")
-        return true
+        NSPasteboard.general.setString("\(path):\(line)", forType: .string)
+        flash("Copied " + Format.fileName(relative) + ":\(line)")
     }
 
     /// The new-file line number of the first added line, else the old one of the first removed line.
@@ -780,6 +803,8 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
             }
         }
         selectedTab = tab
+        if tab != .files { fileFilterFocused = false }
+        if tab == .files { loadRepoTree() }
         refresh()
     }
 
@@ -836,6 +861,21 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     /// Returns true when the key was used.
     func handleKey(_ key: NotchKey) -> Bool {
         guard mode == .card || mode == .attention else { return false }
+
+        let filesOpen = isCardOpen && currentPending == nil && selectedTab == .files
+        if key == .escape, filesOpen, fileFilterFocused || !fileFilter.isEmpty {
+            // Esc clears the filter first; a second esc closes the card.
+            withAnimation(Theme.Motion.filterRows) { fileFilter = "" }
+            fileFilterFocused = false
+            return true
+        }
+        if filesOpen && fileFilterFocused {
+            // Typing goes to the filter field; only the tree keys and teleport stay with the card.
+            switch key {
+            case .up, .down, .primary, .teleport: break
+            default: return false
+            }
+        }
 
         if key == .escape {
             guard isCardOpen else { return false }
@@ -897,7 +937,9 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
             }
         }
 
-        let rows = (selectedTab == .changes || selectedTab == .files) ? diffRows(for: selectedTab) : []
+        if selectedTab == .files, let used = handleFilesKey(key) { return used }
+
+        let rows = selectedTab == .changes ? changesRows : []
 
         switch key {
         case .number(let n):
@@ -941,7 +983,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
                 return false
             }
         case .copy:
-            guard selectedTab == .files || selectedTab == .changes else { return false }
+            guard selectedTab == .changes else { return false }
             return copyCursorLocation()
         default:
             return false
@@ -1314,7 +1356,11 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
 
     private func applyTurns(_ turns: [TranscriptTurn], for sid: String) {
         guard session(id: sid) != nil else { return }
-        if turnsBySession[sid] != turns { turnsBySession[sid] = turns }
+        if turnsBySession[sid] != turns {
+            turnsBySession[sid] = turns
+            // New edits: the open preview's text and tints may have moved.
+            if isCardOpen, selectedTab == .files, sid == focusedSession?.id { reloadOpenedPreview() }
+        }
         // Sessions hooks never announced: the elapsed clock runs from the open turn.
         if !isHookDriven(sid), let open = turns.max(by: { $0.startedAt < $1.startedAt }), open.endedAt == nil {
             turnStarts[sid] = open.startedAt
@@ -1446,6 +1492,12 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
             reloadTurns(for: sid)
             reloadAgents(for: sid)
         }
+        // A background subagent can keep editing while the main transcript stays quiet:
+        // re-read turns for every session with a running agent (cheap when nothing changed).
+        let changedSet = Set(changed)
+        for s in sessions where !changedSet.contains(s.id) && !runningAgents(for: s.id).isEmpty {
+            reloadTurns(for: s.id)
+        }
         if focusedSessionId == nil, isCardOpen { focusedSessionId = primarySession?.id }
         refresh()
     }
@@ -1492,12 +1544,6 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         if index == nil, let type {
             // Unknown id: end the oldest running agent of that type.
             index = list.firstIndex(where: { $0.isRunning && $0.type == type })
-        // A background subagent can keep editing while the main transcript stays quiet:
-        // re-read turns for every session with a running agent (cheap when nothing changed).
-        let changedSet = Set(changed)
-        for s in sessions where !changedSet.contains(s.id) && !runningAgents(for: s.id).isEmpty {
-            reloadTurns(for: s.id)
-        }
         }
         guard let index else { return nil }
         list[index].endedAt = date

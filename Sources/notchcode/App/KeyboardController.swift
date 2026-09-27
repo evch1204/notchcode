@@ -52,6 +52,10 @@ final class KeyboardController {
             return .up
         case kVK_DownArrow:
             return .down
+        case kVK_LeftArrow:
+            return .left
+        case kVK_RightArrow:
+            return .right
         case kVK_ANSI_1:
             return .number(1)
         case kVK_ANSI_2:
@@ -68,6 +72,7 @@ final class KeyboardController {
         case "a": return .always
         case "e": return .edit
         case "y": return .copy
+        case "/": return .filter
         default: return nil
         }
     }

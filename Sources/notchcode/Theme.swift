@@ -507,6 +507,31 @@ enum Theme {
         static let foldTotal: Double = 0.9
 
         static let tap = Animation.easeOut(duration: 0.12)
+
+        // Files tab.
+        /// Folder disclosure: the chevron turns 90° and the children rise in, 40 ms apart.
+        static let disclosureDuration: Double = 0.2
+        /// Reduce Motion: the chevron snaps (the rows still crossfade).
+        @MainActor static var disclosure: Animation? { reduceMotion ? nil : .easeOut(duration: disclosureDuration) }
+        @MainActor static func childIn(_ index: Int) -> Animation {
+            let stagger = rowStagger * Double(min(index, Theme.Size.maxStaggeredChildren))
+            return reduceMotion ? reduced : .easeOut(duration: disclosureDuration).delay(stagger)
+        }
+        /// Tree rows entering or leaving: opacity plus the 10 pt rise (opacity only under Reduce Motion).
+        @MainActor static func childTransition(_ index: Int) -> AnyTransition {
+            let insertion: AnyTransition = reduceMotion
+                ? .opacity
+                : AnyTransition.opacity.combined(with: .offset(y: -contentRise))
+            return .asymmetric(
+                insertion: insertion.animation(childIn(index)),
+                removal: AnyTransition.opacity.animation(.easeOut(duration: disclosureDuration))
+            )
+        }
+        /// The preview pane crossfades between files.
+        static let previewFadeDuration: Double = 0.2
+        static var previewFade: Animation { .easeInOut(duration: previewFadeDuration) }
+        /// Rows leaving and joining as the filter changes.
+        @MainActor static var filterRows: Animation { reduceMotion ? reduced : .easeOut(duration: disclosureDuration) }
         static let chevronOpenDegrees: Double = 90
         static let ringStartDegrees: Double = -90
 
@@ -566,6 +591,7 @@ enum Theme {
         static let bigNumberSize: CGFloat = 26
         static let tinySize: CGFloat = 10
         static let chevronSize: CGFloat = 9
+        static let treeChevronSize: CGFloat = 8
 
         static let caption = Font.system(size: captionSize).monospacedDigit()
         static let captionMedium = Font.system(size: captionSize, weight: .medium).monospacedDigit()
@@ -587,6 +613,9 @@ enum Theme {
 
         static let keycap = Font.system(size: keycapSize, weight: .medium).monospacedDigit()
         static let chevron = Font.system(size: chevronSize, weight: .semibold)
+        static let treeChevron = Font.system(size: treeChevronSize, weight: .semibold)
+        static let badge = Font.system(size: tinySize, design: .monospaced)
+        static let groupHeader = Font.system(size: captionSize, weight: .semibold).monospacedDigit()
 
         static func symbol(_ size: CGFloat) -> Font { .system(size: size, weight: .semibold) }
     }
@@ -604,6 +633,8 @@ enum Theme {
         static let diff = "plusminus"
         static let back = "chevron.left"
         static let expand = "chevron.down"
+        static let filter = "line.3.horizontal.decrease"
+        static let folder = "folder"
     }
 
     // MARK: - Key labels for keycaps
@@ -613,9 +644,6 @@ enum Theme {
         static let delete = "⌫"
         static let option = "⌥"
         static let space = "space"
-        static let treeChevron = Font.system(size: treeChevronSize, weight: .semibold)
-        static let badge = Font.system(size: tinySize, design: .monospaced)
-        static let groupHeader = Font.system(size: captionSize, weight: .semibold).monospacedDigit()
         static let tab = "⇥"
         static let escape = "esc"
         static let always = "A"
@@ -625,6 +653,11 @@ enum Theme {
         static let optionEnter = "⌥⏎"
         static let minus = "\u{2212}"
         static let plus = "+"
+        static let up = "↑"
+        static let down = "↓"
+        static let left = "←"
+        static let right = "→"
+        static let slash = "/"
     }
 
     // MARK: - Glyph characters used in text
