@@ -6,7 +6,7 @@ A menu-bar-less agent app that draws a black shape over the MacBook notch. Close
 
 1. **Traffic light.** From any app or space you can see whether Claude Code is running, blocked on you, or done, across every session.
 2. **Doorbell.** When Claude is blocked, the notch grows to two rows and says what it wants (Attention state). One key unblocks it: allow, deny, commit.
-3. **Companion.** Press the notch any time and the card opens on tabs a plain terminal never shows: Changes (each turn, its files, the diff under its row), Files, Usage (5-hour and weekly limits, context, cost, where the tokens went), Sessions. Read from Claude Code's own session files, the same data contract as sidecar-pane.
+3. **Companion.** Press the notch any time and the card opens on Sessions (grouped by repository, one row per worktree, subagent lanes), then Changes (each turn, its files including subagent edits, the diff under its row), Files (the repository tree with a scrollable preview), Usage (limits, context, tokens, cost). Tabs in that order: Sessions · Changes · Files · Usage. Read from Claude Code's own session files, the same data contract as sidecar-pane.
 4. **Teleport.** Press a session and land in its terminal window. With worktrees this is the main reason to use it.
 
 Big diffs scroll inside the card. A snippet under 8 lines opens inline by default. Full review still belongs to the editor, and `⌥⏎` jumps there.
@@ -18,7 +18,7 @@ Canvas, "Final" page: https://claude.ai/artifact/AChgFMt8kby2qukkVNxwrn
 
 - One black shape that morphs. Closed 180×32 pt. Wings grow sideways first, the card grows down last. Springs, not eases. Closing runs backwards, faster.
 - Nothing is ever drawn over the centre 180 pt; that is the camera. Content lives in the two wings and, when open, below the notch.
-- SF Pro for text, SF Mono for commands and paths, tabular numbers. Clay `#D97757` and the asterisk spinner for Claude identity. Amber for "needs you", green for done, white pill for the primary action.
+- SF Pro for text, SF Mono for commands and paths, tabular numbers. Clay `#D97757` and the asterisk spinner for Claude identity, and the same clay family for "needs you" (the triangle glyph, the two-row shape and the words carry the distinction; amber was tried and dropped on 2026-09-27). Green for done, white pill for the primary action.
 - Every button carries a keycap hint. `⌥ space` focuses the notch from anywhere, `⏎` primary, `⌫` deny, `A` always, `1–4` options, `esc` closes.
 - Reduce Motion is respected: crossfades instead of springs.
 
@@ -39,8 +39,8 @@ Wings never grow taller for passive events. Only blocking events open the card b
 
 | Event | Kind | Source hook | Card shows | Actions |
 |---|---|---|---|---|
-| Permission request | blocking | `PermissionRequest` | tool, command or path, reason, countdown | Allow, Always, Deny |
-| Commit proposed | blocking | `PreToolUse` on `Bash(git commit *)` | message, files, ±counts | Commit (allow), Edit, Skip (deny) |
+| Permission request | blocking | `PermissionRequest` | tool, command or path, reason, countdown. For Edit / Write / MultiEdit the real diff, built from the hook's old and new text, opens inside the card with `D` and scrolls | Allow, Always, Deny |
+| Commit proposed | blocking | `PreToolUse` on `Bash(git commit *)` | message, files, ±counts; each file row opens its diff in place | Commit (allow), Edit, Skip (deny) |
 | Question | preview only | `Notification` + transcript | the question and its options | Answer in terminal (teleport). No hook can answer a question from outside. |
 | Edit landed | silent | `PostToolUse` on Edit/Write | no peek by default (a setting turns per-file peeks on). Updates the verb and the Changes tab | — |
 | Turn finished | passive | `Stop`, `Notification` idle_prompt | peek: Done · session · files and ± totals of the turn. Click opens Changes | Open in terminal |
