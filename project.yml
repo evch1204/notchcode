@@ -1,0 +1,50 @@
+name: notchcode
+options:
+  bundleIdPrefix: com.evch
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "16.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGNING_REQUIRED: "NO"
+    CODE_SIGNING_ALLOWED: "NO"
+    ENABLE_HARDENED_RUNTIME: "NO"
+targets:
+  notchcode:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/notchcode
+      # The hook scripts ship inside the app so Settings -> Connect can point at them.
+      - path: hooks/notchcode-hook.sh
+        buildPhase: resources
+      - path: hooks/notchcode-statusline.sh
+        buildPhase: resources
+    info:
+      path: Sources/notchcode/Info.plist
+      properties:
+        CFBundleName: notchcode
+        CFBundleDisplayName: notchcode
+        CFBundleIdentifier: com.evch.notchcode
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        LSUIElement: true
+        LSMinimumSystemVersion: "14.0"
+        NSHumanReadableCopyright: ""
+        NSPrincipalClass: NSApplication
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.evch.notchcode
+        GENERATE_INFOPLIST_FILE: "NO"
+        SWIFT_STRICT_CONCURRENCY: minimal
+schemes:
+  notchcode:
+    build:
+      targets:
+        notchcode: all
+    run:
+      config: Debug

@@ -20,3 +20,6 @@ Package.resolved
 
 # Node helper scripts
 node_modules/
+
+# XcodeGen output
+notchcode.xcodeproj/
