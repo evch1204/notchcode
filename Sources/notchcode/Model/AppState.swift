@@ -14,8 +14,8 @@ enum NotchMode: Hashable {
 enum CardTab: Hashable {
     case changes, files, usage, sessions, permission, commit, question, settings
 
-    /// The tabs the owner can move between with 1-4 and tab.
-    static let browsable: [CardTab] = [.changes, .files, .usage, .sessions]
+    /// The tabs the owner can move between with 1-4 and tab, left to right.
+    static let browsable: [CardTab] = [.sessions, .changes, .files, .usage]
 
     var label: String {
         switch self {
@@ -187,7 +187,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     /// The transcript activity time last reported per session, to reload only what changed.
     private var lastSeenActivity: [String: Date] = [:]
     /// The tab to return to when Settings closes.
-    private var tabBeforeSettings: CardTab = .changes
+    private var tabBeforeSettings: CardTab = .sessions
     private var hintTask: Task<Void, Never>?
     /// Set by teleport so closing the card does not hand focus back to the previous app.
     private var skipFocusReturn = false
@@ -617,7 +617,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
             selectedTab = tab
             if tab == .question, let q = question { focusedSessionId = q.sessionId }
         } else if !CardTab.browsable.contains(selectedTab) && selectedTab != .settings {
-            selectedTab = .changes
+            selectedTab = .sessions
         }
         if focusedSessionId == nil || session(id: focusedSessionId ?? "") == nil {
             focusedSessionId = primarySession?.id
@@ -634,7 +634,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     func closeCard() {
         guard isCardOpen else { return }
         isCardOpen = false
-        if !CardTab.browsable.contains(selectedTab) { selectedTab = .changes }
+        if !CardTab.browsable.contains(selectedTab) { selectedTab = .sessions }
         refresh()
     }
 
@@ -642,7 +642,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     func openSettings() {
         guard currentPending == nil else { return }
         if selectedTab != .settings {
-            tabBeforeSettings = CardTab.browsable.contains(selectedTab) ? selectedTab : .changes
+            tabBeforeSettings = CardTab.browsable.contains(selectedTab) ? selectedTab : .sessions
         }
         if isCardOpen {
             selectTab(.settings)
@@ -716,7 +716,8 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         } else if question != nil {
             openCard(tab: .question)
         } else {
-            openCard(tab: sessions.count > 1 ? .sessions : .changes)
+            // From the notch the card always lands on Sessions; only a blocking request (above) differs.
+            openCard(tab: .sessions)
         }
     }
 
@@ -1542,7 +1543,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         if let sid { settle(sid) }
         if pending.isEmpty && isCardOpen && (selectedTab == .permission || selectedTab == .commit) {
             isCardOpen = false
-            selectedTab = .changes
+            selectedTab = .sessions
         } else if let next = currentPending, isCardOpen {
             selectedTab = next.kind == .commit ? .commit : .permission
         }
@@ -1607,7 +1608,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         if isCardOpen {
             next = .card
         } else if !pending.isEmpty {
-            // "Wings only" keeps the shape one row high; the wings turn amber instead.
+            // "Wings only" keeps the shape one row high; the wings show the triangle instead.
             next = prefs.attentionStyle == .twoRow ? .attention : .wings
         } else if peek != nil {
             next = .peek
