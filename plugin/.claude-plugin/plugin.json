@@ -1,0 +1,11 @@
+{
+  "name": "notchcode",
+  "displayName": "notchcode",
+  "version": "0.1.0",
+  "description": "Shows Claude Code in the MacBook notch: what each session is doing, permission requests you can allow or deny from the notch, and commit approval. Needs the notchcode macOS app.",
+  "author": {
+    "name": "Evan Chang"
+  },
+  "license": "UNLICENSED",
+  "keywords": ["macos", "notch", "notifications", "permissions", "hooks"]
+}
