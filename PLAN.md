@@ -13,8 +13,8 @@ Big diffs scroll inside the card. A snippet under 8 lines opens inline by defaul
 
 ## Design
 
-Direction: Island chrome with Claude CLI content. Settled 2026-09-27.
-Canvas, "Final" page: https://claude.ai/artifact/AChgFMt8kby2qukkVNxwrn
+Direction: Island chrome with Claude CLI content, and the toolbar when open. Settled 2026-09-27; the toolbar chosen 2026-09-27 evening from three redesigns (Terminal, Toolbar, Aperture; canvas pages "Redesign · …").
+Canvas, "Final" page: https://claude.ai/artifact/AChgFMt8kby2qukkVNxwrn. Toolbar boards: the "Redesign · Toolbar" page (B1–B13, BM1–BM4).
 
 - One black shape that morphs. Closed 180×32 pt. Wings grow sideways first, the card grows down last. Springs, not eases. Closing runs backwards, faster.
 - Nothing is ever drawn over the centre 180 pt; that is the camera. Content lives in the two wings and, when open, below the notch.
@@ -22,16 +22,27 @@ Canvas, "Final" page: https://claude.ai/artifact/AChgFMt8kby2qukkVNxwrn
 - Every button carries a keycap hint. `⌥ space` focuses the notch from anywhere, `⏎` primary, `⌫` deny, `A` always, `1–4` options, `esc` closes.
 - Reduce Motion is respected: crossfades instead of springs.
 
+### Toolbar decisions (owner, 2026-09-27 evening)
+
+The open card is a toolbar window hanging from the notch; the collapsed states stay quiet.
+
+- **Collapsed while working: unchanged.** Spark, verb, one dot per session, elapsed or agent count. Small movement only (the spark pulse, the agent squares). The tools never replace the wings on their own.
+- **Hover on a collapsed strip (click-to-open owners):** after the same 250 ms dwell as the rim, the right wing crossfades from the dots to the four tool icons, unfolding from behind the camera (30 ms stagger). A press opens the card straight on that tool. Leaving puts the dots back. Hover-to-open owners get the card, as before.
+- **Needs you keeps its two-row size change** (the shape growing is what makes it visible). Row 1 as today: triangle, "Needs you", session, clock. Row 2: the request ("Allow Bash?" + the command, middle-truncated) on the left; Deny · Always · Allow as toolbar segments on the right (Skip · Edit · Commit for a commit), Allow white and primary, the 60 s countdown draining along Allow's bottom edge. One press answers without opening anything. Click on row 1, or `⌥ space`, opens the card with the request in the well.
+- **Open card = the toolbar.** The strip stays on top: status segment on the left (two lines: name, then branch · model · verb · agents), the four tools with the selected one filled on the right, a rule, the gear. The selection fill and the keyboard focus ring glide between tools (`⇥`, `1–4`). Under the strip a hairline with a short bridge beneath the selected tool, then the content well (a lighter inset holding the pane, the request card, the question, or Settings), then a footer with that tool's keys, `esc`, and the 5-hour bar. Panel height per tool (Sessions, Changes, Files, Usage, Settings each have their own), re-targeted with one spring when the tool changes; the pane slides 48 pt toward its new anchor with parallax. Segments lift on hover and depress on press. Panes themselves (Sessions, Changes, Files, Usage, Settings with Quit) are the current ones, inside the well.
+- **Peek and resting: unchanged** (the check draws on, counts count up; the dim resting row).
+- **Light outside the notch.** The hardware notch covers the centre 180 pt, so any light that only runs along the inside of the bottom edge disappears in the middle. Every glow is drawn as a halo *outside* the black silhouette: the hover rim sits on the outer edge of the shape (not inset) with its glow spilling 8–12 pt below and around the wings; the clay bleed sits below the bottom edge and is wider than the notch so both wings carry it; the done peek's green and the working state's spark live in the wings. No light effect carries information only under the camera.
+
 ## States
 
 | State | Shape | Content | Leaves when |
 |---|---|---|---|
 | Closed | notch only | nothing | a session starts (or always, if the owner picks "pure notch" when idle) |
 | Resting | 420×32 pt, dim | a static dot in the session's colour + the worktree name at 60% · nothing moving. Hover brightens it and lights the rim. Click opens the card | a session works again, or every session is idle 2 h (then closed) |
-| Wings | 470×32 pt | spinner + current verb (Editing, Running tests, Idle) · one dot per session · elapsed, or "N agents" while subagents run | the last session ends |
-| Attention, needs you | 460×66 pt, two rows, amber | row 1: Action required · session · countdown ring; row 2: "Allow Bash?" + the command · click or `⌥ space` | the event is answered |
+| Wings | 470×32 pt | spinner + current verb (Editing, Running tests, Idle) · one dot per session · elapsed, or "N agents" while subagents run · hover: the right wing shows the four tools | the last session ends |
+| Attention, needs you | 620×66 pt, two rows, clay | row 1: Needs you · session · clock; row 2: "Allow Bash?" + the command, then Deny · Always · Allow segments, the countdown draining along Allow · click row 1 or `⌥ space` opens the card | the event is answered |
 | Peek | 460×32 pt | one line: file and ±counts, or the question's first line | 4 s |
-| Card | 500 pt wide, grows down | see below | answered, or `esc` |
+| Card | 620 pt wide, grows down to the tool's height | the toolbar: strip on top, bridge, well, footer (see Toolbar decisions) | answered, or `esc` |
 
 Wings never grow taller for passive events. Only blocking events open the card by themselves.
 
@@ -139,6 +150,8 @@ Unix socket at `~/Library/Application Support/notchcode/notchcode.sock`. Hook sc
 Implement now: hover rim light on the closed and resting notch, always (not only in hover-open mode); attention arrival with the breath and the amber bleed; tab slide with parallax; done peek with the check drawing on and counts counting up; the simple teleport fold (card folds into the notch over 0.28 s, terminal activated at 0.15 s, no scale, no blur). No blur anywhere: content fades and rises 10 pt. The rest of the table below is later, or never.
 
 After Done: 4 s, then the Resting state (see States). Never a bare notch while a session exists, unless the owner chose pure notch.
+
+Toolbar motion (owner, 2026-09-27 evening), all in Theme: tools unfold from behind the camera (offset 26 pt toward the centre + opacity, spring 0.28/0.82, 100 ms + 30 ms per tool); segment hover lift (fill 9%) and press depress (scale 0.94, 0.12 s); selection fill and focus ring glide with `matchedGeometryEffect` (spring 0.32/0.72); the bridge slides with the same spring; panel height re-target in one spring (0.42/0.8); pane re-anchor slide 48 pt + parallax 40%; Allow pops in (0.92 → 1.08 → 1) and its countdown bar drains from the deadline date in a `TimelineView`. Reduce Motion: crossfades, no offsets, no press scale, the bar steps once a second.
 
 ## Usage tab layout (owner, 2026-09-27)
 
