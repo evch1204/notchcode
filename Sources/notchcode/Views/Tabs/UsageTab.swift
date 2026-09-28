@@ -1,8 +1,10 @@
 // UsageTab.swift
 // One fixed page, never scrolls. Row 1: two big tiles, 5-hour and Week (percent, bar,
 // reset). Row 2: three small tiles, Context, This session, Today. Row 3: one four-part
-// token bar with inline legend chips. Footer: where the numbers come from.
-// Numbers are never invented: a missing value shows "—", and the layout never changes.
+// token bar with inline legend chips. Footer: where the numbers come from, and how
+// old the limits are. Limits keep their last known value between status line reports
+// (it only reports when Claude Code redraws it); "—" and "connect the status line"
+// only until the first report. Numbers are never invented, and the layout never changes.
 
 import SwiftUI
 
@@ -14,18 +16,17 @@ struct UsageTab: View {
 
     var body: some View {
         let usage = state.usage
-        let fresh = state.limitsAreFresh
         VStack(alignment: .leading, spacing: Theme.Size.usageRowSpacing) {
             HStack(spacing: Theme.Size.usageTileSpacing) {
                 LimitTile(
                     title: "5-hour",
-                    percent: fresh ? usage.fiveHourPercent : nil,
+                    percent: usage.fiveHourPercent,
                     resetsAt: usage.fiveHourResetsAt,
                     filled: filled
                 )
                 LimitTile(
                     title: "Week",
-                    percent: fresh ? usage.weekPercent : nil,
+                    percent: usage.weekPercent,
                     resetsAt: usage.weekResetsAt,
                     filled: filled
                 )
@@ -50,12 +51,16 @@ struct UsageTab: View {
             TokenBlock(tokens: usage.sessionTokens ?? TokenUsage(), filled: filled)
                 .frame(height: Theme.Size.usageTokenBlockHeight)
 
-            Text("cost estimated from tokens" + Theme.Glyphs.separator + "limits from Claude Code's status line")
-                .font(Theme.Fonts.tiny)
-                .foregroundStyle(Theme.Colors.inkTertiary)
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(height: Theme.Size.usageFootnoteHeight)
+            // "updated 3m ago" has to age on its own while the status line is quiet.
+            TimelineView(.periodic(from: .now, by: Theme.Motion.limitsFootnoteTick)) { context in
+                Text(footnote(now: context.date))
+                    .font(Theme.Fonts.tiny)
+                    .foregroundStyle(Theme.Colors.inkTertiary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(height: Theme.Size.usageFootnoteHeight)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onAppear {
@@ -75,6 +80,14 @@ struct UsageTab: View {
             value: percent.map { Format.percent($0) + " of " + Format.tokens(limit) },
             detail: usage.contextUsed.map { Format.tokens($0) }
         )
+    }
+
+    /// "cost estimated from tokens · limits updated 3m ago" once limits have arrived;
+    /// before that, where they will come from.
+    private func footnote(now: Date) -> String {
+        let limits = state.limitsUpdatedAt.map { Format.limitsAsOf($0, now: now) }
+            ?? "limits from Claude Code's status line"
+        return "cost estimated from tokens" + Theme.Glyphs.separator + limits
     }
 
     /// "~$1.42" when estimated from tokens, "$1.42" when Claude Code reported it.
@@ -104,8 +117,9 @@ private struct Tile<Content: View>: View {
     }
 }
 
-/// "5-hour", "61%" large, a bar, "resets in 1h 52m". Without a limit: "—", an empty bar,
-/// and "connect the status line", in the same places.
+/// "5-hour", "61%" large, a bar, "resets in 1h 52m". Before any limit has arrived: "—",
+/// an empty bar, and "connect the status line", in the same places. When the window has
+/// rolled over since the last report, the old percent dims and the line says when it reset.
 @MainActor
 private struct LimitTile: View {
     let title: String
@@ -123,7 +137,7 @@ private struct LimitTile: View {
                 Spacer(minLength: 0)
                 Text(percent.map { Format.percent(min(100, $0)) } ?? Theme.Glyphs.emDash)
                     .font(Theme.Fonts.bigNumber)
-                    .foregroundStyle(percent == nil ? Theme.Colors.inkTertiary : Theme.Colors.ink)
+                    .foregroundStyle(percent == nil || hasReset ? Theme.Colors.inkTertiary : Theme.Colors.ink)
                     .lineLimit(1)
                 UsageBar(fraction: filled ? (percent ?? 0) / 100 : 0, tint: Theme.Colors.limitBar)
                 Text(footnote)
@@ -134,8 +148,11 @@ private struct LimitTile: View {
         }
     }
 
+    private var hasReset: Bool { AppState.limitWindowHasReset(resetsAt) }
+
     private var footnote: String {
         guard percent != nil else { return "connect the status line" }
+        if hasReset, let resetsAt { return Format.resetAt(resetsAt) }
         // A blank line keeps the tile's layout identical when no reset time is known.
         return resetsAt.map { Format.resets(at: $0) } ?? " "
     }

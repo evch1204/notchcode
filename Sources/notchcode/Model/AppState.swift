@@ -149,8 +149,9 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     @Published var usage = UsageSnapshot()
     /// The per-model weekly limit, when a source provides it. Nil on real data today.
     @Published var weekModelLimit: ModelLimit?
-    /// When the status line last reported the 5-hour and weekly limits. Limits older than
-    /// `Theme.Motion.limitsFreshWindow` are not shown.
+    /// When the status line last reported the 5-hour and weekly limits. The status line only
+    /// reports when Claude Code redraws it, so the last known values stay on screen and
+    /// this date is shown beside them ("updated 3m ago").
     @Published private(set) var limitsUpdatedAt: Date?
     /// Per session, what the status line reported: real context, cost and model id.
     @Published private(set) var statusline: [String: StatuslineFacts] = [:]
@@ -163,6 +164,9 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     /// The mouse has rested on the shape (AppDelegate sets it after `Theme.Motion.rimDelay`).
     /// Drives the rim light and the resting name's brightness.
     @Published private(set) var hovering = false
+    /// The tool whose name shows as a caption under the strip: the tool under the mouse
+    /// after `Theme.Motion.toolLabelDelay`, or the tool `⇥` / `1–4` just moved to.
+    @Published private(set) var toolLabel: CardTab?
     /// True for a moment after a teleport, so the shape folds instead of the usual close.
     @Published private(set) var teleportFold = false
     @Published var focusedSessionId: String? {
@@ -262,6 +266,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     /// The tab to return to when Settings closes.
     private var tabBeforeSettings: CardTab = .sessions
     private var hintTask: Task<Void, Never>?
+    private var toolLabelTask: Task<Void, Never>?
     /// Set by teleport so closing the card does not hand focus back to the previous app.
     private var skipFocusReturn = false
 
@@ -324,6 +329,49 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
 
     func setHovering(_ value: Bool) {
         if hovering != value { hovering = value }
+        // The collapsed tools go away with the hover, and their exit may never report.
+        if !value, !isCardOpen { clearToolLabel() }
+    }
+
+    /// The mouse entered or left a tool. The first name waits `toolLabelDelay`; once one
+    /// shows, moving to the next tool moves it at once. Leaving waits `toolLabelLinger`, so
+    /// sliding across the gap between two tools does not blink it.
+    func hoverTool(_ tab: CardTab, inside: Bool) {
+        if inside {
+            toolLabelTask?.cancel()
+            if toolLabel != nil {
+                setToolLabel(tab)
+            } else {
+                scheduleToolLabel(tab, after: Theme.Motion.toolLabelDelay)
+            }
+        } else if toolLabel == tab || toolLabel == nil {
+            toolLabelTask?.cancel()
+            scheduleToolLabel(nil, after: Theme.Motion.toolLabelLinger)
+        }
+    }
+
+    /// `⇥` or `1–4` moved the selection: its name shows under it for a moment.
+    private func flashToolLabel() {
+        toolLabelTask?.cancel()
+        setToolLabel(selectedTab)
+        scheduleToolLabel(nil, after: Theme.Motion.toolLabelKeyboardHold)
+    }
+
+    private func clearToolLabel() {
+        toolLabelTask?.cancel()
+        setToolLabel(nil)
+    }
+
+    private func setToolLabel(_ tab: CardTab?) {
+        if toolLabel != tab { toolLabel = tab }
+    }
+
+    private func scheduleToolLabel(_ tab: CardTab?, after seconds: Double) {
+        toolLabelTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(seconds))
+            if Task.isCancelled { return }
+            self?.setToolLabel(tab)
+        }
     }
 
     /// Live sessions other than `session`, for the "+1" in the wings.
@@ -763,6 +811,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         if selectedTab == .files { loadRepoTree() }
         isCardOpen = true
         skipFocusReturn = false
+        clearToolLabel()
         recomputeUsage()
         refresh()
     }
@@ -770,6 +819,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     func closeCard() {
         guard isCardOpen else { return }
         isCardOpen = false
+        clearToolLabel()
         if !CardTab.browsable.contains(selectedTab) { selectedTab = .sessions }
         fileFilterFocused = false
         requestDiff = nil
@@ -1041,6 +1091,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         case .number(let n):
             guard n >= 1 && n <= CardTab.browsable.count else { return false }
             selectTab(CardTab.browsable[n - 1])
+            flashToolLabel()
         case .nextTab:
             cycleTab(by: 1)
         case .previousTab:
@@ -1298,10 +1349,11 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         recomputeUsage()
     }
 
-    /// The 5-hour and weekly numbers are recent enough to show.
-    var limitsAreFresh: Bool {
-        guard let at = limitsUpdatedAt else { return false }
-        return Date().timeIntervalSince(at) < Theme.Motion.limitsFreshWindow
+    /// A limit window whose reset time has passed since the status line reported it: the
+    /// last known percent belongs to the previous window.
+    static func limitWindowHasReset(_ resetsAt: Date?, now: Date = Date()) -> Bool {
+        guard let resetsAt else { return false }
+        return resetsAt <= now
     }
 
     // MARK: - Sessions
@@ -1863,6 +1915,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         let current = tabs.firstIndex(of: selectedTab) ?? 0
         let next = (current + step + tabs.count) % tabs.count
         selectTab(tabs[next])
+        flashToolLabel()
     }
 
     // MARK: - Parsing helpers

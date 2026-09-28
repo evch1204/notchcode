@@ -271,20 +271,11 @@ private struct PreviewBody: View {
         }
     }
 
-    /// "Views/Tabs/FilesTab.swift   +12 −3".
+    /// "FilesTab.swift · Views/Tabs   +12 −3".
     private var header: some View {
         HStack(spacing: Theme.Size.spaceM) {
-            HStack(spacing: 0) {
-                Text(Format.directory(path))
-                    .foregroundStyle(Theme.Colors.inkTertiary)
-                    .lineLimit(1)
-                    .truncationMode(.head)
-                Text(Format.fileName(path))
-                    .foregroundStyle(Theme.Colors.ink)
-                    .lineLimit(1)
-                    .layoutPriority(1)
-            }
-            .font(Theme.Fonts.monoCaption)
+            PathLabel(path: path)
+                .layoutPriority(1)
             Spacer(minLength: Theme.Size.spaceM)
             if let count {
                 DiffCounts(added: count.added, removed: count.removed)

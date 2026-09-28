@@ -199,8 +199,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Hover rim
 
-    /// Always on, whatever the open gesture: after the mouse rests on the shape for
-    /// `Theme.Motion.rimDelay`, `hovering` turns on; leaving turns it off at once.
+    /// After the mouse rests on the shape for `Theme.Motion.rimDelay`, `hovering` turns on;
+    /// leaving turns it off at once. Hover-to-open owners skip it: the same dwell opens the
+    /// card, and a rim fading in while the shape starts growing (then vanishing as the mode
+    /// leaves closed) read as a second, competing animation.
     private func updateRim(inside: Bool) {
         guard let appState else { return }
         guard inside != rimInside else { return }
@@ -212,6 +214,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 MainActor.assumeIsolated {
                     guard let self, self.rimInside else { return }
                     self.rimWork = nil
+                    guard self.appState?.prefs.openGesture != .hover else { return }
                     self.appState?.setHovering(true)
                 }
             }

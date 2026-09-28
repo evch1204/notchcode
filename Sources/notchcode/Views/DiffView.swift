@@ -184,7 +184,7 @@ struct FileDiffRow: View {
     }
 }
 
-/// "▸ Sources/notchcode/Theme.swift   ▮▮▮▯▯ +12 −3": the row a diff opens under.
+/// "▸ Theme.swift · Sources/notchcode   ▮▮▮▯▯ +12 −3": the row a diff opens under.
 @MainActor
 struct FileRowLabel: View {
     let file: FileChange
@@ -200,20 +200,8 @@ struct FileRowLabel: View {
                 .foregroundStyle(Theme.Colors.inkTertiary)
                 .rotationEffect(.degrees(open ? Theme.Motion.chevronOpenDegrees : 0))
                 .opacity(hasDiff ? 1 : 0)
-            HStack(spacing: 0) {
-                if showDirectory {
-                    Text(Format.directory(file.path))
-                        .foregroundStyle(Theme.Colors.inkTertiary)
-                        .lineLimit(1)
-                        .truncationMode(.head)
-                }
-                Text(Format.fileName(file.path))
-                    .foregroundStyle(Theme.Colors.ink)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .layoutPriority(1)
-            }
-            .font(Theme.Fonts.monoCaption)
+            PathLabel(path: file.path, showDirectory: showDirectory)
+                .layoutPriority(1)
             Spacer(minLength: Theme.Size.spaceM)
             DiffCells(added: file.added, removed: file.removed)
             DiffCounts(added: file.added, removed: file.removed)
@@ -225,5 +213,56 @@ struct FileRowLabel: View {
                 .fill(isCursor ? Theme.Colors.rowCursor : Color.clear)
         )
         .contentShape(Rectangle())
+    }
+}
+
+/// "Theme.swift · Sources/notchcode": the file name first, in ink, always whole while it
+/// fits; the folder after it, dim, head-truncated so the nearest folder survives, and
+/// dropped when less than `pathFolderMinWidth` is left. A name too long for the row
+/// truncates in the middle. Used wherever a changed file is a row: the Changes tool, the
+/// commit card's file list, the Files preview header.
+@MainActor
+struct PathLabel: View {
+    let path: String
+    var showDirectory = true
+
+    var body: some View {
+        let name = Format.fileName(path)
+        let folder = showDirectory ? Format.directory(path) : ""
+        Group {
+            if folder.isEmpty {
+                nameText(name)
+            } else {
+                // The first layout reports the folder's ideal width as its minimum, so it is
+                // chosen whenever the whole name and a readable piece of the folder fit.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 0) {
+                        Text(name)
+                            .foregroundStyle(Theme.Colors.ink)
+                            .lineLimit(1)
+                            .fixedSize()
+                        Text(Theme.Glyphs.separator)
+                            .foregroundStyle(Theme.Colors.inkTertiary)
+                            .lineLimit(1)
+                            .fixedSize()
+                        Text(folder)
+                            .foregroundStyle(Theme.Colors.inkTertiary)
+                            .lineLimit(1)
+                            .truncationMode(.head)
+                            .frame(minWidth: Theme.Size.pathFolderMinWidth, idealWidth: Theme.Size.pathFolderMinWidth, alignment: .leading)
+                    }
+                    nameText(name)
+                }
+            }
+        }
+        .font(Theme.Fonts.monoCaption)
+        .help(path)
+    }
+
+    private func nameText(_ name: String) -> some View {
+        Text(name)
+            .foregroundStyle(Theme.Colors.ink)
+            .lineLimit(1)
+            .truncationMode(.middle)
     }
 }

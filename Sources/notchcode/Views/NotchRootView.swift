@@ -3,7 +3,7 @@
 // height leads on the way back. Content fades and rises in after the shape moves.
 // Inside one state the shape re-targets with one spring (the card changing tool).
 // Around the shape: the hover rim light (closed and resting), the attention
-// breath and clay bleed, and the teleport fold. Every light sits outside the
+// clay bleed, and the teleport fold. Every light sits outside the
 // black silhouette, never under the camera.
 
 import SwiftUI
@@ -21,8 +21,6 @@ struct NotchRootView: View {
     @State private var bottomRadius: CGFloat = Theme.Radius.closedBottom
     @State private var shownMode: NotchMode = .closed
 
-    /// Bumped on each attention arrival; drives the 3% breath.
-    @State private var breathTrigger = 0
     /// Clay bleed opacity under the shape (0 outside attention).
     @State private var bleed: Double = 0
     /// Guards the delayed bleed settle against a newer arrival or departure.
@@ -56,12 +54,6 @@ struct NotchRootView: View {
                 .clipShape(NotchShape(topRadius: topRadius, bottomRadius: bottomRadius))
             }
             .frame(width: shapeWidth, height: shapeHeight, alignment: .top)
-            .keyframeAnimator(initialValue: CGFloat(1), trigger: breathTrigger) { view, scale in
-                view.scaleEffect(x: 1, y: scale, anchor: .top)
-            } keyframes: { _ in
-                CubicKeyframe(Theme.Motion.breathScale, duration: Theme.Motion.breathDuration * Theme.Motion.breathRiseShare)
-                SpringKeyframe(1, duration: Theme.Motion.breathDuration * (1 - Theme.Motion.breathRiseShare))
-            }
             // Every light lives behind the black, outside the silhouette: the black covers
             // whatever falls inside it, so nothing is drawn under the camera and the
             // closed state stays the hardware notch. Backgrounds never move the shape.
@@ -178,6 +170,14 @@ struct NotchRootView: View {
             return
         }
 
+        // `mode` and `cardHeight` often change in one update (opening lands on another tool,
+        // closing resets it). The first call already set these targets with the sequenced
+        // springs; a second call must not replace them with the re-target spring.
+        if mode == shownMode && newWidth == shapeWidth && newHeight == shapeHeight
+            && top == topRadius && bottom == bottomRadius {
+            return
+        }
+
         if mode == shownMode && !state.teleportFold {
             // Same state, new size: the card re-targets its height for another tool or a
             // request's diff. One spring, no axis sequencing.
@@ -231,15 +231,15 @@ struct NotchRootView: View {
         }
     }
 
-    /// The breath from the top edge and the clay bleed: 0 → 100% in 0.3 s, then 40% by 1 s.
-    /// Reduce Motion: no breath, a static 40% bleed.
+    /// The clay bleed: 0 → 100% in 0.3 s, then 40% by 1 s. No breath: the shape growing to
+    /// two rows is the signal, and a scale on top of the height spring read as a bounce.
+    /// Reduce Motion: a static 40% bleed.
     private func attentionArrived() {
         bleedGeneration += 1
         if Theme.Motion.reduceMotion {
             withAnimation(Theme.Motion.reduced) { bleed = Theme.Opacity.bleedRest }
             return
         }
-        breathTrigger += 1
         withAnimation(Theme.Motion.bleedIn) { bleed = Theme.Opacity.bleedPeak }
         let generation = bleedGeneration
         DispatchQueue.main.asyncAfter(deadline: .now() + Theme.Motion.bleedInDuration) {

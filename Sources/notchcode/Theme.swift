@@ -59,6 +59,10 @@ enum Theme {
         /// The card's content well: a lighter inset under the strip.
         static let well = Color.white.opacity(0.045)
         static let wellStroke = Color.white.opacity(0.06)
+        /// The tool name caption under the strip: an opaque dark pill so it reads over the well.
+        static let toolLabelFill = Color(hex: 0x262626)
+        static let toolLabelStroke = Color.white.opacity(0.10)
+        static let toolLabelText = inkSecondary
 
         // Action segments (Deny · Always · Allow, Skip · Edit · Commit).
         static let allowFill = Color.white
@@ -229,6 +233,7 @@ enum Theme {
         static let toolFocus: CGFloat = 7
         static let bridge: CGFloat = 1
         static let toolBadge: CGFloat = 4
+        static let toolLabel: CGFloat = 5
         /// The card's content well.
         static let well: CGFloat = 14
     }
@@ -349,6 +354,12 @@ enum Theme {
         static let toolBadgeHeight: CGFloat = 11
         static let toolBadgeHPadding: CGFloat = 3
         static let toolBadgeOffset: CGFloat = 4
+        // The tool name caption: a small pill hung just under the strip (open card), or
+        // the collapsed strip's left wing (there is no room below it inside the black).
+        static let toolLabelHeight: CGFloat = 16
+        static let toolLabelHPadding: CGFloat = 6
+        /// Gap between the strip's hairline and the top of the pill.
+        static let toolLabelDrop: CGFloat = 3
         // Action segments.
         static let actionHeight: CGFloat = 22
         static let actionHPadding: CGFloat = 6
@@ -358,6 +369,10 @@ enum Theme {
         static let countdownBarInset: CGFloat = 5
         /// The open card's status segment (left wing).
         static let statusSpacing: CGFloat = 8
+
+        // Changed-file rows: "Theme.swift · Sources/notchcode". The name never truncates
+        // while it fits; the folder gets what is left and is dropped below this width.
+        static let pathFolderMinWidth: CGFloat = 56
 
         // Usage tab: one fixed page, never scrolls. Heights derive from `usageCardHeight`.
         static let usageRowSpacing: CGFloat = 10
@@ -520,15 +535,25 @@ enum Theme {
 
         static let reduced = Animation.easeInOut(duration: 0.2)
 
+        // The shape settles without a visible overshoot: every shape spring is damped
+        // at 0.88 or more (owner, 2026-09-27: the 0.72 open bounced once the card got
+        // wider and taller). Closing uses the same curves 30% faster.
+        static let widthResponse: Double = 0.42
+        static let heightResponse: Double = 0.48
+        static let shapeDamping: Double = 0.9
+        static let retargetResponse: Double = 0.4
+        static let retargetDamping: Double = 0.94
+        /// Closing runs this share of the opening response (30% faster).
+        static let closeShare: Double = 0.7
         /// Opening: width leads.
-        @MainActor static var width: Animation { reduceMotion ? reduced : .spring(response: 0.45, dampingFraction: 0.72) }
+        @MainActor static var width: Animation { reduceMotion ? reduced : .spring(response: widthResponse, dampingFraction: shapeDamping) }
         /// Opening: height follows.
-        @MainActor static var height: Animation { reduceMotion ? reduced : .spring(response: 0.55, dampingFraction: 0.78) }
+        @MainActor static var height: Animation { reduceMotion ? reduced : .spring(response: heightResponse, dampingFraction: shapeDamping) }
         /// Closing runs backwards, faster.
-        @MainActor static var closeWidth: Animation { reduceMotion ? reduced : .spring(response: 0.34, dampingFraction: 0.86) }
-        @MainActor static var closeHeight: Animation { reduceMotion ? reduced : .spring(response: 0.30, dampingFraction: 0.90) }
+        @MainActor static var closeWidth: Animation { reduceMotion ? reduced : .spring(response: widthResponse * closeShare, dampingFraction: shapeDamping) }
+        @MainActor static var closeHeight: Animation { reduceMotion ? reduced : .spring(response: heightResponse * closeShare, dampingFraction: shapeDamping) }
         /// Same state, new size (another tool, a request's diff): one spring, no axis sequencing.
-        @MainActor static var panelRetarget: Animation { reduceMotion ? reduced : .spring(response: 0.42, dampingFraction: 0.8) }
+        @MainActor static var panelRetarget: Animation { reduceMotion ? reduced : .spring(response: retargetResponse, dampingFraction: retargetDamping) }
         /// Gap between the leading axis and the following axis.
         static let axisDelay: Double = 0.06
 
@@ -556,16 +581,17 @@ enum Theme {
             )
         }
 
-        // The strip unfolds from behind the camera: each segment starts 26 pt toward the
-        // centre and transparent, then springs out, 30 ms after the one nearer the camera.
-        static let unfoldDistance: CGFloat = 26
+        // The strip unfolds from behind the camera: each segment starts 16 pt toward the
+        // centre and transparent, then glides out (critically damped, no overshoot),
+        // 30 ms after the one nearer the camera.
+        static let unfoldDistance: CGFloat = 16
         static let unfoldStagger: Double = 0.03
         static let unfoldDuration: Double = 0.28
         static let unfoldDelay: Double = 0.10
         @MainActor static func unfold(_ index: Int) -> Animation {
             reduceMotion
                 ? reduced.delay(unfoldDelay)
-                : .spring(response: unfoldDuration, dampingFraction: 0.82).delay(unfoldDelay + unfoldStagger * Double(index))
+                : .spring(response: unfoldDuration, dampingFraction: 1).delay(unfoldDelay + unfoldStagger * Double(index))
         }
 
         // Segments: hover lift, press depress, selection glide.
@@ -573,7 +599,7 @@ enum Theme {
         static let pressDuration: Double = 0.12
         static let pressScale: CGFloat = 0.94
         static var press: Animation { .easeOut(duration: pressDuration) }
-        @MainActor static var toolSelect: Animation { reduceMotion ? reduced : .spring(response: 0.32, dampingFraction: 0.72) }
+        @MainActor static var toolSelect: Animation { reduceMotion ? reduced : .spring(response: 0.3, dampingFraction: 0.88) }
         /// Allow pops in (0.92 → 1.08 → 1) when it arrives.
         static let actionPopStart: CGFloat = 0.92
         static let actionPopOvershoot: CGFloat = 1.08
@@ -588,16 +614,22 @@ enum Theme {
         static var toolsRevealIn: Animation { .easeOut(duration: 0.18) }
         static var toolsRevealOut: Animation { .easeIn(duration: 0.2) }
 
+        // Tool name caption: shows after the mouse rests this long on a tool, follows it to
+        // the next tool at once, lingers briefly on leaving (so the gap between tools does
+        // not blink it), and holds this long after ⇥ or 1–4.
+        static let toolLabelDelay: Double = 0.15
+        static let toolLabelLinger: Double = 0.08
+        static let toolLabelKeyboardHold: Double = 1.2
+        static let toolLabelFadeDuration: Double = 0.12
+        /// Reduce Motion: nil, the caption appears and moves without a fade or glide.
+        @MainActor static var toolLabelFade: Animation? { reduceMotion ? nil : .easeOut(duration: toolLabelFadeDuration) }
+
         // Hover rim light.
         static let rimDelay: Double = 0.25
         static var rimIn: Animation { .easeOut(duration: 0.18) }
         static var rimOut: Animation { .easeIn(duration: 0.25) }
 
-        // Attention arrival: a 3% breath from the top edge and a clay bleed.
-        static let breathScale: CGFloat = 1.03
-        static let breathDuration: Double = 0.5
-        /// Share of the breath spent rising to the 3%; the rest springs back.
-        static let breathRiseShare: Double = 0.4
+        // Attention arrival: the clay bleed (no breath: the shape growing is the signal).
         static let bleedInDuration: Double = 0.3
         /// The bleed has settled to its resting opacity by this long after arrival.
         static let bleedSettledAt: Double = 1
@@ -605,7 +637,6 @@ enum Theme {
         static var bleedSettle: Animation { .easeInOut(duration: bleedSettledAt - bleedInDuration) }
 
         // Tabs.
-        @MainActor static var tabPill: Animation { reduceMotion ? reduced : .spring(response: 0.32, dampingFraction: 0.7) }
         static let tabInDuration: Double = 0.32
         static let tabOutDuration: Double = 0.2
         static var tabIn: Animation { .easeOut(duration: tabInDuration) }
@@ -709,8 +740,10 @@ enum Theme {
         static let needsYouLifetime: Double = 90
         /// Transcript writes this soon after a needs-you notification belong to it, not to new activity.
         static let needsYouActivityGrace: Double = 2
-        /// Status line limits older than this are not shown.
-        static let limitsFreshWindow: Double = 10 * 60
+        /// Limits reported this recently read "updated 3m ago"; older ones "as of 2:14 PM".
+        static let limitsRelativeWindow: Double = 3600
+        /// The Usage footer's "updated 3m ago" refreshes this often.
+        static let limitsFootnoteTick: Double = 30
         /// A reset closer than this reads "resets in 1h 52m"; further out, "resets Thu 3:40 PM".
         static let resetRelativeWindow: Double = 24 * 3600
         /// A transcript turn that started this long before the hook's prompt still counts as that turn.
@@ -769,6 +802,7 @@ enum Theme {
         static let groupHeader = Font.system(size: captionSize, weight: .semibold).monospacedDigit()
         static let toolBadge = Font.system(size: toolBadgeSize, weight: .semibold).monospacedDigit()
         static let action = Font.system(size: actionSize, weight: .semibold).monospacedDigit()
+        static let toolLabel = Font.system(size: tinySize, weight: .medium)
 
         static func symbol(_ size: CGFloat) -> Font { .system(size: size, weight: .semibold) }
     }

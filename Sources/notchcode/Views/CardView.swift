@@ -25,6 +25,8 @@ struct CardView: View {
             VStack(alignment: .leading, spacing: Theme.Size.spaceM) {
                 BridgeDivider(state: state, contentWidth: contentWidth)
                     .riseIn(0)
+                    // The tool name caption hangs from the divider over the well's top edge.
+                    .zIndex(1)
 
                 well
                     .riseIn(1)
@@ -259,10 +261,12 @@ struct CardView: View {
         return Format.sessionCounts(working: working, waiting: waiting, done: done, idle: idle, agents: state.runningAgentCount)
     }
 
-    /// The 5-hour limit when the status line reported it recently, else context with "ctx".
+    /// The 5-hour limit once the status line has reported it (the last known value, as the
+    /// Usage tool shows it), else context with "ctx". A 5-hour window that has reset since
+    /// the report is stale, so context shows instead.
     @ViewBuilder
     private var headerUsage: some View {
-        if state.limitsAreFresh, let percent = state.usage.fiveHourPercent {
+        if let percent = state.usage.fiveHourPercent, !AppState.limitWindowHasReset(state.usage.fiveHourResetsAt) {
             HStack(spacing: Theme.Size.spaceS) {
                 Text("5h")
                     .font(Theme.Fonts.caption)
@@ -274,7 +278,7 @@ struct CardView: View {
                     .foregroundStyle(Theme.Colors.inkSecondary)
             }
             .fixedSize()
-            .help("Current session (5h) limit")
+            .help(state.limitsUpdatedAt.map { "Current session (5h) limit, " + Format.limitsAsOf($0) } ?? "Current session (5h) limit")
         } else if let percent = state.contextPercent {
             HStack(spacing: Theme.Size.spaceS) {
                 Text("ctx")
@@ -314,13 +318,21 @@ struct BridgeDivider: View {
             }
         }
         .frame(width: contentWidth, height: Theme.Size.bridgeHeight, alignment: .topLeading)
+        .overlay(alignment: .topLeading) {
+            ToolLabelPill(tab: toolsShown ? state.toolLabel : nil) { toolCentre($0) }
+        }
     }
 
-    /// The selected tool's centre, in the content's coordinates: measured in from the strip's
-    /// trailing edge, tool by tool, so it lands under the icon whatever the panel's width.
+    /// The strip shows the tools (not a request's or a question's action segments).
+    private var toolsShown: Bool { state.currentPending == nil && !state.showingQuestion }
+
     private var bridgeCentre: CGFloat? {
-        guard state.currentPending == nil, !state.showingQuestion else { return nil }
-        let tab = state.selectedTab
+        toolsShown ? toolCentre(state.selectedTab) : nil
+    }
+
+    /// A tool's centre, in the content's coordinates: measured in from the strip's trailing
+    /// edge, tool by tool, so it lands under the icon whatever the panel's width.
+    private func toolCentre(_ tab: CardTab) -> CGFloat? {
         let step = Theme.Size.toolWidth + Theme.Size.toolGap
         // The rule with its padding, and the strip's gap on each side of it.
         let rule = Theme.Size.toolRuleWidth + 2 * Theme.Size.toolGroupGap + 2 * Theme.Size.toolGap

@@ -40,6 +40,23 @@ enum Format {
         return "resets " + weekdayTime.string(from: date)
     }
 
+    /// "limits updated now", "limits updated 3m ago", then "limits as of 2:14 PM" (today)
+    /// or "limits as of Thu 3:40 PM".
+    static func limitsAsOf(_ date: Date, now: Date = Date()) -> String {
+        let age = now.timeIntervalSince(date)
+        if age < Theme.Motion.limitsRelativeWindow {
+            return "limits updated " + ago(date, now: now)
+        }
+        let formatter = Calendar.current.isDate(date, inSameDayAs: now) ? time : weekdayTime
+        return "limits as of " + formatter.string(from: date)
+    }
+
+    /// "reset at 3:40 PM" for a limit window that has already rolled over.
+    static func resetAt(_ date: Date, now: Date = Date()) -> String {
+        let formatter = Calendar.current.isDate(date, inSameDayAs: now) ? time : weekdayTime
+        return "reset at " + formatter.string(from: date)
+    }
+
     /// "started 1:10 PM".
     static func started(_ date: Date) -> String {
         "started " + time.string(from: date)
@@ -93,9 +110,9 @@ enum Format {
         (path as NSString).lastPathComponent
     }
 
+    /// "Sources/notchcode" for "Sources/notchcode/Theme.swift"; empty at the root.
     static func directory(_ path: String) -> String {
-        let dir = (path as NSString).deletingLastPathComponent
-        return dir.isEmpty ? "" : dir + "/"
+        (path as NSString).deletingLastPathComponent
     }
 
     /// "main · Editing": the branch, then extras. The worktree is already in `displayFull`.

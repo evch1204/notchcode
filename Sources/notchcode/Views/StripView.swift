@@ -90,6 +90,8 @@ struct ToolButton: View {
     var badge: Int? = nil
     var width: CGFloat = Theme.Size.toolWidth
     let namespace: Namespace.ID
+    /// The mouse entered (true) or left (false) this tool; drives the name caption.
+    var onHover: (Bool) -> Void = { _ in }
     let action: () -> Void
 
     static let selectionId = "toolSelection"
@@ -132,7 +134,9 @@ struct ToolButton: View {
                     .matchedGeometryEffect(id: Self.focusId, in: namespace)
             }
         }
-        .help(tab.label)
+        // The name shows as a caption under the strip (`ToolLabelPill`), not a tooltip:
+        // tooltips are slow and unreliable on a non-activating panel.
+        .onHover(perform: onHover)
     }
 }
 
@@ -165,7 +169,8 @@ struct ToolStrip: View {
                     focusRing: focusRing,
                     badge: (!compact && item.element == .sessions) ? sessionCount : nil,
                     width: width,
-                    namespace: namespace
+                    namespace: namespace,
+                    onHover: { state.hoverTool(item.element, inside: $0) }
                 ) {
                     onSelect(item.element)
                 }
@@ -179,11 +184,11 @@ struct ToolStrip: View {
                     selected: selected == .settings,
                     focusRing: focusRing,
                     width: Theme.Size.gearWidth,
-                    namespace: namespace
+                    namespace: namespace,
+                    onHover: { state.hoverTool(.settings, inside: $0) }
                 ) {
                     onSelect(.settings)
                 }
-                .help("Settings (\(Theme.Keys.settings))")
                 .unfoldRight(CardTab.browsable.count + 1)
             }
         }
@@ -233,6 +238,78 @@ struct HoverToolsWing<Content: View>: View {
             }
         }
         .animation(reveal ? Theme.Motion.toolsRevealIn : Theme.Motion.toolsRevealOut, value: reveal)
+    }
+}
+
+/// A collapsed strip's left wing. While the tools show in the right wing and one is
+/// named, the wing crossfades from its usual content to that tool's name: below the
+/// collapsed strip is outside the black, and the right wing has no room left beside the
+/// tools, so the name takes the other wing. Nothing moves; nothing sits over the camera.
+@MainActor
+struct HoverToolsNameWing<Content: View>: View {
+    @ObservedObject var state: AppState
+    let content: Content
+
+    init(state: AppState, @ViewBuilder content: () -> Content) {
+        self.state = state
+        self.content = content()
+    }
+
+    var body: some View {
+        let reveal = state.hovering && state.prefs.openGesture == .click
+        let name = reveal ? state.toolLabel : nil
+        ZStack(alignment: .leading) {
+            if let name {
+                Text(name.label)
+                    .font(Theme.Fonts.captionMedium)
+                    .foregroundStyle(Theme.Colors.wingsName)
+                    .lineLimit(1)
+                    .transition(.opacity)
+                    .id(name)
+            } else {
+                content
+                    .transition(.opacity)
+            }
+        }
+        .animation(Theme.Motion.toolLabelFade, value: name)
+    }
+}
+
+/// The open card's tool name: a small caption pill centred on `x`, hung just below the
+/// strip's hairline. An overlay, so it never moves anything; it glides to the next tool.
+/// Reduce Motion: it appears, moves and leaves without a fade.
+@MainActor
+struct ToolLabelPill: View {
+    let tab: CardTab?
+    let centre: (CardTab) -> CGFloat?
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            if let tab, let x = centre(tab) {
+                Text(tab.label)
+                    .font(Theme.Fonts.toolLabel)
+                    .foregroundStyle(Theme.Colors.toolLabelText)
+                    .lineLimit(1)
+                    .fixedSize()
+                    .padding(.horizontal, Theme.Size.toolLabelHPadding)
+                    .frame(height: Theme.Size.toolLabelHeight)
+                    .background(
+                        RoundedRectangle(cornerRadius: Theme.Radius.toolLabel, style: .continuous)
+                            .fill(Theme.Colors.toolLabelFill)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Theme.Radius.toolLabel, style: .continuous)
+                            .strokeBorder(Theme.Colors.toolLabelStroke, lineWidth: Theme.Size.hairline)
+                    )
+                    // Centred on the tool: the pill's own width is unknown here, so it is
+                    // placed in a zero-width frame at `x` and centred on it.
+                    .frame(width: 0, alignment: .center)
+                    .offset(x: x, y: Theme.Size.toolLabelDrop)
+                    .transition(.opacity)
+            }
+        }
+        .animation(Theme.Motion.toolLabelFade, value: tab)
+        .allowsHitTesting(false)
     }
 }
 
