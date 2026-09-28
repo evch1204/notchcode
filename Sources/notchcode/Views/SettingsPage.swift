@@ -1,5 +1,5 @@
 // SettingsPage.swift
-// Settings as a page inside the card (gear in the footer, or ⌘,). Never a
+// Settings as a page inside the card (the gear in the strip, or ⌘,). Never a
 // separate window. Compact rows in inset groups, scrollable, "‹ Back" (or esc)
 // returns to the tab it came from. Every control writes straight into
 // AppState.prefs, which saves itself.
@@ -73,8 +73,8 @@ struct SettingsPage: View {
                         SettingsRow(label: "Peek length", enabled: state.prefs.showPeeks) {
                             KeycapStepper(
                                 value: $state.prefs.peekSeconds,
-                                range: Theme.Motion.peekSecondsRange,
-                                step: Theme.Motion.peekSecondsStep,
+                                range: Theme.Timing.peekSecondsRange,
+                                step: Theme.Timing.peekSecondsStep,
                                 text: { "\(Int($0)) s" },
                                 enabled: state.prefs.showPeeks
                             )
@@ -267,16 +267,16 @@ struct SegmentedPills<Value: Hashable>: View {
                         .font(Theme.Fonts.captionMedium)
                         .foregroundStyle(selected ? Theme.Colors.ink : Theme.Colors.inkSecondary)
                         .lineLimit(1)
-                        .padding(.horizontal, Theme.Size.segmentHPadding)
-                        .frame(height: Theme.Size.segmentHeight - 2 * Theme.Size.segmentInset)
-                        .background(Capsule(style: .continuous).fill(selected ? Theme.Colors.segmentSelected : Color.clear))
+                        .padding(.horizontal, Theme.Size.pickerHPadding)
+                        .frame(height: Theme.Size.pickerHeight - 2 * Theme.Size.pickerInset)
+                        .background(Capsule(style: .continuous).fill(selected ? Theme.Colors.pickerSelected : Color.clear))
                         .contentShape(Capsule(style: .continuous))
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(Theme.Size.segmentInset)
-        .background(Capsule(style: .continuous).fill(Theme.Colors.segmentTrack))
+        .padding(Theme.Size.pickerInset)
+        .background(Capsule(style: .continuous).fill(Theme.Colors.pickerTrack))
     }
 }
 
@@ -317,7 +317,7 @@ struct KeycapStepper: View {
             Button {
                 value = max(range.lowerBound, value - step)
             } label: {
-                Keycap(Theme.Keys.minus)
+                Keycap(Theme.Glyphs.minus)
             }
             .buttonStyle(.plain)
             .disabled(!enabled || value <= range.lowerBound)
@@ -344,14 +344,17 @@ struct KeycapStepper: View {
 struct SmallPillStyle: ButtonStyle {
     var primary = false
 
+    /// A capsule segment: the same press and fill behaviour as the strip's segments.
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(Theme.Fonts.captionMedium)
-            .foregroundStyle(primary ? Theme.Colors.primaryText : Theme.Colors.ink)
-            .padding(.horizontal, Theme.Size.backPillHPadding)
-            .frame(height: Theme.Size.backPillHeight)
-            .background(Capsule(style: .continuous).fill(primary ? Theme.Colors.primaryFill : Theme.Colors.ghostFill))
-            .contentShape(Capsule(style: .continuous))
-            .opacity(configuration.isPressed ? Theme.Opacity.pressed : 1)
+        SegmentBody(
+            label: configuration.label
+                .font(Theme.Fonts.captionMedium)
+                .foregroundStyle(primary ? Theme.Colors.primaryText : Theme.Colors.ink)
+                .padding(.horizontal, Theme.Size.backPillHPadding)
+                .frame(height: Theme.Size.backPillHeight),
+            pressed: configuration.isPressed,
+            fill: primary ? Theme.Colors.primaryFill : Theme.Colors.ghostFill,
+            capsule: true
+        )
     }
 }

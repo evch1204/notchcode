@@ -23,11 +23,11 @@ struct RestingView: View {
                         .fill(session?.state == .done ? Theme.Colors.restingDone : Theme.Colors.restingIdle)
                         .frame(width: Theme.Size.dot, height: Theme.Size.dot)
                         .frame(width: Theme.Size.glyph, height: Theme.Size.glyph)
-                    Text(session?.displayFull ?? "notchcode")
+                    Text(session.displayOrApp)
                         .font(Theme.Fonts.captionMedium)
                         .foregroundStyle(Theme.Colors.wingsName)
                         .opacity(state.hovering ? Theme.Opacity.restingHover : Theme.Opacity.resting)
-                        .animation(state.hovering ? Theme.Motion.rimIn : Theme.Motion.rimOut, value: state.hovering)
+                        .animation(state.hovering ? Theme.Motion.hoverIn : Theme.Motion.hoverOut, value: state.hovering)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
@@ -35,11 +35,11 @@ struct RestingView: View {
         } right: {
             HoverToolsWing(state: state, bodyWidth: bodySize.width) {
                 if others > 0 {
-                    Text(others == 1 ? "+1 session" : "+\(others) sessions")
+                    Text(Format.otherSessions(others))
                         .font(Theme.Fonts.caption)
                         .foregroundStyle(Theme.Colors.wingsCountText)
                         .lineLimit(1)
-                        .help(others == 1 ? "1 other session" : "\(others) other sessions")
+                        .help(Format.otherSessionsHelp(others))
                 }
             }
         }

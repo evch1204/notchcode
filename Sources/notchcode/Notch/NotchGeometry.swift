@@ -102,6 +102,11 @@ struct NotchLayout: Equatable {
         return CGSize(width: body.width + 2 * topRadius(for: mode), height: body.height)
     }
 
+    /// Width a wing's content may use: the wing minus the inset kept free at its outer edge.
+    func wingContentWidth(bodyWidth: CGFloat) -> CGFloat {
+        max(0, wingWidth(bodyWidth: bodyWidth) - Theme.Size.wingEdgeInset)
+    }
+
     /// Width of one wing's content column for a given body width.
     func wingWidth(bodyWidth: CGFloat) -> CGFloat {
         max(0, (bodyWidth - notchWidth) / 2 - Theme.Size.sidePadding - Theme.Size.wingInnerGap)

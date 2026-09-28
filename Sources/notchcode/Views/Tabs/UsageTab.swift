@@ -52,7 +52,7 @@ struct UsageTab: View {
                 .frame(height: Theme.Size.usageTokenBlockHeight)
 
             // "updated 3m ago" has to age on its own while the status line is quiet.
-            TimelineView(.periodic(from: .now, by: Theme.Motion.limitsFootnoteTick)) { context in
+            TimelineView(.periodic(from: .now, by: Theme.Timing.limitsFootnoteTick)) { context in
                 Text(footnote(now: context.date))
                     .font(Theme.Fonts.tiny)
                     .foregroundStyle(Theme.Colors.inkTertiary)

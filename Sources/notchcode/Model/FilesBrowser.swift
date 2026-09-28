@@ -258,7 +258,7 @@ extension AppState {
     private func applyPreview(_ loaded: LoadedPreview, key: String) {
         if previews[key] == loaded { return }
         // Keep the newest few: the one showing plus a handful to flip back to.
-        if previews[key] == nil && previews.count >= Theme.Size.maxCachedPreviews {
+        if previews[key] == nil && previews.count >= Theme.Limits.maxCachedPreviews {
             let keep = focusedSession.flatMap { s in openedFile[s.id].map { Self.previewKey(cwd: s.cwd, path: $0) } }
             if let drop = previews.keys.first(where: { $0 != keep }) { previews[drop] = nil }
         }

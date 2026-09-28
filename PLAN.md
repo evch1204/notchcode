@@ -39,10 +39,10 @@ The open card is a toolbar window hanging from the notch; the collapsed states s
 |---|---|---|---|
 | Closed | notch only | nothing | a session starts (or always, if the owner picks "pure notch" when idle) |
 | Resting | 420×32 pt, dim | a static dot in the session's colour + the worktree name at 60% · nothing moving. Hover brightens it and lights the rim. Click opens the card | a session works again, or every session is idle 2 h (then closed) |
-| Wings | 470×32 pt | spinner + current verb (Editing, Running tests, Idle) · one dot per session · elapsed, or "N agents" while subagents run · hover: the right wing shows the four tools | the last session ends |
-| Attention, needs you | 620×66 pt, two rows, clay | row 1: Needs you · session · clock; row 2: "Allow Bash?" + the command, then Deny · Always · Allow segments, the countdown draining along Allow · click row 1 or `⌥ space` opens the card | the event is answered |
+| Wings | 470×32 pt | state glyph + the focused worktree name · on the right "N agents" while subagents run, else a state word only for Needs you / Done, then "+N sessions" for other live sessions · hover: the right wing shows the four tools and the left wing names the one under the mouse | the last session ends |
+| Attention, needs you | 640×72 pt (wider when the notch is), two rows, clay | row 1: Needs you · session · clock; row 2: "Allow Bash?" + the command, then Deny · Always · Allow segments, the countdown draining along Allow · click row 1 or `⌥ space` opens the card | the event is answered |
 | Peek | 460×32 pt | one line: file and ±counts, or the question's first line | 4 s |
-| Card | 620 pt wide, grows down to the tool's height | the toolbar: strip on top, bridge, well, footer (see Toolbar decisions) | answered, or `esc` |
+| Card | 640 pt wide (wider when the notch is, so the tools fit), grows down to the tool's height | the toolbar: strip on top, bridge, well, footer (see Toolbar decisions) | answered, or `esc` |
 
 Wings never grow taller for passive events. Only blocking events open the card by themselves.
 

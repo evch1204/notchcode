@@ -11,30 +11,32 @@ import SwiftUI
 // MARK: - Segment style
 
 /// Hover lift and press depress for any segment. A `fill` gives the segment a fixed
-/// colour (action segments); without one it is invisible at rest.
+/// colour (action segments, Settings pills); without one it is invisible at rest.
+/// `capsule` rounds it fully (the Settings pills) instead of the segment radius.
 @MainActor
 struct SegmentStyle: ButtonStyle {
     var fill: Color? = nil
+    var capsule = false
 
     func makeBody(configuration: Configuration) -> some View {
-        SegmentBody(configuration: configuration, fill: fill)
+        SegmentBody(label: configuration.label, pressed: configuration.isPressed, fill: fill, capsule: capsule)
     }
 }
 
+/// The segment's look around any label; `SegmentStyle` and the Settings pills share it.
 @MainActor
-private struct SegmentBody: View {
-    let configuration: ButtonStyleConfiguration
+struct SegmentBody<Label: View>: View {
+    let label: Label
+    let pressed: Bool
     let fill: Color?
+    var capsule = false
     @State private var hovered = false
 
     var body: some View {
-        let pressed = configuration.isPressed
-        configuration.label
-            .background(
-                RoundedRectangle(cornerRadius: Theme.Radius.segment, style: .continuous)
-                    .fill(background(pressed: pressed))
-            )
-            .contentShape(RoundedRectangle(cornerRadius: Theme.Radius.segment, style: .continuous))
+        let shape = RoundedRectangle(cornerRadius: capsule ? .infinity : Theme.Radius.segment, style: .continuous)
+        label
+            .background(shape.fill(background(pressed: pressed)))
+            .contentShape(shape)
             .scaleEffect(pressed && !Theme.Motion.reduceMotion ? Theme.Motion.pressScale : 1)
             .animation(Theme.Motion.press, value: pressed)
             .animation(Theme.Motion.hoverLift, value: hovered)
@@ -64,7 +66,7 @@ struct PopIn: ViewModifier {
             .onAppear {
                 guard !Theme.Motion.reduceMotion else { scale = 1; return }
                 let rise = Theme.Motion.actionPopDuration * Theme.Motion.actionPopRiseShare
-                withAnimation(.easeOut(duration: rise).delay(Theme.Motion.unfoldDelay)) {
+                withAnimation(Theme.Motion.actionPopRise) {
                     scale = Theme.Motion.actionPopOvershoot
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + Theme.Motion.unfoldDelay + rise) {
@@ -130,13 +132,24 @@ struct ToolButton: View {
             if selected && focusRing {
                 RoundedRectangle(cornerRadius: Theme.Radius.toolFocus, style: .continuous)
                     .strokeBorder(Theme.Colors.toolFocusRing, lineWidth: Theme.Size.toolFocusLine)
-                    .padding(Theme.Size.toolFocusInset)
+                    .padding(-Theme.Size.toolFocusOutset)
                     .matchedGeometryEffect(id: Self.focusId, in: namespace)
             }
         }
         // The name shows as a caption under the strip (`ToolLabelPill`), not a tooltip:
         // tooltips are slow and unreliable on a non-activating panel.
         .onHover(perform: onHover)
+        // Where this tool is, for the bridge and the caption to hang from.
+        .anchorPreference(key: ToolAnchorsKey.self, value: .bounds) { [tab: $0] }
+    }
+}
+
+/// Each tool's bounds in the strip, measured, so the card hangs its bridge and the tool
+/// name caption under the real icon instead of re-deriving the strip's layout.
+struct ToolAnchorsKey: PreferenceKey {
+    static let defaultValue: [CardTab: Anchor<CGRect>] = [:]
+    static func reduce(value: inout [CardTab: Anchor<CGRect>], nextValue: () -> [CardTab: Anchor<CGRect>]) {
+        value.merge(nextValue()) { _, new in new }
     }
 }
 
@@ -160,7 +173,7 @@ struct ToolStrip: View {
         let width = compact
             ? max(0, min(Theme.Size.compactToolWidth, (available - (count - 1) * gap) / count))
             : Theme.Size.toolWidth
-        let sessionCount = state.sessionGroups.reduce(0) { $0 + $1.sessions.count }
+        let sessionCount = state.sessions.count
         HStack(spacing: gap) {
             ForEach(Array(CardTab.browsable.enumerated()), id: \.offset) { item in
                 ToolButton(
@@ -225,7 +238,7 @@ struct HoverToolsWing<Content: View>: View {
 
     var body: some View {
         let reveal = state.hovering && state.prefs.openGesture == .click
-        let available = state.layout.wingWidth(bodyWidth: bodyWidth) - Theme.Size.wingEdgeInset
+        let available = state.layout.wingContentWidth(bodyWidth: bodyWidth)
         ZStack(alignment: .trailing) {
             if reveal {
                 ToolStrip(state: state, selected: nil, compact: true, available: available) { tab in
@@ -237,7 +250,7 @@ struct HoverToolsWing<Content: View>: View {
                     .transition(.opacity)
             }
         }
-        .animation(reveal ? Theme.Motion.toolsRevealIn : Theme.Motion.toolsRevealOut, value: reveal)
+        .animation(reveal ? Theme.Motion.hoverIn : Theme.Motion.hoverOut, value: reveal)
     }
 }
 
@@ -325,10 +338,10 @@ struct StatusSegment: View {
 
     var body: some View {
         HStack(spacing: Theme.Size.statusSpacing) {
-            CircledStateGlyph(state: shown)
+            StateGlyph(state: shown, circled: true)
                 .unfoldLeft(0)
             VStack(alignment: .leading, spacing: 0) {
-                Text(session?.displayFull ?? "notchcode")
+                Text(session.displayOrApp)
                     .font(Theme.Fonts.bodySemibold)
                     .foregroundStyle(Theme.Colors.ink)
                     .lineLimit(1)
@@ -344,14 +357,13 @@ struct StatusSegment: View {
     /// time follows the model: "main · opus · started 1:10 PM · Editing".
     private func subtitle(_ session: Session) -> some View {
         let running = state.runningAgents(for: session.id)
-        let shownAgents = Array(running.prefix(Theme.Size.maxHeaderAgents))
-        var extras: [String] = []
-        if let model = state.modelShortName(for: session.id) { extras.append(model) }
-        if state.isAmbiguous(session) {
-            extras.append(Format.started(state.startTime(for: session)))
-        }
-        if let verb = session.verb, state.shownState(session) == .working { extras.append(verb) }
-        let text = Format.sessionSubtitle(session, extra: extras.joined(separator: Theme.Glyphs.separator))
+        let shownAgents = Array(running.prefix(Theme.Limits.maxStatusAgents))
+        let text = Format.statusSubtitle(
+            session,
+            model: state.modelShortName(for: session.id),
+            started: state.isAmbiguous(session) ? state.startTime(for: session) : nil,
+            verb: state.shownState(session) == .working ? session.verb : nil
+        )
         return HStack(spacing: Theme.Size.spaceS) {
             if !text.isEmpty {
                 Text(text + (running.isEmpty ? "" : Theme.Glyphs.separator))
@@ -377,111 +389,88 @@ struct StatusSegment: View {
         .foregroundStyle(Theme.Colors.inkTertiary)
     }
 }
+// MARK: - Action segments
 
-/// Spark pulsing while working, clay triangle when it needs you, green check when done,
-/// dim dot when idle, in an inset circle.
-@MainActor
-private struct CircledStateGlyph: View {
-    let state: SessionState
+/// An action's part in a request: Allow (primary, white), Deny (red tint), or neutral.
+enum ActionRole { case allow, deny, neutral }
 
-    var body: some View {
-        ZStack {
-            Circle().fill(Theme.Colors.inset)
-            switch state {
-            case .working:
-                SparkleGlyph(pulsing: true)
-            case .needsYou:
-                BreathingTriangle()
-            case .done:
-                Image(systemName: Theme.Symbols.done)
-                    .font(Theme.Fonts.symbol(Theme.Size.glyph))
-                    .foregroundStyle(Theme.Colors.doneGlyph)
-            case .idle:
-                Circle()
-                    .fill(Theme.Colors.idleGlyph)
-                    .frame(width: Theme.Size.dot, height: Theme.Size.dot)
-            }
+/// One action of a request, as the strip, the attention row and the footer show it.
+struct RequestAction {
+    let title: String
+    let key: String?
+    let help: String
+    let role: ActionRole
+}
+
+extension PendingRequest.Kind {
+    /// Deny · middle · Allow for a permission (Deny · Always · Allow) or a commit
+    /// (Skip · Edit · Commit). The one table every surface reads.
+    var actions: (deny: RequestAction, middle: RequestAction, allow: RequestAction) {
+        switch self {
+        case .permission:
+            return (
+                RequestAction(title: "Deny", key: Theme.Keys.delete, help: "Deny (\(Theme.Keys.delete))", role: .deny),
+                RequestAction(title: "Always", key: Theme.Keys.always, help: "Allow and remember (\(Theme.Keys.always))", role: .neutral),
+                RequestAction(title: "Allow", key: Theme.Keys.enter, help: "Allow (\(Theme.Keys.enter))", role: .allow)
+            )
+        case .commit:
+            return (
+                RequestAction(title: "Skip", key: Theme.Keys.delete, help: "Skip this commit (\(Theme.Keys.delete))", role: .deny),
+                RequestAction(title: "Edit", key: Theme.Keys.edit, help: "Ask for a different message (\(Theme.Keys.edit))", role: .neutral),
+                RequestAction(title: "Commit", key: Theme.Keys.enter, help: "Commit (\(Theme.Keys.enter))", role: .allow)
+            )
         }
-        .frame(width: Theme.Size.iconCircle, height: Theme.Size.iconCircle)
     }
 }
 
-// MARK: - Action segments
-
-/// One action: Allow (white, the countdown draining along its bottom edge), Deny (red
-/// tint), or a neutral one (Always, Edit).
+/// One action segment. Allow carries the countdown draining along its bottom edge.
 @MainActor
 struct ActionSegment: View {
-    enum Variant { case allow, deny, neutral }
-
     let title: String
     var key: String? = nil
-    let variant: Variant
+    let role: ActionRole
     var countdown: PendingRequest? = nil
     let action: () -> Void
 
     var body: some View {
+        let colors = Theme.Colors.action(role)
         Button(action: action) {
             HStack(spacing: Theme.Size.actionKeyGap) {
                 Text(title)
                     .font(Theme.Fonts.action)
-                    .foregroundStyle(textColor)
+                    .foregroundStyle(colors.text)
                     .lineLimit(1)
                     .fixedSize()
                 if let key {
-                    Keycap(key, onLight: variant == .allow)
+                    Keycap(key, onLight: role == .allow)
                 }
             }
             .padding(.horizontal, Theme.Size.actionHPadding)
             .frame(height: Theme.Size.actionHeight)
             .overlay(alignment: .bottomLeading) {
                 if let countdown {
-                    CountdownBar(request: countdown, tint: barColor)
+                    CountdownBar(request: countdown, tint: colors.bar)
                         .padding(.horizontal, Theme.Size.countdownBarInset)
                         .padding(.bottom, Theme.Size.spaceXS)
                 }
             }
         }
-        .buttonStyle(SegmentStyle(fill: fill))
-    }
-
-    private var fill: Color {
-        switch variant {
-        case .allow: return Theme.Colors.allowFill
-        case .deny: return Theme.Colors.denyFill
-        case .neutral: return Theme.Colors.neutralActionFill
-        }
-    }
-
-    private var textColor: Color {
-        switch variant {
-        case .allow: return Theme.Colors.allowText
-        case .deny: return Theme.Colors.denyText
-        case .neutral: return Theme.Colors.neutralActionText
-        }
-    }
-
-    private var barColor: Color {
-        variant == .allow ? Theme.Colors.allowBar : Theme.Colors.inkSecondary
+        .buttonStyle(SegmentStyle(fill: colors.fill))
     }
 }
 
-/// A 2 pt bar that drains from full to empty over the request's deadline, every frame,
-/// driven by the deadline date. Reduce Motion: it steps once a second.
+/// A bar that drains from full to empty over the request's deadline.
 @MainActor
 struct CountdownBar: View {
     let request: PendingRequest
     var tint: Color = Theme.Colors.allowBar
 
     var body: some View {
-        let interval: Double? = Theme.Motion.reduceMotion ? Theme.Motion.clockTick : nil
-        TimelineView(.animation(minimumInterval: interval, paused: false)) { context in
-            let total = max(1, request.deadline.timeIntervalSince(request.receivedAt))
-            let remaining = max(0, request.deadline.timeIntervalSince(context.date))
+        RequestTimeline(request: request) { fraction, _ in
             GeometryReader { geo in
                 Capsule(style: .continuous)
                     .fill(tint)
-                    .frame(width: geo.size.width * CGFloat(remaining / total))
+                    .frame(width: geo.size.width * CGFloat(fraction))
             }
             .frame(height: Theme.Size.countdownBar)
         }
@@ -498,26 +487,22 @@ struct ActionStrip: View {
     var allKeys = false
 
     var body: some View {
-        let commit = request.kind == .commit
+        let actions = request.kind.actions
         HStack(spacing: Theme.Size.actionGap) {
-            ActionSegment(title: commit ? "Skip" : "Deny", key: Theme.Keys.delete, variant: .deny) {
+            ActionSegment(title: actions.deny.title, key: actions.deny.key, role: actions.deny.role) {
                 state.deny(id: request.id)
             }
-            .help(commit ? "Skip this commit (\(Theme.Keys.delete))" : "Deny (\(Theme.Keys.delete))")
+            .help(actions.deny.help)
             .unfoldRight(0)
-            ActionSegment(
-                title: commit ? "Edit" : "Always",
-                key: allKeys ? (commit ? Theme.Keys.edit : Theme.Keys.always) : nil,
-                variant: .neutral
-            ) {
-                if commit { state.requestCommitEdit(id: request.id) } else { state.allowAlways(id: request.id) }
+            ActionSegment(title: actions.middle.title, key: allKeys ? actions.middle.key : nil, role: actions.middle.role) {
+                if request.kind == .commit { state.requestCommitEdit(id: request.id) } else { state.allowAlways(id: request.id) }
             }
-            .help(commit ? "Ask for a different message (\(Theme.Keys.edit))" : "Allow and remember (\(Theme.Keys.always))")
+            .help(actions.middle.help)
             .unfoldRight(1)
-            ActionSegment(title: commit ? "Commit" : "Allow", key: Theme.Keys.enter, variant: .allow, countdown: request) {
+            ActionSegment(title: actions.allow.title, key: actions.allow.key, role: actions.allow.role, countdown: request) {
                 state.allow(id: request.id)
             }
-            .help(commit ? "Commit (\(Theme.Keys.enter))" : "Allow (\(Theme.Keys.enter))")
+            .help(actions.allow.help)
             .popIn()
             .unfoldRight(2)
         }
@@ -535,17 +520,18 @@ struct StripRightWing: View {
     @ObservedObject var state: AppState
 
     var body: some View {
-        if let request = state.currentPending {
+        switch state.cardContent {
+        case .request(let request):
             ActionStrip(state: state, request: request)
-        } else if state.showingQuestion, let question = state.question {
+        case .question(let question):
             // A question can only be answered in the terminal: one segment, the teleport.
             let session = state.session(id: question.sessionId)
-            ActionSegment(title: "Answer in \(state.terminalName(for: session))", key: Theme.Keys.enter, variant: .allow) {
+            ActionSegment(title: "Answer in \(state.terminalName(for: session))", key: Theme.Keys.enter, role: .allow) {
                 state.teleport(session: session)
             }
             .popIn()
             .unfoldRight(0)
-        } else {
+        case .settings, .tool:
             ToolStrip(state: state, selected: state.selectedTab, focusRing: true, settings: true) { tab in
                 if tab == .settings {
                     if state.selectedTab == .settings { state.closeSettings() } else { state.openSettings() }

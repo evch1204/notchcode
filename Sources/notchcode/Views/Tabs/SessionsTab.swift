@@ -84,7 +84,7 @@ struct SessionsTab: View {
                     Image(systemName: Theme.Symbols.chevron)
                         .font(Theme.Fonts.chevron)
                         .foregroundStyle(Theme.Colors.inkSecondary)
-                        .frame(width: Theme.Size.chevronColumn + Theme.Size.rowHPadding, height: Theme.Size.pillHeight)
+                        .frame(width: Theme.Size.chevronColumn + Theme.Size.rowHPadding, height: Theme.Size.chevronHitHeight)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -222,9 +222,9 @@ private struct SessionRow: View {
             Spacer(minLength: Theme.Size.spaceM)
 
             HStack(spacing: Theme.Size.spaceM) {
-                Text(Format.stateText(session, pending: isPending))
+                Text(Format.stateText(shownState, verb: session.verb))
                     .font(Theme.Fonts.captionMedium)
-                    .foregroundStyle(stateColor)
+                    .foregroundStyle(Theme.Colors.stateText(shownState))
                     .lineLimit(1)
                 if shownState == .working, let turnStart {
                     ElapsedText(since: turnStart, color: Theme.Colors.inkTertiary)
@@ -239,15 +239,6 @@ private struct SessionRow: View {
         }
         .padding(.leading, Theme.Size.rowHPadding)
         .padding(.vertical, Theme.Size.rowVPadding)
-    }
-
-    private var stateColor: Color {
-        switch shownState {
-        case .needsYou: return Theme.Colors.attentionText
-        case .working: return Theme.Colors.clay
-        case .done: return Theme.Colors.green
-        case .idle: return Theme.Colors.inkTertiary
-        }
     }
 }
 

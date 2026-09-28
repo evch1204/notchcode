@@ -32,56 +32,6 @@ struct Keycap: View {
     }
 }
 
-// MARK: - Pill buttons
-
-@MainActor
-struct PillButtonStyle: ButtonStyle {
-    enum Variant { case ghost, primary, destructive }
-    var variant: Variant = .ghost
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(Theme.Fonts.bodySemibold)
-            .foregroundStyle(foreground)
-            .padding(.horizontal, Theme.Size.pillHPadding)
-            .frame(maxWidth: .infinity)
-            .frame(height: Theme.Size.pillHeight)
-            .background(Capsule(style: .continuous).fill(background))
-            .contentShape(Capsule(style: .continuous))
-            .opacity(configuration.isPressed ? Theme.Opacity.pressed : 1)
-    }
-
-    private var foreground: Color {
-        switch variant {
-        case .ghost: return Theme.Colors.ink
-        case .primary: return Theme.Colors.primaryText
-        case .destructive: return Theme.Colors.red
-        }
-    }
-
-    private var background: Color {
-        switch variant {
-        case .ghost, .destructive: return Theme.Colors.ghostFill
-        case .primary: return Theme.Colors.primaryFill
-        }
-    }
-}
-
-/// Title plus keycap, used inside pill buttons.
-@MainActor
-struct PillLabel: View {
-    let title: String
-    let key: String
-    var onLight = false
-
-    var body: some View {
-        HStack(spacing: Theme.Size.pillSpacing) {
-            Text(title)
-            Keycap(key, onLight: onLight)
-        }
-    }
-}
-
 // MARK: - Motion helpers
 
 private struct PaneOffsetKey: EnvironmentKey {
@@ -296,8 +246,46 @@ struct CountdownRing: View {
     }
 }
 
-/// Ring plus "0:53" until the request's deadline. The ring drains every frame from the
-/// deadline date, so it is right even after the app was busy. Reduce Motion: it jumps once a second.
+extension PendingRequest {
+    /// Seconds left until the deadline at `date`, never below 0.
+    func remaining(at date: Date) -> TimeInterval {
+        max(0, deadline.timeIntervalSince(date))
+    }
+
+    /// Share of the request's time left at `date`, 1 → 0.
+    func remainingFraction(at date: Date) -> Double {
+        remaining(at: date) / max(1, deadline.timeIntervalSince(receivedAt))
+    }
+
+    /// "Allow Bash?" (an MCP tool by its own name) or "Commit?".
+    var headline: String {
+        kind == .commit ? "Commit?" : "Allow \(Format.toolName(tool))?"
+    }
+
+    /// The command or path (an MCP tool's server leads it), or the commit subject.
+    var summary: String {
+        if kind == .commit { return title }
+        guard let server = Format.mcpServer(tool) else { return detail }
+        return detail.isEmpty ? server : server + Theme.Glyphs.separator + detail
+    }
+}
+
+/// Redraws its content every frame until the request's deadline, from the deadline date,
+/// so countdowns stay right even after the app was busy. Reduce Motion: once a second.
+@MainActor
+struct RequestTimeline<Content: View>: View {
+    let request: PendingRequest
+    @ViewBuilder let content: (_ fraction: Double, _ remaining: TimeInterval) -> Content
+
+    var body: some View {
+        let interval: Double? = Theme.Motion.reduceMotion ? Theme.Timing.clockTick : nil
+        TimelineView(.animation(minimumInterval: interval, paused: false)) { context in
+            content(request.remainingFraction(at: context.date), request.remaining(at: context.date))
+        }
+    }
+}
+
+/// Ring plus "0:53" until the request's deadline.
 @MainActor
 struct DeadlineCountdown: View {
     let request: PendingRequest
@@ -305,18 +293,44 @@ struct DeadlineCountdown: View {
     var font: Font = Theme.Fonts.captionMedium
 
     var body: some View {
-        let interval: Double? = Theme.Motion.reduceMotion ? Theme.Motion.clockTick : nil
-        TimelineView(.animation(minimumInterval: interval, paused: false)) { context in
-            let total = max(1, request.deadline.timeIntervalSince(request.receivedAt))
-            let remaining = max(0, request.deadline.timeIntervalSince(context.date))
+        RequestTimeline(request: request) { fraction, remaining in
             HStack(spacing: Theme.Size.spaceS) {
-                CountdownRing(fraction: remaining / total, size: ringSize)
+                CountdownRing(fraction: fraction, size: ringSize)
                 Text(Format.clock(remaining))
                     .font(font)
                     .foregroundStyle(Theme.Colors.attentionText)
                     .fixedSize()
             }
         }
+    }
+}
+
+/// One keycap and what it does, for the card's footer.
+struct KeyHint {
+    let key: String
+    let label: String
+
+    init(_ key: String, _ label: String) {
+        self.key = key
+        self.label = label
+    }
+}
+
+/// "⏎ open  Y copy path:line": keycaps with their tertiary labels, never truncated.
+@MainActor
+struct KeyHints: View {
+    let hints: [KeyHint]
+
+    var body: some View {
+        HStack(spacing: Theme.Size.spaceS) {
+            ForEach(Array(hints.enumerated()), id: \.offset) { item in
+                Keycap(item.element.key)
+                Text(item.element.label)
+                    .font(Theme.Fonts.caption)
+                    .foregroundStyle(Theme.Colors.inkTertiary)
+            }
+        }
+        .fixedSize()
     }
 }
 
@@ -328,7 +342,7 @@ struct ElapsedText: View {
     var color: Color = Theme.Colors.inkSecondary
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: Theme.Motion.clockTick)) { context in
+        TimelineView(.periodic(from: .now, by: Theme.Timing.clockTick)) { context in
             Text(Format.clock(context.date.timeIntervalSince(since)))
                 .font(font)
                 .foregroundStyle(color)
@@ -379,7 +393,7 @@ struct BreathingTriangle: View {
             .foregroundStyle(Theme.Colors.attention)
             .shadow(
                 color: bright ? Theme.Colors.attentionGlow : Theme.Colors.attentionGlowDim,
-                radius: Theme.Motion.breatheRadius
+                radius: Theme.Size.breatheRadius
             )
             .onAppear {
                 guard !Theme.Motion.reduceMotion else { return }
@@ -388,7 +402,7 @@ struct BreathingTriangle: View {
     }
 }
 
-/// A symbol in a tinted circle (peek glyphs, card header icon).
+/// A symbol in a tinted circle (peek glyphs).
 @MainActor
 struct CircleGlyph: View {
     let symbol: String
@@ -413,32 +427,47 @@ struct StatusDot: View {
 
     var body: some View {
         Circle()
-            .fill(Theme.Colors.state(state))
+            .fill(Theme.Colors.stateGlyph(state))
             .frame(width: size, height: size)
     }
 }
 
-/// A small dot with a ring that pulses outward: a running subagent.
+/// A session's state as a glyph: the clay spark pulsing while working, the clay triangle
+/// when it needs you, a green check when done, a dim dot when idle. `circled` sets it in
+/// an inset circle (the open card's status segment).
 @MainActor
-struct PulsingDot: View {
-    var color: Color = Theme.Colors.agentDot
-    var size: CGFloat = Theme.Size.laneDot
-    @State private var pulse = false
+struct StateGlyph: View {
+    let state: SessionState
+    var circled = false
 
     var body: some View {
-        ZStack {
-            if !Theme.Motion.reduceMotion {
-                Circle()
-                    .stroke(color, lineWidth: Theme.Size.ringLine)
-                    .scaleEffect(pulse ? Theme.Motion.pulseScale : Theme.Motion.pulseStartScale)
-                    .opacity(pulse ? 0 : Theme.Opacity.pulseStart)
+        if circled {
+            ZStack {
+                Circle().fill(Theme.Colors.inset)
+                glyph
             }
-            Circle().fill(color)
+            .frame(width: Theme.Size.iconCircle, height: Theme.Size.iconCircle)
+        } else {
+            glyph
+                .frame(width: Theme.Size.glyph, height: Theme.Size.glyph)
         }
-        .frame(width: size, height: size)
-        .onAppear {
-            guard !Theme.Motion.reduceMotion else { return }
-            withAnimation(Theme.Motion.pulse) { pulse = true }
+    }
+
+    @ViewBuilder
+    private var glyph: some View {
+        switch state {
+        case .working:
+            SparkleGlyph(pulsing: true)
+        case .needsYou:
+            BreathingTriangle()
+        case .done:
+            Image(systemName: Theme.Symbols.done)
+                .font(Theme.Fonts.symbol(Theme.Size.glyph))
+                .foregroundStyle(Theme.Colors.stateGlyph(.done))
+        case .idle:
+            Circle()
+                .fill(Theme.Colors.stateGlyph(.idle))
+                .frame(width: Theme.Size.dot, height: Theme.Size.dot)
         }
     }
 }
@@ -452,7 +481,7 @@ struct DiffCells: View {
     let removed: Int
 
     var body: some View {
-        let cells = Theme.Size.diffCellCount
+        let cells = Theme.Limits.diffCellCount
         let total = added + removed
         let greens = total == 0 ? 0 : Int((Double(added) / Double(total) * Double(cells)).rounded())
         let reds = total == 0 ? 0 : cells - greens
@@ -577,7 +606,7 @@ struct DoneCheckGlyph: View {
             let rise = Theme.Motion.checkPopDuration * Theme.Motion.checkPopRiseShare
             DispatchQueue.main.asyncAfter(deadline: .now() + Theme.Motion.checkDelay) {
                 popped = true
-                withAnimation(.easeOut(duration: rise)) { scale = Theme.Motion.checkPopOvershoot }
+                withAnimation(Theme.Motion.checkPopRise) { scale = Theme.Motion.checkPopOvershoot }
                 DispatchQueue.main.asyncAfter(deadline: .now() + rise) {
                     withAnimation(Theme.Motion.checkPopSettle) { scale = 1 }
                 }
@@ -634,7 +663,7 @@ struct AgentSquare: View {
     var body: some View {
         RoundedRectangle(cornerRadius: Theme.Radius.agentSquare, style: .continuous)
             .fill(Theme.Colors.agent(colorIndex))
-            .opacity(finished ? Theme.Colors.agentFinishedOpacity : 1)
+            .opacity(finished ? Theme.Opacity.agentFinished : 1)
             .frame(width: size, height: size)
     }
 }

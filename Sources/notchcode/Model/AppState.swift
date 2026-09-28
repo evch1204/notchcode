@@ -11,8 +11,9 @@ enum NotchMode: Hashable {
     case closed, resting, wings, attention, peek, card
 }
 
+/// The strip's tools, plus Settings behind the gear.
 enum CardTab: Hashable {
-    case changes, files, usage, sessions, permission, commit, question, settings
+    case changes, files, usage, sessions, settings
 
     /// The tabs the owner can move between with 1-4 and tab, left to right.
     static let browsable: [CardTab] = [.sessions, .changes, .files, .usage]
@@ -23,12 +24,19 @@ enum CardTab: Hashable {
         case .files: return "Files"
         case .usage: return "Usage"
         case .sessions: return "Sessions"
-        case .permission: return "Permission"
-        case .commit: return "Commit"
-        case .question: return "Question"
         case .settings: return "Settings"
         }
     }
+}
+
+/// What the open card shows, in priority order: a waiting request, the question, Settings,
+/// or the selected tool's pane. The single source for the well, the strip's right wing, the
+/// bridge, the footer keys and the card's height.
+enum CardContent {
+    case request(PendingRequest)
+    case question(QuestionPreview)
+    case settings
+    case tool(CardTab)
 }
 
 /// Keys the card understands, already decoded from NSEvent.
@@ -142,7 +150,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
             // A new request under the owner's fingers: ⏎ or ⌫ typed for the terminal must not
             // answer it. Answer keys wait `requestKeyGuard`; clicks stay immediate.
             if let id = pending.first?.id, id != oldValue.first?.id {
-                answerKeysAllowedAt = Date().addingTimeInterval(Theme.Motion.requestKeyGuard)
+                answerKeysAllowedAt = Date().addingTimeInterval(Theme.Timing.requestKeyGuard)
                 // The request takes the well; the Files filter is gone, so it must not keep the keys.
                 fileFilterFocused = false
             }
@@ -155,11 +163,15 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     @Published private(set) var isCardOpen = false
     @Published private(set) var question: QuestionPreview? {
         didSet {
-            // The question went away while the card showed it: back to Sessions, so the
-            // well, the filled tool, the bridge and the height all agree again.
-            if question == nil, selectedTab == .question { selectTab(.sessions) }
+            // The question went away while the card showed it: the card falls back to the
+            // selected tool, so the well, the filled tool, the bridge and the height agree.
+            if question == nil, questionShown { questionShown = false }
         }
     }
+    /// The card shows the question (it opened on it) rather than the selected tool.
+    @Published private(set) var questionShown = false
+    /// The card opened for a request; it closes again once no request waits.
+    private var cardOpenedForRequest = false
     @Published private(set) var layout = NotchLayout.fallback
     @Published private(set) var turnStarts: [String: Date] = [:]
     @Published private(set) var turnTitles: [String: String] = [:]
@@ -276,7 +288,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     private var handlers: [String: ReplyHandler] = [:]
     private var deadlineTasks: [String: Task<Void, Never>] = [:]
     /// When a Notification (or a lapsed permission) last said the session waits on the owner.
-    /// `.needsYou` without a pending request lives only this long (Theme.Motion.needsYouLifetime),
+    /// `.needsYou` without a pending request lives only this long (Theme.Timing.needsYouLifetime),
     /// and any later activity for the session clears it.
     private var needsYouSince: [String: Date] = [:]
     private var needsYouTasks: [String: Task<Void, Never>] = [:]
@@ -345,12 +357,11 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
 
     var currentPending: PendingRequest? { pending.first }
 
-    /// The session the wings and the card header are about: the one that needs the owner
+    /// The session the wings and the strip's status segment are about: the one that needs the owner
     /// (the current request's first), else the most recently active live session.
     var primarySession: Session? {
         if let req = currentPending, let s = session(id: req.sessionId) { return s }
-        let pendingIds = Set(pending.map { $0.sessionId })
-        let waiting = sessions.filter { $0.state == .needsYou || pendingIds.contains($0.id) }
+        let waiting = sessions.filter { shownState($0) == .needsYou }
         if let s = waiting.max(by: { $0.lastEventAt < $1.lastEventAt }) { return s }
         let live = sessions.filter { isLive($0) }
         return (live.isEmpty ? sessions : live).max { $0.lastEventAt < $1.lastEventAt }
@@ -418,6 +429,24 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         pending.contains { $0.sessionId == session.id } ? .needsYou : session.state
     }
 
+    /// How many sessions are in each shown state.
+    struct SessionCounts {
+        var working = 0, waiting = 0, done = 0, idle = 0
+    }
+
+    var sessionCounts: SessionCounts {
+        var counts = SessionCounts()
+        for session in sessions {
+            switch shownState(session) {
+            case .working: counts.working += 1
+            case .needsYou: counts.waiting += 1
+            case .done: counts.done += 1
+            case .idle: counts.idle += 1
+            }
+        }
+        return counts
+    }
+
     /// Another listed session runs in the same folder, so the name alone does not tell them apart.
     func isAmbiguous(_ session: Session) -> Bool {
         guard !session.cwd.isEmpty else { return false }
@@ -465,23 +494,35 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     }
 
     var showingQuestion: Bool {
-        currentPending == nil && selectedTab == .question && question != nil
+        if case .question = cardContent { return true }
+        return false
+    }
+
+    var cardContent: CardContent {
+        if let req = currentPending { return .request(req) }
+        if questionShown, let question { return .question(question) }
+        if selectedTab == .settings { return .settings }
+        return .tool(selectedTab)
+    }
+
+    /// The card shows `tab`'s pane (not a request, the question or Settings over it).
+    func isShowingTool(_ tab: CardTab) -> Bool {
+        if case .tool(let shown) = cardContent { return shown == tab }
+        return false
     }
 
     /// Height of the card below the notch row, by what it shows.
     var cardHeight: CGFloat {
-        if let req = currentPending {
+        switch cardContent {
+        case .request(let req):
             if isCardOpen, requestDiffPath(for: req) != nil { return Theme.Size.requestCardHeightExpanded }
             return req.kind == .commit ? Theme.Size.commitCardHeight : Theme.Size.requestCardHeight
-        }
-        if showingQuestion { return Theme.Size.questionCardHeight }
-        switch selectedTab {
-        case .settings: return Theme.Size.settingsCardHeight
-        case .sessions: return Theme.Size.sessionsCardHeight
-        case .changes: return Theme.Size.changesCardHeight
-        case .files: return Theme.Size.filesCardHeight
-        case .usage: return Theme.Size.usageCardHeight
-        default: return Theme.Size.cardHeight
+        case .question: return Theme.Size.questionCardHeight
+        case .settings, .tool(.settings): return Theme.Size.settingsCardHeight
+        case .tool(.sessions): return Theme.Size.sessionsCardHeight
+        case .tool(.changes): return Theme.Size.changesCardHeight
+        case .tool(.files): return Theme.Size.filesCardHeight
+        case .tool(.usage): return Theme.Size.usageCardHeight
         }
     }
 
@@ -493,8 +534,9 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     /// most recent first inside each state.
     private var sessionsByUrgency: [Session] {
         let pendingIds = Set(pending.map { $0.sessionId })
+        // A waiting request ranks above a needs-you without one.
         func rank(_ s: Session) -> Int {
-            pendingIds.contains(s.id) ? Self.urgency(.needsYou) + 1 : Self.urgency(s.state)
+            Self.urgency(shownState(s)) + (pendingIds.contains(s.id) ? 1 : 0)
         }
         return sessions.sorted { a, b in
             let ra = rank(a)
@@ -615,7 +657,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     /// Short diffs open by default; a click or ⏎ flips a row.
     func isDiffOpen(_ item: DiffRowItem) -> Bool {
         let count = Self.diffLines(item.file).count
-        let openByDefault = count > 0 && count < Theme.Size.inlineSnippetMaxLines
+        let openByDefault = count > 0 && count < Theme.Limits.inlineSnippetMaxLines
         return openByDefault != diffToggled.contains(item.key)
     }
 
@@ -834,13 +876,11 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
 
     func openCard(tab: CardTab? = nil) {
         if let req = currentPending {
-            selectedTab = req.kind == .commit ? .commit : .permission
+            cardOpenedForRequest = true
             focusedSessionId = req.sessionId
         } else if let tab {
+            questionShown = false
             selectedTab = tab
-            if tab == .question, let q = question { focusedSessionId = q.sessionId }
-        } else if !CardTab.browsable.contains(selectedTab) && selectedTab != .settings {
-            selectedTab = .sessions
         }
         if focusedSessionId == nil || session(id: focusedSessionId ?? "") == nil {
             focusedSessionId = primarySession?.id
@@ -859,6 +899,8 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     func closeCard() {
         guard isCardOpen else { return }
         isCardOpen = false
+        cardOpenedForRequest = false
+        questionShown = false
         clearToolLabel()
         if !CardTab.browsable.contains(selectedTab) { selectedTab = .sessions }
         fileFilterFocused = false
@@ -905,7 +947,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         hint = text
         hintTask?.cancel()
         hintTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(Theme.Motion.hintDuration))
+            try? await Task.sleep(for: .seconds(Theme.Timing.hintDuration))
             if Task.isCancelled { return }
             self?.hint = nil
         }
@@ -945,14 +987,23 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         } else if currentPending != nil {
             openCard()
         } else if question != nil {
-            openCard(tab: .question)
+            openQuestion()
         } else {
             // From the notch the card always lands on Sessions; only a blocking request (above) differs.
             openCard(tab: .sessions)
         }
     }
 
+    /// Opens the card on the question preview (it can only be answered in the terminal).
+    func openQuestion() {
+        guard let question else { return }
+        focusedSessionId = question.sessionId
+        questionShown = true
+        openCard()
+    }
+
     func selectTab(_ tab: CardTab) {
+        questionShown = false
         if tab != selectedTab {
             rowCursor = 0
             let order = CardTab.browsable
@@ -1018,18 +1069,18 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         closeCard()
     }
 
-    /// Returns true when the key was used.
     /// ⌘Q while the card is open, or the Quit button in Settings. Pending requests are left
     /// unanswered on purpose: their hooks time out and the terminal prompt takes over.
     func quit() {
         NSApp.terminate(nil)
     }
 
+    /// Returns true when the key was used.
     func handleKey(_ key: NotchKey) -> Bool {
         guard mode == .card || mode == .attention else { return false }
         if key == .quit { quit(); return true }
 
-        let filesOpen = isCardOpen && currentPending == nil && selectedTab == .files
+        let filesOpen = isCardOpen && isShowingTool(.files)
         if key == .escape, filesOpen, fileFilterFocused || !fileFilter.isEmpty {
             // Esc clears the filter first; a second esc closes the card.
             withAnimation(Theme.Motion.filterRows) { fileFilter = "" }
@@ -1049,7 +1100,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
             if let req = currentPending, requestDiffPath(for: req) != nil {
                 // Esc closes the diff first, then the card.
                 closeRequestDiff()
-            } else if selectedTab == .settings && currentPending == nil {
+            } else if case .settings = cardContent {
                 closeSettings()
             } else {
                 closeCard()
@@ -1066,7 +1117,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         }
         if key == .teleport {
             let ordered = orderedSessions
-            if isCardOpen, currentPending == nil, selectedTab == .sessions, ordered.indices.contains(sessionCursor) {
+            if isCardOpen, isShowingTool(.sessions), ordered.indices.contains(sessionCursor) {
                 teleport(session: ordered[sessionCursor])
             } else {
                 teleport(session: focusedSession)
@@ -1095,10 +1146,10 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
                 if requestDiffPath(for: req) != nil {
                     requestDiffScroll = RequestDiffScroll(
                         seq: requestDiffScroll.seq + 1,
-                        delta: step * Theme.Size.requestDiffScrollLines
+                        delta: step * Theme.Limits.requestDiffScrollLines
                     )
                 } else if req.kind == .commit, !req.files.isEmpty {
-                    let shown = min(req.files.count, Theme.Size.commitMaxFileRows)
+                    let shown = min(req.files.count, Theme.Limits.commitMaxFileRows)
                     requestRowCursor = max(0, min(shown - 1, requestRowCursor + step))
                 } else {
                     return false
@@ -1137,8 +1188,14 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
                 return true
             case .number:
                 return true // options are read-only; swallow so nothing else reacts
+            case .nextTab:
+                cycleTab(by: 1)
+                return true
+            case .previousTab:
+                cycleTab(by: -1)
+                return true
             default:
-                break
+                return false // the tool's keys wait until a tool shows
             }
         }
 
@@ -1246,7 +1303,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
             detail: Self.permissionDetail(tool: tool, input: input),
             reason: Self.permissionReason(payload: payload),
             receivedAt: now,
-            deadline: now.addingTimeInterval(Theme.Motion.permissionDeadline)
+            deadline: now.addingTimeInterval(Theme.Timing.permissionDeadline)
         )
         // A file change: show what it would do, and name the file in the title.
         if let proposed = Self.proposedChange(tool: tool, input: input, cwd: envelope.resolvedCWD, readsDisk: readsLocalFiles) {
@@ -1282,7 +1339,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
                 reason: payload["tool_input"]?["description"]?.stringValue,
                 files: latestFiles,
                 receivedAt: now,
-                deadline: now.addingTimeInterval(Theme.Motion.permissionDeadline)
+                deadline: now.addingTimeInterval(Theme.Timing.permissionDeadline)
             )
             enqueue(request, reply: reply)
             updateSession(sessionId) { $0.state = .needsYou }
@@ -1527,7 +1584,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         updateSession(sid) { $0.state = .needsYou }
         needsYouTasks[sid]?.cancel()
         needsYouTasks[sid] = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(Theme.Motion.needsYouLifetime))
+            try? await Task.sleep(for: .seconds(Theme.Timing.needsYouLifetime))
             if Task.isCancelled { return }
             guard let self, self.needsYouSince[sid] == now else { return }
             self.settle(sid)
@@ -1542,7 +1599,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
 
     private func needsYouIsFresh(_ sid: String, now: Date = Date()) -> Bool {
         guard let since = needsYouSince[sid] else { return false }
-        return now.timeIntervalSince(since) < Theme.Motion.needsYouLifetime
+        return now.timeIntervalSince(since) < Theme.Timing.needsYouLifetime
     }
 
     /// Makes `.needsYou` true or gone. A pending request always means needs you; otherwise it
@@ -1628,7 +1685,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
 
     private func isHookDriven(_ sid: String, now: Date = Date()) -> Bool {
         guard let seen = hookSeenAt[sid] else { return false }
-        return now.timeIntervalSince(seen) < Theme.Motion.hookDrivenWindow
+        return now.timeIntervalSince(seen) < Theme.Timing.hookDrivenWindow
     }
 
     /// Merges sessions found on disk by id. Hooks win on state for sessions they drive.
@@ -1649,7 +1706,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         for found in discovered {
             // The transcript moved on after Claude said it needed the owner: it no longer does.
             if let since = needsYouSince[found.id],
-               found.lastActivityAt > since.addingTimeInterval(Theme.Motion.needsYouActivityGrace) {
+               found.lastActivityAt > since.addingTimeInterval(Theme.Timing.needsYouActivityGrace) {
                 clearNeedsYou(found.id)
                 settle(found.id)
             }
@@ -1668,7 +1725,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
                 }
                 if s != sessions[index] { sessions[index] = s }
             } else {
-                guard now.timeIntervalSince(found.lastActivityAt) < Theme.Motion.sessionIdleCutoff else { continue }
+                guard now.timeIntervalSince(found.lastActivityAt) < Theme.Timing.sessionIdleCutoff else { continue }
                 if let ended = endedAt[found.id], found.lastActivityAt <= ended { continue }
                 let cwd = found.cwd
                 sessions.append(Session(
@@ -1698,7 +1755,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         let pendingIds = Set(pending.map { $0.sessionId })
         let stale = sessions.filter {
             !isHookDriven($0.id, now: now) && !pendingIds.contains($0.id)
-                && now.timeIntervalSince($0.lastEventAt) > Theme.Motion.sessionIdleCutoff
+                && now.timeIntervalSince($0.lastEventAt) > Theme.Timing.sessionIdleCutoff
         }
         for s in stale {
             forgetSession(s.id)
@@ -1739,7 +1796,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         if let index = list.firstIndex(where: { candidate in
             candidate.isRunning && candidate.type == type && !unmatchedHookAgents.contains(candidate.id)
                 && !agentKeys.contains(where: { key in key.value == candidate.id && key.key != candidate.id })
-                && abs(candidate.startedAt.timeIntervalSince(date)) < Theme.Motion.agentMatchWindow
+                && abs(candidate.startedAt.timeIntervalSince(date)) < Theme.Timing.agentMatchWindow
         }) {
             agentKeys[id] = list[index].id
             if list[index].description == nil { list[index].description = description }
@@ -1785,7 +1842,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
             // Same agent seen by the hook under its agent_id.
             if let index = list.firstIndex(where: {
                 unmatchedHookAgents.contains($0.id) && $0.type == incoming.type
-                    && abs($0.startedAt.timeIntervalSince(incoming.startedAt)) < Theme.Motion.agentMatchWindow
+                    && abs($0.startedAt.timeIntervalSince(incoming.startedAt)) < Theme.Timing.agentMatchWindow
             }) {
                 unmatchedHookAgents.remove(list[index].id)
                 agentKeys[incoming.id] = list[index].id
@@ -1820,9 +1877,9 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         if pending.count == 1 { requestRowCursor = 0 }
         if prefs.systemNotifications {
             SystemNotifier.post(
-                title: request.kind == .commit ? "Commit?" : "Allow \(request.tool)?",
+                title: request.headline,
                 subtitle: session(id: request.sessionId)?.displayFull,
-                body: request.kind == .commit ? request.title : request.detail,
+                body: request.summary,
                 id: request.id
             )
         }
@@ -1871,11 +1928,9 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
             requestDiff = nil
             requestRowCursor = 0
         }
-        if pending.isEmpty && isCardOpen && (selectedTab == .permission || selectedTab == .commit) {
-            isCardOpen = false
-            selectedTab = .sessions
-        } else if let next = currentPending, isCardOpen {
-            selectedTab = next.kind == .commit ? .commit : .permission
+        if pending.isEmpty && isCardOpen && cardOpenedForRequest {
+            closeCard()
+            return
         }
         refresh()
     }
@@ -1890,7 +1945,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         var added = turnLineCounts[sid]?.added ?? 0
         var removed = turnLineCounts[sid]?.removed ?? 0
         if fileCount == 0, let last = turns(for: sid).first,
-           turnStarts[sid].map({ last.startedAt >= $0.addingTimeInterval(-Theme.Motion.turnMatchSlack) }) ?? true {
+           turnStarts[sid].map({ last.startedAt >= $0.addingTimeInterval(-Theme.Timing.turnMatchSlack) }) ?? true {
             fileCount = last.files.count
             added = last.files.reduce(0) { $0 + $1.added }
             removed = last.files.reduce(0) { $0 + $1.removed }
@@ -1922,7 +1977,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         peekTask?.cancel()
         let peekId = newPeek.id
         peekTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(self?.prefs.peekSeconds ?? Theme.Motion.peekLifetime))
+            try? await Task.sleep(for: .seconds(self?.prefs.peekSeconds ?? Theme.Timing.peekLifetime))
             if Task.isCancelled { return }
             guard let self, self.peek?.id == peekId else { return }
             self.peek = nil
@@ -1959,20 +2014,22 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     private func exists(_ s: Session) -> Bool {
         if endedAt[s.id] != nil { return false }
         if s.state != .idle { return true }
-        return Date().timeIntervalSince(s.lastEventAt) < Theme.Motion.sessionIdleCutoff
+        return Date().timeIntervalSince(s.lastEventAt) < Theme.Timing.sessionIdleCutoff
     }
 
     /// A session that keeps the wings up: not ended, and driven by hooks, busy, or recently active.
     private func isLive(_ s: Session) -> Bool {
         if endedAt[s.id] != nil { return false }
         if isHookDriven(s.id) || s.state != .idle { return true }
-        return Date().timeIntervalSince(s.lastEventAt) < Theme.Motion.liveSessionWindow
+        return Date().timeIntervalSince(s.lastEventAt) < Theme.Timing.liveSessionWindow
     }
 
     private func cycleTab(by step: Int) {
         let tabs = CardTab.browsable
-        // From Settings (or anything not a tool), ⇥ lands on the first tool and ⇧⇥ on the last.
-        let current = tabs.firstIndex(of: selectedTab) ?? (step > 0 ? -1 : tabs.count)
+        // From Settings or the question, ⇥ lands on the first tool and ⇧⇥ on the last.
+        let onTool: Bool
+        if case .tool = cardContent { onTool = true } else { onTool = false }
+        let current = (onTool ? tabs.firstIndex(of: selectedTab) : nil) ?? (step > 0 ? -1 : tabs.count)
         let next = ((current + step) % tabs.count + tabs.count) % tabs.count
         selectTab(tabs[next])
         flashToolLabel()

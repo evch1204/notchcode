@@ -84,7 +84,6 @@ private struct RequestTitle: View {
 struct PermissionCard: View {
     @ObservedObject var state: AppState
     let request: PendingRequest
-    let width: CGFloat
 
     private var file: FileChange? { request.files.first }
 
@@ -138,7 +137,6 @@ struct PermissionCard: View {
 struct CommitCard: View {
     @ObservedObject var state: AppState
     let request: PendingRequest
-    let width: CGFloat
 
     /// A file row like the Changes tool's; click (or D on the cursor row) opens its diff under it.
     @ViewBuilder
@@ -183,7 +181,7 @@ struct CommitCard: View {
                             .foregroundStyle(Theme.Colors.inkSecondary)
                             .lineLimit(3)
                     } else {
-                        let shown = Array(request.files.prefix(Theme.Size.commitMaxFileRows))
+                        let shown = Array(request.files.prefix(Theme.Limits.commitMaxFileRows))
                         ForEach(Array(shown.enumerated()), id: \.element.id) { item in
                             fileRow(item.element, index: item.offset, openPath: openPath)
                         }
@@ -242,7 +240,7 @@ struct QuestionCard: View {
 
             if !question.options.isEmpty {
                 VStack(spacing: Theme.Size.spaceS) {
-                    ForEach(Array(question.options.prefix(Theme.Size.maxQuestionOptions).enumerated()), id: \.offset) { item in
+                    ForEach(Array(question.options.prefix(Theme.Limits.maxQuestionOptions).enumerated()), id: \.offset) { item in
                         // No keycaps: no hook can answer a question, so the options are read-only.
                         HStack(spacing: Theme.Size.spaceM) {
                             Text(item.element)

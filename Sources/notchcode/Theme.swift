@@ -26,78 +26,92 @@ enum Theme {
         /// The notch itself. Pure black so the closed state matches the hardware.
         static let notch = Color(hex: 0x000000)
 
+        // Base colours. Everything below is one of these, or one of these at an opacity.
         static let ink = Color.white
-        static let inkSecondary = Color.white.opacity(0.62)
-        static let inkTertiary = Color.white.opacity(0.42)
-        static let inset = Color.white.opacity(0.07)
-        static let hairline = Color.white.opacity(0.10)
-        static let track = Color.white.opacity(0.12)
-        static let selection = Color.white.opacity(0.10)
-        static let keycapFill = Color.white.opacity(0.10)
+        static let clay = Color(hex: 0xD97757)
+        static let green = Color(hex: 0x30D158)
+        static let red = Color(hex: 0xFF6961)
+        static let blue = Color(hex: 0x64B5FF)
+        static let purple = Color(hex: 0xC77DFF)
+        static let yellow = Color(hex: 0xFFD60A)
+        static let cyan = Color(hex: 0x5AC8FA)
+
+        static let inkSecondary = ink.opacity(0.62)
+        static let inkTertiary = ink.opacity(0.42)
+        static let inset = ink.opacity(0.07)
+        static let hairline = ink.opacity(0.10)
+        static let track = ink.opacity(0.12)
+        /// The quiet white fill shared by keycaps, neutral actions and the selected row.
+        static let quietFill = ink.opacity(0.10)
+        static let selection = quietFill
+        static let keycapFill = quietFill
         static let keycapFillOnLight = Color.black.opacity(0.10)
         static let keycapTextOnLight = Color.black.opacity(0.62)
-        static let cellEmpty = Color.white.opacity(0.14)
+        static let cellEmpty = ink.opacity(0.14)
 
         // The toolbar strip (the open card, and the collapsed strip on hover).
         /// A tool segment at rest draws nothing; hover lifts it, selection fills it.
-        static let segmentHover = Color.white.opacity(0.09)
-        static let segmentPressed = Color.white.opacity(0.05)
-        static let toolSelected = Color.white.opacity(0.16)
-        static let segmentIcon = Color.white.opacity(0.66)
+        static let segmentHover = ink.opacity(0.09)
+        static let segmentPressed = ink.opacity(0.05)
+        static let toolSelected = ink.opacity(0.16)
+        static let segmentIcon = ink.opacity(0.66)
         static let segmentIconSelected = ink
         /// Keyboard focus ring that rides the selected tool while the card has the keys.
-        static let toolFocusRing = Color.white.opacity(0.38)
+        static let toolFocusRing = ink.opacity(0.38)
         /// The short bar under the selected tool where the well hangs from the strip.
-        static let bridge = Color.white.opacity(0.30)
+        static let bridge = ink.opacity(0.30)
         /// Hairline between the strip and the well.
-        static let stripDivider = Color.white.opacity(0.09)
+        static let stripDivider = ink.opacity(0.09)
         /// The thin vertical rule between the four tools and the gear.
-        static let toolGroupRule = Color.white.opacity(0.14)
+        static let toolGroupRule = ink.opacity(0.14)
         /// Small numeric badge on the Sessions tool.
-        static let toolBadgeFill = Color.white.opacity(0.14)
-        static let toolBadgeText = Color.white.opacity(0.8)
+        static let toolBadgeFill = ink.opacity(0.14)
+        static let toolBadgeText = ink.opacity(0.8)
         /// The card's content well: a lighter inset under the strip.
-        static let well = Color.white.opacity(0.045)
-        static let wellStroke = Color.white.opacity(0.06)
+        static let well = ink.opacity(Opacity.well)
+        static let wellStroke = ink.opacity(0.06)
         /// The tool name caption under the strip: an opaque dark pill so it reads over the well.
         static let toolLabelFill = Color(hex: 0x262626)
-        static let toolLabelStroke = Color.white.opacity(0.10)
+        static let toolLabelStroke = ink.opacity(0.10)
         static let toolLabelText = inkSecondary
 
-        // Action segments (Deny · Always · Allow, Skip · Edit · Commit).
-        static let allowFill = Color.white
-        static let allowText = Color.black
-        /// The countdown draining along Allow's bottom edge.
-        static let allowBar = Color.black.opacity(0.35)
-        static let denyFill = Color(hex: 0xFF6961, opacity: 0.16)
-        static let denyText = Color(hex: 0xFF6961)
-        static let neutralActionFill = Color.white.opacity(0.10)
-        static let neutralActionText = ink
-
-        static let clay = Color(hex: 0xD97757)
-        /// "Needs you": Claude's clay. The triangle glyph, the two-row shape and the words
-        /// "Needs you" tell it apart from the working spark, which is clay too.
-        static let attention = Color(hex: 0xD97757)
-        static let attentionText = Color(hex: 0xF0A080)
-        static let attentionHighlight = Color(hex: 0xD97757, opacity: 0.14)
-        static let attentionGlow = Color(hex: 0xD97757, opacity: 0.60)
-        static let attentionGlowDim = Color(hex: 0xD97757, opacity: 0.15)
-        static let green = Color(hex: 0x30D158)
-        static let greenFill = Color(hex: 0x30D158, opacity: 0.18)
-        static let red = Color(hex: 0xFF6961)
-        static let redStrong = Color(hex: 0xFF453A)
-        static let redFill = Color(hex: 0xFF6961, opacity: 0.18)
-        static let blue = Color(hex: 0x64B5FF)
-        static let purple = Color(hex: 0xC77DFF)
-
-        static let diffAddedBackground = Color(hex: 0x30D158, opacity: 0.10)
-        static let diffRemovedBackground = Color(hex: 0xFF6961, opacity: 0.10)
-        static let diffHunk = Color(hex: 0x64B5FF)
-
-        /// Primary pill: white fill, black text.
+        /// Primary action: white fill, black text.
         static let primaryFill = Color.white
         static let primaryText = Color.black
-        static let ghostFill = Color.white.opacity(0.10)
+        static let ghostFill = quietFill
+
+        // Action segments (Deny · Always · Allow, Skip · Edit · Commit).
+        static let allowFill = primaryFill
+        static let allowText = primaryText
+        /// The countdown draining along Allow's bottom edge.
+        static let allowBar = primaryText.opacity(0.35)
+        static let denyFill = red.opacity(0.16)
+        static let denyText = red
+        static let neutralActionFill = quietFill
+        static let neutralActionText = ink
+
+        /// An action segment's fill, text and countdown bar, by its role.
+        static func action(_ role: ActionRole) -> (fill: Color, text: Color, bar: Color) {
+            switch role {
+            case .allow: return (allowFill, allowText, allowBar)
+            case .deny: return (denyFill, denyText, inkSecondary)
+            case .neutral: return (neutralActionFill, neutralActionText, inkSecondary)
+            }
+        }
+
+        /// "Needs you": Claude's clay. The triangle glyph, the two-row shape and the words
+        /// "Needs you" tell it apart from the working spark, which is clay too.
+        static let attention = clay
+        static let attentionText = Color(hex: 0xF0A080)
+        static let attentionHighlight = clay.opacity(0.14)
+        static let attentionGlow = clay.opacity(0.60)
+        static let attentionGlowDim = clay.opacity(0.15)
+        static let greenFill = green.opacity(0.18)
+        static let redFill = red.opacity(0.18)
+
+        static let diffAddedBackground = green.opacity(0.10)
+        static let diffRemovedBackground = red.opacity(0.10)
+        static let diffHunk = blue
 
         /// Only the card and attention states carry a shadow.
         static let shadow = Color.black.opacity(0.45)
@@ -107,38 +121,31 @@ enum Theme {
         static let tokenInput = purple
         static let tokenOutput = clay
         static let tokenCacheWrite = green
-        /// Limit bars in the Usage tab and the header; context uses clay.
+        /// Limit bars in the Usage tool and the footer meter; context uses clay.
         static let limitBar = ink
         static let contextBar = clay
 
-        /// Idle text in the wings ("Idle", "Done") sits back from the working verb.
-        static let wingsIdleText = inkTertiary
-        /// Collapsed wings: the session name, and the one state word on the right.
+        /// Collapsed wings: the session name and the "+N sessions" count.
         static let wingsName = ink
-        static let wingsWorkingText = inkSecondary
-        static let wingsDoneText = inkSecondary
         static let wingsCountText = inkTertiary
         /// State glyphs in the wings: green check when done, dim dot when idle.
         static let doneGlyph = green
-        static let idleGlyph = Color.white.opacity(0.28)
+        static let idleGlyph = ink.opacity(0.28)
         /// Running subagent lanes.
-        static let agentDot = clay
-        static let laneLine = Color.white.opacity(0.14)
-        static let doneChipFill = Color.white.opacity(0.08)
+        static let laneLine = ink.opacity(0.14)
+        static let doneChipFill = ink.opacity(0.08)
         /// One colour per subagent, cycled by the agent's index within its session.
         static let agentPalette: [Color] = [
             clay,
             blue,
             purple,
             green,
-            Color(hex: 0xFFD60A),
-            Color(hex: 0x5AC8FA),
+            yellow,
+            cyan,
         ]
         static func agent(_ index: Int) -> Color {
             agentPalette[((index % agentPalette.count) + agentPalette.count) % agentPalette.count]
         }
-        /// Finished agents keep their colour, dimmed.
-        static let agentFinishedOpacity: Double = 0.45
 
         // Settings page inside the card.
         static let settingsError = red
@@ -146,53 +153,64 @@ enum Theme {
         static let settingsPartial = attention
         static let settingsDisconnected = inkTertiary
         static let switchOn = green
-        static let switchOff = Color.white.opacity(0.18)
+        static let switchOff = ink.opacity(0.18)
         static let switchKnob = Color.white
-        static let segmentTrack = Color.white.opacity(0.07)
-        static let segmentSelected = Color.white.opacity(0.18)
+        static let pickerTrack = ink.opacity(0.07)
+        static let pickerSelected = ink.opacity(0.18)
 
         // Diff view.
         static let diffLineNumber = inkTertiary
         static let diffText = inkSecondary
         /// The selected file row in Changes and Files (keyboard cursor).
-        static let rowCursor = Color.white.opacity(0.06)
+        static let rowCursor = ink.opacity(0.06)
 
         // Files tab.
         /// The file whose preview is showing.
-        static let treeOpened = Color.white.opacity(0.10)
+        static let treeOpened = quietFill
         static let treeFolder = inkSecondary
         static let treeFile = ink
         static let treeChevron = inkTertiary
-        static let filterFill = Color.white.opacity(0.07)
+        static let filterFill = ink.opacity(0.07)
         static let filterPlaceholder = inkTertiary
         static let paneDivider = hairline
-        static let badgeFill = Color.white.opacity(0.07)
+        static let badgeFill = ink.opacity(0.07)
         static let previewLineNumber = inkTertiary
         static let previewText = inkSecondary
-        static let previewAddedBackground = Color(hex: 0x30D158, opacity: 0.12)
+        static let previewAddedBackground = green.opacity(0.12)
         static let previewRemovedMark = red
         static let previewAddedNumber = green
 
         // Sessions tab group header. It sticks over the well, so it carries the well's
-        // colour flattened onto the black (4.5% white on black).
-        static let groupHeaderBackground = Color(hex: 0x0B0B0B)
+        // colour flattened onto the black (the well's white opacity as a grey).
+        static let groupHeaderBackground = Color(.sRGB, white: Opacity.well, opacity: 1)
         static let groupHeaderName = inkSecondary
         static let groupHeaderCount = inkTertiary
 
         /// Hover rim light on the closed and resting shape, and its soft glow. Both sit
         /// outside the black silhouette.
-        static let rim = Color.white.opacity(0.55)
-        static let rimGlow = Color.white.opacity(0.22)
+        static let rim = ink.opacity(0.55)
+        static let rimGlow = ink.opacity(0.22)
         /// Clay bleed below the shape when attention arrives (scaled by the bleed opacity).
-        static let attentionBleed = Color(hex: 0xD97757, opacity: 0.35)
+        static let attentionBleed = clay.opacity(0.35)
         /// The resting dot: green when the session finished, grey when idle.
         static let restingDone = green
-        static let restingIdle = Color.white.opacity(0.42)
+        static let restingIdle = inkTertiary
 
-        static func state(_ state: SessionState) -> Color {
+        /// A state's glyph and dot colour.
+        static func stateGlyph(_ state: SessionState) -> Color {
             switch state {
             case .working: return clay
             case .needsYou: return attention
+            case .done: return doneGlyph
+            case .idle: return idleGlyph
+            }
+        }
+
+        /// A state's word ("Needs you", "Editing", "Done", "Idle").
+        static func stateText(_ state: SessionState) -> Color {
+            switch state {
+            case .needsYou: return attentionText
+            case .working: return clay
             case .done: return green
             case .idle: return inkTertiary
             }
@@ -205,6 +223,7 @@ enum Theme {
         // Convex bottom corners of the shape, per state.
         static let closedBottom: CGFloat = 10
         static let wingsBottom: CGFloat = 14
+        static let restingBottom: CGFloat = 14
         static let peekBottom: CGFloat = 14
         static let attentionBottom: CGFloat = 18
         static let cardBottom: CGFloat = 26
@@ -214,7 +233,6 @@ enum Theme {
         static let wingsTop: CGFloat = 12
         static let peekTop: CGFloat = 12
         static let restingTop: CGFloat = 12
-        static let restingBottom: CGFloat = 14
         static let attentionTop: CGFloat = 14
         static let cardTop: CGFloat = 18
 
@@ -230,7 +248,8 @@ enum Theme {
         // The toolbar strip.
         /// Tool and action segments.
         static let segment: CGFloat = 6
-        static let toolFocus: CGFloat = 7
+        /// Concentric with the segment it rings.
+        static let toolFocus: CGFloat = segment + Size.toolFocusOutset
         static let bridge: CGFloat = 1
         static let toolBadge: CGFloat = 4
         static let toolLabel: CGFloat = 5
@@ -256,27 +275,26 @@ enum Theme {
         static let restingWidth: CGFloat = 420
         static let peekWidth: CGFloat = 580
         /// Attention and the card share one width, so the three action segments fit the
-        /// right wing with room. The panel (900) holds the outer size plus ears and shadow.
+        /// right wing with room. The panel holds the outer size plus ears and shadow.
         static let attentionWidth: CGFloat = 640
         static let attentionExtraHeight: CGFloat = 40
-        static let cardWidth: CGFloat = 640
+        static let cardWidth: CGFloat = attentionWidth
         /// Minimum wing width on each side, used when the notch is wider than expected.
         static let minWing: CGFloat = 100
 
         // Card content height below the strip, per tool. The card re-targets its height
         // with one spring when the tool changes, so each tool gets the room it needs.
-        /// Fallback for a tab without its own height.
-        static let cardHeight: CGFloat = 424
         static let sessionsCardHeight: CGFloat = 400
         static let changesCardHeight: CGFloat = 424
         static let filesCardHeight: CGFloat = 440
         static let usageCardHeight: CGFloat = 380
         static let cardFooterHeight: CGFloat = 20
         static let requestCardHeight: CGFloat = 310
-        /// A permission or commit card with its diff open. Keeps the panel (504) clear of the notch row plus shadow.
+        /// A permission or commit card with its diff open. Keeps the panel clear of the notch row plus shadow.
         static let requestCardHeightExpanded: CGFloat = 440
         static let commitCardHeight: CGFloat = 356
         static let questionCardHeight: CGFloat = 296
+        static let settingsCardHeight: CGFloat = 424
 
         static let sidePadding: CGFloat = 16
         static let wingInnerGap: CGFloat = 10
@@ -288,14 +306,11 @@ enum Theme {
         static let spaceS: CGFloat = 4
         static let spaceM: CGFloat = 8
         static let spaceL: CGFloat = 12
-        static let spaceXL: CGFloat = 16
 
         // Wings.
         static let glyph: CGFloat = 13
         static let wingSpacing: CGFloat = 5
         static let dot: CGFloat = 6
-        static let dotSpacing: CGFloat = 4
-        static let maxDots: Int = 6
 
         // Rings and lines.
         static let ringLine: CGFloat = 1.5
@@ -308,27 +323,19 @@ enum Theme {
         /// Symbol size relative to its circle.
         static let glyphInCircle: CGFloat = 0.5
         static let footerMinScale: CGFloat = 0.9
-        static let maxQuestionOptions: Int = 3
         static let hairline: CGFloat = 0.5
 
         // Keycaps and pills.
         static let keycapMin: CGFloat = 16
         static let keycapHPadding: CGFloat = 4
-        static let pillHeight: CGFloat = 34
-        static let pillHPadding: CGFloat = 12
-        static let pillSpacing: CGFloat = 6
         static let smallPillHPadding: CGFloat = 6
         static let smallPillHeight: CGFloat = 16
         static let chipHPadding: CGFloat = 6
         static let chipHeight: CGFloat = 18
-        static let buttonSpacing: CGFloat = 8
-        /// The primary pill is this many units wide; the other two are one unit each.
-        static let primaryUnits: CGFloat = 2
 
         // Bars and tiles.
         static let barHeight: CGFloat = 4
-        static let headerBarWidth: CGFloat = 64
-        static let stackedBarHeight: CGFloat = 8
+        static let footerBarWidth: CGFloat = 64
         static let legendDot: CGFloat = 6
         static let tilePadding: CGFloat = 10
         static let insetPadding: CGFloat = 10
@@ -347,7 +354,8 @@ enum Theme {
         static let toolGroupGap: CGFloat = 6
         static let toolGroupRuleHeight: CGFloat = 12
         static let toolRuleWidth: CGFloat = 1
-        static let toolFocusInset: CGFloat = -2
+        /// The focus ring sits this far outside the tool segment.
+        static let toolFocusOutset: CGFloat = 2
         static let toolFocusLine: CGFloat = 1
         static let bridgeWidth: CGFloat = 14
         static let bridgeHeight: CGFloat = 2
@@ -425,37 +433,32 @@ enum Theme {
         static let checkInset: CGFloat = 0.28
 
         // Changes tab.
-        static let diffCellCount: Int = 5
         static let diffCellWidth: CGFloat = 5
         static let diffCellHeight: CGFloat = 8
         static let diffCellSpacing: CGFloat = 1.5
-        static let snippetMaxHeight: CGFloat = 132
         static let snippetLinePadding: CGFloat = 6
-        /// A snippet shorter than this opens inline by default.
-        static let inlineSnippetMaxLines: Int = 8
         static let rowVPadding: CGFloat = 6
         static let rowHPadding: CGFloat = 8
 
         // Sessions tab: agent lanes under a session row.
         static let laneIndent: CGFloat = 22
-        static let laneDot: CGFloat = 5
         static let laneVPadding: CGFloat = 3
         static let laneLineWidth: CGFloat = 1
-        static let gearSize: CGFloat = 12
         /// Chevron plus its gap, so lane clocks line up with the row clock.
         static let chevronColumn: CGFloat = 14
+        /// The teleport chevron's hit area height on a session row.
+        static let chevronHitHeight: CGFloat = 34
 
         // Settings page inside the card.
-        static let settingsCardHeight: CGFloat = 424
         static let settingsRowHeight: CGFloat = 28
         static let settingsGroupSpacing: CGFloat = 10
         static let settingsLabelSpacing: CGFloat = 4
         static let switchWidth: CGFloat = 28
         static let switchHeight: CGFloat = 16
         static let switchKnobInset: CGFloat = 2
-        static let segmentHeight: CGFloat = 22
-        static let segmentHPadding: CGFloat = 9
-        static let segmentInset: CGFloat = 2
+        static let pickerHeight: CGFloat = 22
+        static let pickerHPadding: CGFloat = 9
+        static let pickerInset: CGFloat = 2
         static let stepperValueWidth: CGFloat = 36
         static let backPillHeight: CGFloat = 22
         static let backPillHPadding: CGFloat = 9
@@ -463,9 +466,6 @@ enum Theme {
         // Subagent colour squares.
         static let agentSquare: CGFloat = 7
         static let agentSquareSpacing: CGFloat = 3
-        /// The wings show coloured squares for up to this many running agents, then "N agents".
-        static let maxWingAgentSquares: Int = 3
-        static let maxHeaderAgents: Int = 3
 
         // Diff view.
         static let diffLineHeight: CGFloat = 16
@@ -474,18 +474,13 @@ enum Theme {
         static let diffGutterSpacing: CGFloat = 4
         static let diffVPadding: CGFloat = 4
         static let groupHeaderTopPadding: CGFloat = 6
-        /// Inside a request card the diff takes what is left above the pills, up to this.
+        /// Inside a request card the diff takes what is left above the footer, up to this.
         static let requestDiffMaxHeight: CGFloat = 260
         /// ... and never less than this (a short diff is shorter still).
         static let requestDiffMinHeight: CGFloat = 72
-        /// ↑↓ move a request card's diff by this many lines.
-        static let requestDiffScrollLines: Int = 4
-        /// The commit card lists at most this many files, then "N more".
-        static let commitMaxFileRows: Int = 5
 
         // Sessions tab: one slim sticky header per repository.
         static let repoHeaderHeight: CGFloat = 22
-        static let repoGroupSpacing: CGFloat = 6
 
         // Changes tab: one-line turn header.
         static let turnHeaderVPadding: CGFloat = 5
@@ -509,11 +504,8 @@ enum Theme {
         static let previewHPadding: CGFloat = 6
         static let previewVPadding: CGFloat = 4
         static let removedMarkWidth: CGFloat = 2
-        /// Children beyond this index rise in together, so a big folder never trickles in.
-        static let maxStaggeredChildren: Int = 12
-        /// File previews kept in memory for flipping back and forth.
-        static let maxCachedPreviews: Int = 8
 
+        static let breatheRadius: CGFloat = 6
         static let shadowRadius: CGFloat = 18
         static let shadowY: CGFloat = 8
     }
@@ -533,6 +525,10 @@ enum Theme {
         static let bleedRest: Double = 0.4
         /// Fill behind a symbol in a tinted circle.
         static let glyphCircle: Double = 0.2
+        /// The card's content well: white at this opacity over the black.
+        static let well: Double = 0.045
+        /// Finished agents keep their colour, dimmed.
+        static let agentFinished: Double = 0.45
     }
 
     // MARK: - Motion
@@ -543,8 +539,8 @@ enum Theme {
         static let reduced = Animation.easeInOut(duration: 0.2)
 
         // The shape settles without a visible overshoot: every shape spring is damped
-        // at 0.88 or more (owner, 2026-09-27: the 0.72 open bounced once the card got
-        // wider and taller). Closing uses the same curves 30% faster.
+        // high (owner, 2026-09-27: the old open bounced once the card got wider and
+        // taller). Closing uses the same curves, `closeShare` of the response.
         static let widthResponse: Double = 0.42
         static let heightResponse: Double = 0.48
         static let shapeDamping: Double = 0.9
@@ -576,21 +572,26 @@ enum Theme {
         static func rowIn(_ index: Int) -> Animation {
             .easeOut(duration: contentFadeDuration).delay(contentFadeDelay + rowStagger * Double(index))
         }
-        /// Content in: opacity plus a 10 pt rise (opacity only under Reduce Motion).
-        /// `rise: false` for content whose rows rise on their own (the card).
-        @MainActor static func contentTransition(rise: Bool) -> AnyTransition {
-            let insertion: AnyTransition = (rise && !reduceMotion)
-                ? AnyTransition.opacity.combined(with: .offset(y: contentRise))
+        /// Opacity plus a rise of `dy` coming in (opacity only for `dy == 0` or under Reduce
+        /// Motion), opacity going out. The one shape every content transition takes.
+        @MainActor static func rise(dy: CGFloat, in inAnimation: Animation, out outAnimation: Animation) -> AnyTransition {
+            let insertion: AnyTransition = (dy != 0 && !reduceMotion)
+                ? AnyTransition.opacity.combined(with: .offset(y: dy))
                 : AnyTransition.opacity
             return .asymmetric(
-                insertion: insertion.animation(contentIn),
-                removal: AnyTransition.opacity.animation(contentOut)
+                insertion: insertion.animation(inAnimation),
+                removal: AnyTransition.opacity.animation(outAnimation)
             )
         }
+        /// Content in: opacity plus the rise. `rise: false` for content whose rows rise on
+        /// their own (the card).
+        @MainActor static func contentTransition(rise: Bool) -> AnyTransition {
+            self.rise(dy: rise ? contentRise : 0, in: contentIn, out: contentOut)
+        }
 
-        // The strip unfolds from behind the camera: each segment starts 16 pt toward the
-        // centre and transparent, then glides out (critically damped, no overshoot),
-        // 30 ms after the one nearer the camera.
+        // The strip unfolds from behind the camera: each segment starts `unfoldDistance`
+        // toward the centre and transparent, then glides out (critically damped, no
+        // overshoot), `unfoldStagger` after the one nearer the camera.
         static let unfoldDistance: CGFloat = 16
         static let unfoldStagger: Double = 0.03
         static let unfoldDuration: Double = 0.28
@@ -607,19 +608,19 @@ enum Theme {
         static let pressScale: CGFloat = 0.94
         static var press: Animation { .easeOut(duration: pressDuration) }
         @MainActor static var toolSelect: Animation { reduceMotion ? reduced : .spring(response: 0.3, dampingFraction: 0.88) }
-        /// Allow pops in (0.92 → 1.08 → 1) when it arrives.
+        /// Allow pops in (start → overshoot → 1) when it arrives, after the unfold delay.
         static let actionPopStart: CGFloat = 0.92
         static let actionPopOvershoot: CGFloat = 1.08
         static let actionPopDuration: Double = 0.34
         /// Share of the pop spent rising to the overshoot.
         static let actionPopRiseShare: Double = 0.55
+        static var actionPopRise: Animation {
+            .easeOut(duration: actionPopDuration * actionPopRiseShare).delay(unfoldDelay)
+        }
         static var actionPopSettle: Animation {
             .spring(response: actionPopDuration * (1 - actionPopRiseShare), dampingFraction: 0.8)
         }
 
-        // Hover on the collapsed strip: the right wing crossfades to the tools and back.
-        static var toolsRevealIn: Animation { .easeOut(duration: 0.18) }
-        static var toolsRevealOut: Animation { .easeIn(duration: 0.2) }
 
         // Tool name caption: shows after the mouse rests this long on a tool, follows it to
         // the next tool at once, lingers briefly on leaving (so the gap between tools does
@@ -631,10 +632,11 @@ enum Theme {
         /// Reduce Motion: nil, the caption appears and moves without a fade or glide.
         @MainActor static var toolLabelFade: Animation? { reduceMotion ? nil : .easeOut(duration: toolLabelFadeDuration) }
 
-        // Hover rim light.
+        // Hover: the rim light, the resting name brightening, and the collapsed strip's
+        // tools crossfading in all use one pair. The rim waits `rimDelay` first.
         static let rimDelay: Double = 0.25
-        static var rimIn: Animation { .easeOut(duration: 0.18) }
-        static var rimOut: Animation { .easeIn(duration: 0.25) }
+        static var hoverIn: Animation { .easeOut(duration: 0.18) }
+        static var hoverOut: Animation { .easeIn(duration: 0.25) }
 
         // Attention arrival: the clay bleed (no breath: the shape growing is the signal).
         static let bleedInDuration: Double = 0.3
@@ -652,6 +654,12 @@ enum Theme {
         static let tabParallax: CGFloat = 0.4
         /// The pane slides this far toward its new anchor, not the whole width: it re-anchors, it does not page.
         static let paneSlide: CGFloat = 48
+        /// A pane sliding by `dx` while it fades, its inset groups a little further (parallax).
+        static func slide(_ dx: CGFloat) -> AnyTransition {
+            AnyTransition.offset(x: dx)
+                .combined(with: .opacity)
+                .combined(with: .modifier(active: PaneParallax(offset: dx), identity: PaneParallax(offset: 0)))
+        }
         /// Usage bars fill after the pane has landed.
         static let barFillDuration: Double = 0.5
         static var barFill: Animation { .easeOut(duration: barFillDuration).delay(tabInDuration) }
@@ -665,13 +673,14 @@ enum Theme {
         static let checkDrawDuration: Double = 0.35
         static let countDelay: Double = 0.25
         static let countDuration: Double = 0.6
+        static var checkPopRise: Animation { .easeOut(duration: checkPopDuration * checkPopRiseShare) }
         static var checkPopSettle: Animation {
             .spring(response: checkPopDuration * (1 - checkPopRiseShare), dampingFraction: 0.8)
         }
         static var checkDraw: Animation { .easeOut(duration: checkDrawDuration).delay(checkDelay) }
         static var countUp: Animation { .easeOut(duration: countDuration).delay(countDelay) }
 
-        // Teleport fold: height collapses, then the width settles; the terminal comes up at 0.15 s.
+        // Teleport fold: height collapses, then the width settles; the terminal comes up part way.
         static let foldHeightDuration: Double = 0.28
         static var foldHeight: Animation { .easeIn(duration: foldHeightDuration) }
         static var foldWidth: Animation { .spring(response: 0.3, dampingFraction: 0.6).delay(foldHeightDuration) }
@@ -682,40 +691,29 @@ enum Theme {
         static let tap = Animation.easeOut(duration: 0.12)
 
         // A request card's diff: the card grows with the same springs as the shape
-        // (height follows after the axis delay), and the diff rises in over 0.2 s.
+        // (height follows after the axis delay), and the diff rises in.
         @MainActor static func requestDiff(expanding: Bool) -> Animation {
             expanding ? height.delay(axisDelay) : closeHeight
         }
         static let requestDiffRevealDuration: Double = 0.2
-        /// Opacity plus the 10 pt rise; Reduce Motion crossfades.
+        /// Opacity plus the content rise; Reduce Motion crossfades.
         @MainActor static var requestDiffTransition: AnyTransition {
-            let insertion: AnyTransition = reduceMotion
-                ? .opacity
-                : AnyTransition.opacity.combined(with: .offset(y: contentRise))
-            return .asymmetric(
-                insertion: insertion.animation(.easeOut(duration: requestDiffRevealDuration)),
-                removal: AnyTransition.opacity.animation(.easeIn(duration: contentOutDuration))
-            )
+            rise(dy: contentRise, in: .easeOut(duration: requestDiffRevealDuration), out: contentOut)
         }
 
         // Files tab.
-        /// Folder disclosure: the chevron turns 90° and the children rise in, 40 ms apart.
+        /// Folder disclosure: the chevron turns and the children rise in, one `rowStagger` apart.
         static let disclosureDuration: Double = 0.2
         /// Reduce Motion: the chevron snaps (the rows still crossfade).
         @MainActor static var disclosure: Animation? { reduceMotion ? nil : .easeOut(duration: disclosureDuration) }
         @MainActor static func childIn(_ index: Int) -> Animation {
-            let stagger = rowStagger * Double(min(index, Theme.Size.maxStaggeredChildren))
+            let stagger = rowStagger * Double(min(index, Theme.Limits.maxStaggeredChildren))
             return reduceMotion ? reduced : .easeOut(duration: disclosureDuration).delay(stagger)
         }
-        /// Tree rows entering or leaving: opacity plus the 10 pt rise (opacity only under Reduce Motion).
+        /// Tree rows entering or leaving: opacity plus the content rise, downward from their
+        /// folder (opacity only under Reduce Motion).
         @MainActor static func childTransition(_ index: Int) -> AnyTransition {
-            let insertion: AnyTransition = reduceMotion
-                ? .opacity
-                : AnyTransition.opacity.combined(with: .offset(y: -contentRise))
-            return .asymmetric(
-                insertion: insertion.animation(childIn(index)),
-                removal: AnyTransition.opacity.animation(.easeOut(duration: disclosureDuration))
-            )
+            rise(dy: -contentRise, in: childIn(index), out: .easeOut(duration: disclosureDuration))
         }
         /// The preview pane crossfades between files.
         static let previewFadeDuration: Double = 0.2
@@ -725,16 +723,28 @@ enum Theme {
         static let chevronOpenDegrees: Double = 90
         static let ringStartDegrees: Double = -90
 
-        /// Default peek length; the owner sets the real one in Settings.
-        static let peekLifetime: Double = 4
-        static let peekSecondsRange: ClosedRange<Double> = 2...8
-        static let peekSecondsStep: Double = 1
 
-        /// Hover to open: rest this long on the shape to open, leave the card this long to close.
-        static let hoverOpenDelay: Double = 0.25
-        static let hoverCloseDelay: Double = 0.40
-        /// Inline hints ("No terminal found", "Copied") show this long.
-        static let hintDuration: Double = 2
+
+
+        static let pulseDuration: Double = 1.4
+        static let pulseScale: CGFloat = 1.9
+        static let pulseStartScale: CGFloat = 1.0
+        static var pulse: Animation { .easeOut(duration: pulseDuration).repeatForever(autoreverses: false) }
+
+        static let breatheDuration: Double = 1.6
+        static var breathe: Animation { .easeInOut(duration: breatheDuration).repeatForever(autoreverses: true) }
+
+    }
+
+
+    // MARK: - Timing (product timeouts and windows, not animation)
+
+    enum Timing {
+        /// A blocking request waits this long; the socket replies "none" at the same moment.
+        static let permissionDeadline: Double = 58
+        /// After a new request arrives, ⏎ / ⌫ / A / E are ignored this long (typing in the
+        /// terminal must not answer it). Clicks are never delayed.
+        static let requestKeyGuard: Double = 0.4
         /// A session that got a hook envelope this recently is driven by hooks; the transcript
         /// watcher does not override its state.
         static let hookDrivenWindow: Double = 10 * 60
@@ -742,14 +752,8 @@ enum Theme {
         static let sessionIdleCutoff: Double = 2 * 3600
         /// A session counts as live (keeps the wings up) when active this recently.
         static let liveSessionWindow: Double = 10 * 60
-
         /// A hook agent and a transcript agent of the same type starting this close together are the same agent.
         static let agentMatchWindow: Double = 15
-        /// After a new request arrives, ⏎ / ⌫ / A / E are ignored this long (typing in the
-        /// terminal must not answer it). Clicks are never delayed.
-        static let requestKeyGuard: Double = 0.4
-        /// A blocking request waits this long; the socket replies "none" at the same moment.
-        static let permissionDeadline: Double = 58
         /// `.needsYou` without a pending request lasts at most this long.
         static let needsYouLifetime: Double = 90
         /// Transcript writes this soon after a needs-you notification belong to it, not to new activity.
@@ -762,17 +766,35 @@ enum Theme {
         static let resetRelativeWindow: Double = 24 * 3600
         /// A transcript turn that started this long before the hook's prompt still counts as that turn.
         static let turnMatchSlack: Double = 5
-
-        static let pulseDuration: Double = 1.4
-        static let pulseScale: CGFloat = 1.9
-        static let pulseStartScale: CGFloat = 1.0
-        static var pulse: Animation { .easeOut(duration: pulseDuration).repeatForever(autoreverses: false) }
-
-        static let breatheDuration: Double = 1.6
-        static let breatheRadius: CGFloat = 6
-        static var breathe: Animation { .easeInOut(duration: breatheDuration).repeatForever(autoreverses: true) }
-
+        /// Default peek length; the owner sets the real one in Settings.
+        static let peekLifetime: Double = 4
+        static let peekSecondsRange: ClosedRange<Double> = 2...8
+        static let peekSecondsStep: Double = 1
+        /// Inline hints ("No terminal found", "Copied") show this long.
+        static let hintDuration: Double = 2
+        /// Hover to open: rest this long on the shape to open, leave the card this long to close.
+        static let hoverOpenDelay: Double = 0.25
+        static let hoverCloseDelay: Double = 0.40
+        /// Clocks and countdowns (and every Reduce Motion countdown) step this often.
         static let clockTick: Double = 1
+    }
+
+    // MARK: - Limits (counts)
+
+    enum Limits {
+        /// The commit card lists at most this many files, then "N more".
+        static let commitMaxFileRows: Int = 5
+        /// File previews kept in memory for flipping back and forth.
+        static let maxCachedPreviews: Int = 8
+        /// A snippet shorter than this opens inline by default.
+        static let inlineSnippetMaxLines: Int = 8
+        static let diffCellCount: Int = 5
+        /// ↑↓ move a request card's diff by this many lines.
+        static let requestDiffScrollLines: Int = 4
+        static let maxQuestionOptions: Int = 3
+        /// Children beyond this index rise in together, so a big folder never trickles in.
+        static let maxStaggeredChildren: Int = 12
+        static let maxStatusAgents: Int = 3
     }
 
     // MARK: - Fonts (SF Pro and SF Mono through .system, tabular numerals)
@@ -807,7 +829,6 @@ enum Theme {
         static let monoSmall = Font.system(size: monoSmallSize, design: .monospaced)
 
         static let tiny = Font.system(size: tinySize).monospacedDigit()
-        static let sectionTitle = Font.system(size: captionSize, weight: .semibold).monospacedDigit()
 
         static let keycap = Font.system(size: keycapSize, weight: .medium).monospacedDigit()
         static let chevron = Font.system(size: chevronSize, weight: .semibold)
@@ -833,25 +854,21 @@ enum Theme {
         static let settings = "gearshape"
         static let diff = "plusminus"
         static let back = "chevron.left"
-        static let expand = "chevron.down"
         static let filter = "line.3.horizontal.decrease"
         static let folder = "folder"
 
         // The tools in the strip.
         static let sessions = "rectangle.stack"
         static let changes = "plusminus.circle"
-        static let files = "folder"
         static let usage = "gauge.with.needle"
 
         static func tool(_ tab: CardTab) -> String {
             switch tab {
             case .sessions: return sessions
             case .changes: return changes
-            case .files: return files
+            case .files: return folder
             case .usage: return usage
             case .settings: return settings
-            case .permission, .commit: return attention
-            case .question: return question
             }
         }
     }
@@ -872,13 +889,12 @@ enum Theme {
         static let copy = "Y"
         static let diff = "D"
         static let optionEnter = "⌥⏎"
-        static let minus = "\u{2212}"
-        static let plus = "+"
         static let up = "↑"
         static let down = "↓"
         static let left = "←"
         static let right = "→"
         static let slash = "/"
+        static let plus = "+"
     }
 
     // MARK: - Glyph characters used in text
@@ -886,7 +902,6 @@ enum Theme {
     enum Glyphs {
         static let minus = "\u{2212}"
         static let separator = " · "
-        static let middot = "·"
         static let approx = "\u{2248} "
         static let ellipsis = "\u{2026}"
         /// "~$1.42": an estimated cost.

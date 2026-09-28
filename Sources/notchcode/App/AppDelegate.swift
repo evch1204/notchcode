@@ -161,13 +161,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             height: Theme.Size.panelHeight
         )
         panel.setFrame(frame, display: true)
-        if CommandLine.arguments.contains("--debug-log") {
-            let hosting = panel.contentView?.subviews.first
-            let line = "\(Date()) panel=\(panel.frame) screen=\(geometry.screen.frame) notch=\(geometry.notchFrame) contentSafe=\(String(describing: panel.contentView?.safeAreaInsets)) hostingSafe=\(String(describing: hosting?.safeAreaInsets)) hostingFrame=\(String(describing: hosting?.frame)) scale=\(geometry.screen.backingScaleFactor)\n"
-            let url = NotchcodePaths.supportDirectory.appendingPathComponent("debug.log")
-            if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write(line.data(using: .utf8)!); try? h.close() }
-            else { try? line.write(to: url, atomically: true, encoding: .utf8) }
-        }
+        let hosting = panel.contentView?.subviews.first
+        debugLog("panel=\(panel.frame) screen=\(geometry.screen.frame) notch=\(geometry.notchFrame) contentSafe=\(String(describing: panel.contentView?.safeAreaInsets)) hostingSafe=\(String(describing: hosting?.safeAreaInsets)) hostingFrame=\(String(describing: hosting?.frame)) scale=\(geometry.screen.backingScaleFactor)")
         syncPanel()
     }
 
@@ -256,7 +251,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
             hoverOpenWork = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + Theme.Motion.hoverOpenDelay, execute: work)
+            DispatchQueue.main.asyncAfter(deadline: .now() + Theme.Timing.hoverOpenDelay, execute: work)
         } else {
             hoverOpenWork?.cancel()
             hoverOpenWork = nil
@@ -270,7 +265,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
             hoverCloseWork = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + Theme.Motion.hoverCloseDelay, execute: work)
+            DispatchQueue.main.asyncAfter(deadline: .now() + Theme.Timing.hoverCloseDelay, execute: work)
         }
     }
 

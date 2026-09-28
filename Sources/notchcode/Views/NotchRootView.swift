@@ -59,11 +59,13 @@ struct NotchRootView: View {
             // closed state stays the hardware notch. Backgrounds never move the shape.
             .background(alignment: .top) { rim(on: rimOn) }
             .background(alignment: .top) { attentionBleed }
+            #if DEBUG
             .background(GeometryReader { g in
                 Color.clear.onChange(of: g.frame(in: .global), initial: true) { _, f in
                     debugLog("rendered shape frame=\(f) size=\(g.size)")
                 }
             })
+            #endif
         }
         .frame(width: shapeWidth, height: shapeHeight, alignment: .top)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -94,7 +96,7 @@ struct NotchRootView: View {
         }
         .frame(width: shapeWidth, height: shapeHeight)
         .opacity(on ? 1 : 0)
-        .animation(on ? Theme.Motion.rimIn : Theme.Motion.rimOut, value: on)
+        .animation(on ? Theme.Motion.hoverIn : Theme.Motion.hoverOut, value: on)
         .allowsHitTesting(false)
     }
 
@@ -146,17 +148,12 @@ struct NotchRootView: View {
 
     private func morph(to mode: NotchMode, animated: Bool) {
         let layout = state.layout
-        let body = layout.bodySize(for: mode, cardHeight: state.cardHeight)
+        let outer = layout.outerSize(for: mode, cardHeight: state.cardHeight)
         let top = layout.topRadius(for: mode)
         let bottom = layout.bottomRadius(for: mode)
-        let newWidth = body.width + 2 * top
-        let newHeight = body.height
-        if CommandLine.arguments.contains("--debug-log") {
-            let line = "\(Date()) mode=\(mode) size=\(newWidth)x\(newHeight) notch=\(layout.notchWidth)x\(layout.notchHeight) card=\(state.cardHeight) shown=\(shownMode) cur=\(shapeWidth)x\(shapeHeight)\n"
-            let url = NotchcodePaths.supportDirectory.appendingPathComponent("debug.log")
-            if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write(line.data(using: .utf8)!); try? h.close() }
-            else { try? line.write(to: url, atomically: true, encoding: .utf8) }
-        }
+        let newWidth = outer.width
+        let newHeight = outer.height
+        debugLog("mode=\(mode) size=\(newWidth)x\(newHeight) notch=\(layout.notchWidth)x\(layout.notchHeight) card=\(state.cardHeight) shown=\(shownMode) cur=\(shapeWidth)x\(shapeHeight)")
         let arriving = mode == .attention && shownMode != .attention
         let leaving = mode != .attention && shownMode == .attention
 
@@ -252,13 +249,4 @@ struct NotchRootView: View {
         bleedGeneration += 1
         withAnimation(Theme.Motion.reduceMotion ? Theme.Motion.reduced : Theme.Motion.contentOut) { bleed = 0 }
     }
-}
-
-/// Appends a line to ~/Library/Application Support/notchcode/debug.log when launched with --debug-log.
-func debugLog(_ text: String) {
-    guard CommandLine.arguments.contains("--debug-log") else { return }
-    let line = "\(Date()) \(text)\n"
-    let url = NotchcodePaths.supportDirectory.appendingPathComponent("debug.log")
-    if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write(line.data(using: .utf8)!); try? h.close() }
-    else { try? line.write(to: url, atomically: true, encoding: .utf8) }
 }

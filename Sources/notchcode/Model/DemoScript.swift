@@ -621,7 +621,7 @@ final class DemoScript {
             added: added + truncatedExtra,
             removed: removed,
             kind: kind,
-            snippet: Array(patch.prefix(Theme.Size.inlineSnippetMaxLines - 1)),
+            snippet: Array(patch.prefix(Theme.Limits.inlineSnippetMaxLines - 1)),
             patch: patch,
             patchTruncated: truncatedExtra > 0
         )

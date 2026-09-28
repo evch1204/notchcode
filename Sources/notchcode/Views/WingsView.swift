@@ -33,8 +33,8 @@ struct WingsView: View {
 
     private func left(session: Session?, shown: SessionState) -> some View {
         HStack(spacing: Theme.Size.wingSpacing) {
-            WingStateGlyph(state: shown)
-            Text(session?.displayFull ?? "notchcode")
+            StateGlyph(state: shown)
+            Text(session.displayOrApp)
                 .font(Theme.Fonts.captionMedium)
                 .foregroundStyle(Theme.Colors.wingsName)
                 .lineLimit(1)
@@ -56,55 +56,20 @@ struct WingsView: View {
                     .lineLimit(1)
                     .layoutPriority(2)
             } else if showWord {
-                Text(Format.stateWord(shown, verb: session?.verb))
+                Text(Format.stateText(shown, verb: session?.verb))
                     .font(Theme.Fonts.captionMedium)
-                    .foregroundStyle(wordColor(shown))
+                    .foregroundStyle(Theme.Colors.stateText(shown))
                     .lineLimit(1)
                     .layoutPriority(2)
             }
             if others > 0 {
-                Text(others == 1 ? "+1 session" : "+\(others) sessions")
+                Text(Format.otherSessions(others))
                     .font(Theme.Fonts.caption)
                     .foregroundStyle(Theme.Colors.wingsCountText)
                     .lineLimit(1)
                     .layoutPriority(1)
-                    .help(others == 1 ? "1 other session" : "\(others) other sessions")
+                    .help(Format.otherSessionsHelp(others))
             }
         }
-    }
-
-    private func wordColor(_ shown: SessionState) -> Color {
-        switch shown {
-        case .needsYou: return Theme.Colors.attentionText
-        case .working: return Theme.Colors.wingsWorkingText
-        case .done: return Theme.Colors.wingsDoneText
-        case .idle: return Theme.Colors.wingsIdleText
-        }
-    }
-}
-
-/// Spark pulsing while working, clay triangle when it needs you, green check when done, dim dot when idle.
-@MainActor
-private struct WingStateGlyph: View {
-    let state: SessionState
-
-    var body: some View {
-        Group {
-            switch state {
-            case .working:
-                SparkleGlyph(pulsing: true)
-            case .needsYou:
-                BreathingTriangle()
-            case .done:
-                Image(systemName: Theme.Symbols.done)
-                    .font(Theme.Fonts.symbol(Theme.Size.glyph))
-                    .foregroundStyle(Theme.Colors.doneGlyph)
-            case .idle:
-                Circle()
-                    .fill(Theme.Colors.idleGlyph)
-                    .frame(width: Theme.Size.dot, height: Theme.Size.dot)
-            }
-        }
-        .frame(width: Theme.Size.glyph, height: Theme.Size.glyph)
     }
 }

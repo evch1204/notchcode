@@ -32,7 +32,7 @@ enum Format {
     /// "resets in 1h 52m" when close, "resets Thu 3:40 PM" when further out.
     static func resets(at date: Date, now: Date = Date()) -> String {
         let total = max(0, Int(date.timeIntervalSince(now)))
-        if Double(total) < Theme.Motion.resetRelativeWindow {
+        if Double(total) < Theme.Timing.resetRelativeWindow {
             let hours = total / 3600
             let minutes = (total % 3600) / 60
             return "resets in " + (hours > 0 ? "\(hours)h \(minutes)m" : "\(max(1, minutes))m")
@@ -44,7 +44,7 @@ enum Format {
     /// or "limits as of Thu 3:40 PM".
     static func limitsAsOf(_ date: Date, now: Date = Date()) -> String {
         let age = now.timeIntervalSince(date)
-        if age < Theme.Motion.limitsRelativeWindow {
+        if age < Theme.Timing.limitsRelativeWindow {
             return "limits updated " + ago(date, now: now)
         }
         let formatter = Calendar.current.isDate(date, inSameDayAs: now) ? time : weekdayTime
@@ -131,6 +131,16 @@ enum Format {
         (path as NSString).deletingLastPathComponent
     }
 
+    /// The open card's status line: "main · opus · Editing", with the start time after the
+    /// model when another session shares the folder ("main · opus · started 1:10 PM").
+    static func statusSubtitle(_ session: Session, model: String?, started: Date?, verb: String?) -> String {
+        var extras: [String] = []
+        if let model { extras.append(model) }
+        if let started { extras.append(Format.started(started)) }
+        if let verb { extras.append(verb) }
+        return sessionSubtitle(session, extra: extras.joined(separator: Theme.Glyphs.separator))
+    }
+
     /// "main · Editing": the branch, then extras. The worktree is already in `displayFull`.
     static func sessionSubtitle(_ session: Session, extra: String? = nil) -> String {
         var parts: [String] = []
@@ -165,29 +175,24 @@ enum Format {
         return parts.joined(separator: Theme.Glyphs.separator)
     }
 
-    /// One word for the collapsed wings: Working, Editing, Running, Needs you, Done, Idle.
-    static func stateWord(_ state: SessionState, verb: String?) -> String {
+    /// A state in a word: the verb while working ("Editing"), else Needs you, Done, Idle.
+    static func stateText(_ state: SessionState, verb: String?) -> String {
         switch state {
+        case .working: return verb ?? "Working"
         case .needsYou: return "Needs you"
         case .done: return "Done"
         case .idle: return "Idle"
-        case .working:
-            switch verb {
-            case "Editing": return "Editing"
-            case "Running": return "Running"
-            default: return "Working"
-            }
         }
     }
 
-    static func stateText(_ session: Session, pending: Bool = false) -> String {
-        if pending { return "Needs you" }
-        switch session.state {
-        case .working: return session.verb ?? "Working"
-        case .needsYou: return "Needs you"
-        case .done: return "Done"
-        case .idle: return "Idle"
-        }
+    /// "+1 session", "+3 sessions": the other sessions beside the one the wings name.
+    static func otherSessions(_ count: Int) -> String {
+        count == 1 ? "+1 session" : "+\(count) sessions"
+    }
+
+    /// "1 other session", "3 other sessions".
+    static func otherSessionsHelp(_ count: Int) -> String {
+        count == 1 ? "1 other session" : "\(count) other sessions"
     }
 }
 
@@ -206,4 +211,9 @@ extension Session {
     }
     /// The name of the row inside its repository group: the worktree folder.
     var rowName: String { worktreeName }
+}
+
+extension Optional where Wrapped == Session {
+    /// The session's full name, or the app's when there is no session.
+    var displayOrApp: String { self?.displayFull ?? "notchcode" }
 }

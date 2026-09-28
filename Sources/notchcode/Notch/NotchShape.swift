@@ -11,6 +11,15 @@
 
 import SwiftUI
 
+/// The ear and corner radii that fit `rect`: ears at most a quarter of the width and half
+/// the height, corners at most half the body and what the ears leave of the height.
+func clampedRadii(top topRadius: CGFloat, bottom bottomRadius: CGFloat, in rect: CGRect) -> (top: CGFloat, bottom: CGFloat) {
+    let top = max(0, min(topRadius, rect.width / 4, rect.height / 2))
+    let bodyWidth = rect.width - 2 * top
+    let bottom = max(0, min(bottomRadius, bodyWidth / 2, rect.height - top))
+    return (top, bottom)
+}
+
 struct NotchShape: Shape {
     var topRadius: CGFloat
     var bottomRadius: CGFloat
@@ -24,9 +33,7 @@ struct NotchShape: Shape {
     }
 
     func path(in rect: CGRect) -> Path {
-        let top = max(0, min(topRadius, rect.width / 4, rect.height / 2))
-        let bodyWidth = rect.width - 2 * top
-        let bottom = max(0, min(bottomRadius, bodyWidth / 2, rect.height - top))
+        let (top, bottom) = clampedRadii(top: topRadius, bottom: bottomRadius, in: rect)
 
         let left = rect.minX + top
         let right = rect.maxX - top
@@ -83,9 +90,7 @@ struct NotchRimShape: Shape {
 
     func path(in rect: CGRect) -> Path {
         // Same clamping as NotchShape, so both agree at every size.
-        let top = max(0, min(topRadius, rect.width / 4, rect.height / 2))
-        let bodyWidth = rect.width - 2 * top
-        let bottom = max(0, min(bottomRadius, bodyWidth / 2, rect.height - top))
+        let (top, bottom) = clampedRadii(top: topRadius, bottom: bottomRadius, in: rect)
 
         let left = rect.minX + top - outset
         let right = rect.maxX - top + outset
