@@ -339,14 +339,15 @@ struct StatusSegment: View {
         }
     }
 
-    /// "main · Editing · ■ Explore ■ general-purpose": one coloured square per running agent.
-    /// With a second session in the same folder: "main · opus · started 1:10 PM · Editing".
+    /// "main · opus · Editing · ■ Explore ■ general-purpose": branch, model, verb, then one
+    /// coloured square per running agent. With a second session in the same folder the start
+    /// time follows the model: "main · opus · started 1:10 PM · Editing".
     private func subtitle(_ session: Session) -> some View {
         let running = state.runningAgents(for: session.id)
         let shownAgents = Array(running.prefix(Theme.Size.maxHeaderAgents))
         var extras: [String] = []
+        if let model = state.modelShortName(for: session.id) { extras.append(model) }
         if state.isAmbiguous(session) {
-            if let model = state.modelShortName(for: session.id) { extras.append(model) }
             extras.append(Format.started(state.startTime(for: session)))
         }
         if let verb = session.verb, state.shownState(session) == .working { extras.append(verb) }

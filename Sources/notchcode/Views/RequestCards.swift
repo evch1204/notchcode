@@ -243,8 +243,8 @@ struct QuestionCard: View {
             if !question.options.isEmpty {
                 VStack(spacing: Theme.Size.spaceS) {
                     ForEach(Array(question.options.prefix(Theme.Size.maxQuestionOptions).enumerated()), id: \.offset) { item in
+                        // No keycaps: no hook can answer a question, so the options are read-only.
                         HStack(spacing: Theme.Size.spaceM) {
-                            Keycap("\(item.offset + 1)")
                             Text(item.element)
                                 .font(Theme.Fonts.body)
                                 .foregroundStyle(Theme.Colors.inkSecondary)

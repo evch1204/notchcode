@@ -21,8 +21,10 @@ struct NotchGeometry {
         )
     }
 
+    /// Nil when there is no screen at all (the lid closed with nothing attached, or the
+    /// moment a display is unplugged).
     @MainActor
-    static func current() -> NotchGeometry {
+    static func current() -> NotchGeometry? {
         let screens = NSScreen.screens
         if let notched = screens.first(where: { $0.safeAreaInsets.top > 0 }),
            let left = notched.auxiliaryTopLeftArea,
@@ -33,7 +35,7 @@ struct NotchGeometry {
                 return NotchGeometry(screen: notched, notchWidth: width, notchHeight: height, hasNotch: true)
             }
         }
-        let fallback = NSScreen.main ?? screens[0]
+        guard let fallback = NSScreen.main ?? screens.first else { return nil }
         return NotchGeometry(
             screen: fallback,
             notchWidth: Theme.Size.fallbackNotchWidth,
@@ -66,9 +68,9 @@ struct NotchLayout: Equatable {
         case .peek:
             return CGSize(width: widened(Theme.Size.peekWidth), height: notchHeight)
         case .attention:
-            return CGSize(width: widened(Theme.Size.attentionWidth), height: notchHeight + Theme.Size.attentionExtraHeight)
+            return CGSize(width: widened(Theme.Size.attentionWidth, wing: stripWing), height: notchHeight + Theme.Size.attentionExtraHeight)
         case .card:
-            return CGSize(width: widened(Theme.Size.cardWidth), height: notchHeight + cardHeight)
+            return CGSize(width: widened(Theme.Size.cardWidth, wing: stripWing), height: notchHeight + cardHeight)
         }
     }
 
@@ -105,8 +107,15 @@ struct NotchLayout: Equatable {
         max(0, (bodyWidth - notchWidth) / 2 - Theme.Size.sidePadding - Theme.Size.wingInnerGap)
     }
 
+    /// One side of the open card and the attention row: the strip's tools, rule and gear,
+    /// plus the wing's paddings. A wider notch (a scaled display) widens the card so the
+    /// tools are never clipped.
+    private var stripWing: CGFloat {
+        Theme.Size.stripToolsWidth + Theme.Size.sidePadding + Theme.Size.wingInnerGap + Theme.Size.wingEdgeInset
+    }
+
     /// Keeps wings usable when the notch is wider than the design assumed.
-    private func widened(_ width: CGFloat) -> CGFloat {
-        max(width, notchWidth + 2 * Theme.Size.minWing)
+    private func widened(_ width: CGFloat, wing: CGFloat = Theme.Size.minWing) -> CGFloat {
+        max(width, notchWidth + 2 * wing)
     }
 }

@@ -151,7 +151,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func reposition() {
         guard let panel, let appState else { return }
-        let geometry = NotchGeometry.current()
+        // No screen (lid closed, display unplugged): keep the last frame until one returns.
+        guard let geometry = NotchGeometry.current() else { return }
         appState.setNotch(width: geometry.notchWidth, height: geometry.notchHeight)
         let frame = NSRect(
             x: geometry.notchFrame.midX - Theme.Size.panelWidth / 2,
@@ -241,13 +242,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if inside {
             hoverCloseWork?.cancel()
             hoverCloseWork = nil
-            guard !open, changed || hoverOpenWork == nil else { return }
+            // The attention row answers in one press; opening under the pointer on its way to
+            // Allow would move the button away. Click row 1 (or ⌥ space) opens it instead.
+            guard !open, appState.mode != .attention, changed || hoverOpenWork == nil else { return }
             hoverOpenWork?.cancel()
             let work = DispatchWorkItem { [weak self] in
                 MainActor.assumeIsolated {
                     guard let self, let state = self.appState else { return }
                     self.hoverOpenWork = nil
-                    guard self.mouseInside, state.mode != .card, state.prefs.openGesture == .hover else { return }
+                    guard self.mouseInside, state.mode != .card, state.mode != .attention,
+                          state.prefs.openGesture == .hover else { return }
                     state.toggleFromNotchTap()
                 }
             }

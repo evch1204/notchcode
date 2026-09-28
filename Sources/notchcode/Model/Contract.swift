@@ -89,6 +89,9 @@ protocol HookEventSink: AnyObject {
     /// The hook went away before a reply (the owner answered in the terminal, or Claude Code timed out).
     /// The sink drops the pending request and must not call its reply handler afterwards.
     func cancel(requestId: String)
+    /// The transport replied "none" at its deadline. The sink drops the request without
+    /// replying and treats it as unanswered (Claude Code's terminal prompt now waits).
+    func timedOut(requestId: String)
 }
 
 // MARK: - Model derived from envelopes and transcripts

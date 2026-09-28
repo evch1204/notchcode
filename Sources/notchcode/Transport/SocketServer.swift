@@ -44,7 +44,9 @@ enum SocketServerError: Error, CustomStringConvertible {
 
 final class SocketServer {
     static let readTimeout: Int = 2             // seconds to receive the envelope line
-    static let replyDeadline: TimeInterval = 58 // hook waits 59 s, Claude Code 65 s
+    /// The app's own deadline for a request is this same value, so the owner can never press
+    /// Allow after the hook has already been told "none" (hook waits 59 s, Claude Code 65 s).
+    static let replyDeadline: TimeInterval = Theme.Motion.permissionDeadline
     static let maxLineBytes = 8 * 1024 * 1024
 
     private static let log = Logger(subsystem: "com.notchcode.app", category: "socket")
@@ -201,6 +203,13 @@ final class SocketServer {
                              line: Self.replyLine(nil, id: id, payload: .null),
                              queue: clientQueue) {
                 SocketServer.log.info("reply deadline passed for \(id, privacy: .public)")
+                // The hook got "none": the terminal prompt waits now. The app drops the request
+                // the timed-out way, so a late press can never look answered.
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated {
+                        sink.timedOut(requestId: id)
+                    }
+                }
             }
             deliver(envelope, reply: replyHandler)
             conn.watchForHangup(queue: clientQueue) {

@@ -550,6 +550,7 @@ struct CheckShape: Shape {
 struct DoneCheckGlyph: View {
     var size: CGFloat = Theme.Size.peekCircle
     @State private var popped = false
+    @State private var scale: CGFloat = 0
     @State private var drawn: CGFloat = 0
 
     var body: some View {
@@ -563,21 +564,24 @@ struct DoneCheckGlyph: View {
         }
         .frame(width: size, height: size)
         .opacity(popped ? 1 : 0)
-        .keyframeAnimator(initialValue: CGFloat(1), trigger: popped) { view, scale in
-            view.scaleEffect(scale)
-        } keyframes: { _ in
-            // Under Reduce Motion every keyframe is 1: no pop.
-            LinearKeyframe(reduce ? 1 : 0, duration: 0)
-            CubicKeyframe(reduce ? 1 : Theme.Motion.checkPopOvershoot, duration: Theme.Motion.checkPopDuration * Theme.Motion.checkPopRiseShare)
-            SpringKeyframe(1, duration: Theme.Motion.checkPopDuration * (1 - Theme.Motion.checkPopRiseShare))
-        }
+        .scaleEffect(scale)
+        // Two plain animations (0 → overshoot, then a spring to 1), not a keyframe track:
+        // a zero-length keyframe is the pattern that gave SwiftUI a NaN frame.
         .onAppear {
             if reduce {
                 popped = true
+                scale = 1
                 drawn = 1
                 return
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + Theme.Motion.checkDelay) { popped = true }
+            let rise = Theme.Motion.checkPopDuration * Theme.Motion.checkPopRiseShare
+            DispatchQueue.main.asyncAfter(deadline: .now() + Theme.Motion.checkDelay) {
+                popped = true
+                withAnimation(.easeOut(duration: rise)) { scale = Theme.Motion.checkPopOvershoot }
+                DispatchQueue.main.asyncAfter(deadline: .now() + rise) {
+                    withAnimation(Theme.Motion.checkPopSettle) { scale = 1 }
+                }
+            }
             withAnimation(Theme.Motion.checkDraw) { drawn = 1 }
         }
     }

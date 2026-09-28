@@ -28,7 +28,7 @@ The open card is a toolbar window hanging from the notch; the collapsed states s
 
 - **Collapsed while working: unchanged.** Spark, verb, one dot per session, elapsed or agent count. Small movement only (the spark pulse, the agent squares). The tools never replace the wings on their own.
 - **Hover on a collapsed strip (click-to-open owners):** after the same 250 ms dwell as the rim, the right wing crossfades from the dots to the four tool icons, unfolding from behind the camera (30 ms stagger). A press opens the card straight on that tool. Leaving puts the dots back. Hover-to-open owners get the card, as before.
-- **Needs you keeps its two-row size change** (the shape growing is what makes it visible). Row 1 as today: triangle, "Needs you", session, clock. Row 2: the request ("Allow Bash?" + the command, middle-truncated) on the left; Deny · Always · Allow as toolbar segments on the right (Skip · Edit · Commit for a commit), Allow white and primary, the 60 s countdown draining along Allow's bottom edge. One press answers without opening anything. Click on row 1, or `⌥ space`, opens the card with the request in the well.
+- **Needs you keeps its two-row size change** (the shape growing is what makes it visible). Row 1 as today: triangle, "Needs you", session, clock. Row 2: the request ("Allow Bash?" + the command, middle-truncated) on the left; Deny · Always · Allow as toolbar segments on the right (Skip · Edit · Commit for a commit), Allow white and primary, the 58 s countdown draining along Allow's bottom edge. One press answers without opening anything. Click on row 1, or `⌥ space`, opens the card with the request in the well.
 - **Open card = the toolbar.** The strip stays on top: status segment on the left (two lines: name, then branch · model · verb · agents), the four tools with the selected one filled on the right, a rule, the gear. The selection fill and the keyboard focus ring glide between tools (`⇥`, `1–4`). Under the strip a hairline with a short bridge beneath the selected tool, then the content well (a lighter inset holding the pane, the request card, the question, or Settings), then a footer with that tool's keys, `esc`, and the 5-hour bar. Panel height per tool (Sessions, Changes, Files, Usage, Settings each have their own), re-targeted with one spring when the tool changes; the pane slides 48 pt toward its new anchor with parallax. Segments lift on hover and depress on press. Panes themselves (Sessions, Changes, Files, Usage, Settings with Quit) are the current ones, inside the well.
 - **Peek and resting: unchanged** (the check draws on, counts count up; the dim resting row).
 - **Light outside the notch.** The hardware notch covers the centre 180 pt, so any light that only runs along the inside of the bottom edge disappears in the middle. Every glow is drawn as a halo *outside* the black silhouette: the hover rim sits on the outer edge of the shape (not inset) with its glow spilling 8–12 pt below and around the wings; the clay bleed sits below the bottom edge and is wider than the notch so both wings carry it; the done peek's green and the working state's spark live in the wings. No light effect carries information only under the camera.
@@ -58,7 +58,7 @@ Wings never grow taller for passive events. Only blocking events open the card b
 | Subagent finished | passive | `SubagentStop` | peek: ■ type finished · session | — |
 | Session start / end | silent | `SessionStart`, `SessionEnd` | updates the session list | — |
 
-Permission timeout: 60 s, then the hook returns nothing and Claude Code's own terminal prompt continues. Nothing is denied on the owner's behalf.
+Permission timeout: 58 s (the app and the socket share one deadline; the hook itself waits 59 s), then the hook returns nothing and Claude Code's own terminal prompt continues. Nothing is denied on the owner's behalf.
 
 Commit means letting Claude's own `git commit` through. Push never happens from the notch.
 
@@ -177,7 +177,7 @@ What exists today: width/height springs (open 0.45/0.72 and 0.55/0.78, close 0.3
 | Card rows | translateY 10→0 pt, opacity, 0.22 s ease-out | 120 ms + 40 ms per row | no | opacity only |
 | Wing text | translateX ±30 pt → 0 (from behind the camera), 0.25 s ease-out | 120 ms | no | none |
 | Amber bleed (attention) | radial glow under the notch, 0→100% in 0.3 s, settles to 40% by 1 s | 0 | yes | static 40% |
-| Countdown ring + edge line | linear drain over the 60 s deadline, driven by the deadline date, not a timer tick | 0 | yes | ring only, no line |
+| Countdown ring + edge line | linear drain over the 58 s deadline, driven by the deadline date, not a timer tick | 0 | yes | ring only, no line |
 | Done peek: check | circle pops 0.3 s with 15% overshoot; stroke draws on 0.35 s ease-out | 150 ms | no | appear |
 | Done peek: counts | +N / −N count up 0.6 s ease-out | 250 ms | no | jump |
 | Done peek: retract | width spring 0.34/0.86 | at 4 s | yes | crossfade |

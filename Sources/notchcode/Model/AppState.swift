@@ -137,11 +137,29 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     // MARK: Published state
 
     @Published private(set) var sessions: [Session] = []
-    @Published private(set) var pending: [PendingRequest] = []
+    @Published private(set) var pending: [PendingRequest] = [] {
+        didSet {
+            // A new request under the owner's fingers: ⏎ or ⌫ typed for the terminal must not
+            // answer it. Answer keys wait `requestKeyGuard`; clicks stay immediate.
+            if let id = pending.first?.id, id != oldValue.first?.id {
+                answerKeysAllowedAt = Date().addingTimeInterval(Theme.Motion.requestKeyGuard)
+                // The request takes the well; the Files filter is gone, so it must not keep the keys.
+                fileFilterFocused = false
+            }
+        }
+    }
+    /// Answer keys (⏎, ⌫, A, E) are ignored before this moment.
+    private var answerKeysAllowedAt = Date.distantPast
     @Published private(set) var peek: Peek?
     @Published private(set) var mode: NotchMode = .closed
     @Published private(set) var isCardOpen = false
-    @Published private(set) var question: QuestionPreview?
+    @Published private(set) var question: QuestionPreview? {
+        didSet {
+            // The question went away while the card showed it: back to Sessions, so the
+            // well, the filled tool, the bridge and the height all agree again.
+            if question == nil, selectedTab == .question { selectTab(.sessions) }
+        }
+    }
     @Published private(set) var layout = NotchLayout.fallback
     @Published private(set) var turnStarts: [String: Date] = [:]
     @Published private(set) var turnTitles: [String: String] = [:]
@@ -158,7 +176,23 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     /// cwd -> the session id of the most recently written transcript in that folder.
     @Published private(set) var newestSessionByCWD: [String: String] = [:]
     @Published var turnsBySession: [String: [TranscriptTurn]] = [:]
-    @Published var selectedTab: CardTab = .sessions
+    @Published var selectedTab: CardTab = .sessions {
+        didSet {
+            guard selectedTab != oldValue else { return }
+            // While the card is open the pane follows one run loop later: the outgoing pane
+            // renders once more with the new `tabMovedForward`, so its removal transition
+            // (captured at its last render) slides the right way. Closed, or when no tool pane
+            // is on screen to leave (Settings, a request, a question), it follows at once.
+            let paneToPane = CardTab.browsable.contains(oldValue) && CardTab.browsable.contains(selectedTab)
+            guard isCardOpen, paneToPane else { paneTab = selectedTab; return }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.paneTab != self.selectedTab else { return }
+                self.paneTab = self.selectedTab
+            }
+        }
+    }
+    /// The tool pane the well shows; trails `selectedTab` by one run loop while the card is open.
+    @Published private(set) var paneTab: CardTab = .sessions
     /// The last tab change moved right in tab order (panes slide in from the trailing edge).
     @Published private(set) var tabMovedForward = true
     /// The mouse has rested on the shape (AppDelegate sets it after `Theme.Motion.rimDelay`).
@@ -769,6 +803,12 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         afterPendingChange(sessionId: sid)
     }
 
+    func timedOut(requestId: String) {
+        guard let sid = dropPending(requestId) else { return }
+        if !pending.contains(where: { $0.sessionId == sid }) { markNeedsYou(sid) }
+        afterPendingChange(sessionId: sid)
+    }
+
     // MARK: - Owner actions
 
     func allow(id: String) {
@@ -1035,6 +1075,9 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         }
 
         if let req = currentPending {
+            if [.primary, .deny, .always, .edit].contains(key), Date() < answerKeysAllowedAt {
+                return true // swallowed: the request only just arrived
+            }
             switch key {
             case .primary: allow(id: req.id)
             case .deny: deny(id: req.id)
@@ -1068,8 +1111,24 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
 
         guard isCardOpen else { return false }
 
-        // Settings has no keys of its own beyond esc and ⌘,.
-        if selectedTab == .settings { return false }
+        // Settings has no keys of its own beyond esc and ⌘,; ⇥ and 1–4 still leave it for a tool.
+        if selectedTab == .settings {
+            switch key {
+            case .number(let n):
+                guard n >= 1 && n <= CardTab.browsable.count else { return false }
+                selectTab(CardTab.browsable[n - 1])
+                flashToolLabel()
+                return true
+            case .nextTab:
+                cycleTab(by: 1)
+                return true
+            case .previousTab:
+                cycleTab(by: -1)
+                return true
+            default:
+                return false
+            }
+        }
 
         if showingQuestion {
             switch key {
@@ -1912,8 +1971,9 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
 
     private func cycleTab(by step: Int) {
         let tabs = CardTab.browsable
-        let current = tabs.firstIndex(of: selectedTab) ?? 0
-        let next = (current + step + tabs.count) % tabs.count
+        // From Settings (or anything not a tool), ⇥ lands on the first tool and ⇧⇥ on the last.
+        let current = tabs.firstIndex(of: selectedTab) ?? (step > 0 ? -1 : tabs.count)
+        let next = ((current + step) % tabs.count + tabs.count) % tabs.count
         selectTab(tabs[next])
         flashToolLabel()
     }

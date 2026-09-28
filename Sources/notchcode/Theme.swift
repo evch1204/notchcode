@@ -351,6 +351,13 @@ enum Theme {
         static let toolFocusLine: CGFloat = 1
         static let bridgeWidth: CGFloat = 14
         static let bridgeHeight: CGFloat = 2
+        /// The open strip's right wing: four tools, the rule with its padding, the gear,
+        /// and the gaps between them. The card widens past `cardWidth` to keep this whole.
+        static var stripToolsWidth: CGFloat {
+            let tools = CGFloat(CardTab.browsable.count)
+            let rule = toolRuleWidth + 2 * toolGroupGap
+            return tools * toolWidth + (tools + 1) * toolGap + rule + gearWidth
+        }
         static let toolBadgeHeight: CGFloat = 11
         static let toolBadgeHPadding: CGFloat = 3
         static let toolBadgeOffset: CGFloat = 4
@@ -658,6 +665,9 @@ enum Theme {
         static let checkDrawDuration: Double = 0.35
         static let countDelay: Double = 0.25
         static let countDuration: Double = 0.6
+        static var checkPopSettle: Animation {
+            .spring(response: checkPopDuration * (1 - checkPopRiseShare), dampingFraction: 0.8)
+        }
         static var checkDraw: Animation { .easeOut(duration: checkDrawDuration).delay(checkDelay) }
         static var countUp: Animation { .easeOut(duration: countDuration).delay(countDelay) }
 
@@ -735,7 +745,11 @@ enum Theme {
 
         /// A hook agent and a transcript agent of the same type starting this close together are the same agent.
         static let agentMatchWindow: Double = 15
-        static let permissionDeadline: Double = 60
+        /// After a new request arrives, ⏎ / ⌫ / A / E are ignored this long (typing in the
+        /// terminal must not answer it). Clicks are never delayed.
+        static let requestKeyGuard: Double = 0.4
+        /// A blocking request waits this long; the socket replies "none" at the same moment.
+        static let permissionDeadline: Double = 58
         /// `.needsYou` without a pending request lasts at most this long.
         static let needsYouLifetime: Double = 90
         /// Transcript writes this soon after a needs-you notification belong to it, not to new activity.

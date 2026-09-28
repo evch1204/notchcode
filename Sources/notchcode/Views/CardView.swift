@@ -101,7 +101,7 @@ struct CardView: View {
         ZStack(alignment: .top) {
             tabBody
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .id(state.selectedTab)
+                .id(state.paneTab)
                 .transition(paneTransition)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -134,7 +134,7 @@ struct CardView: View {
 
     @ViewBuilder
     private var tabBody: some View {
-        switch state.selectedTab {
+        switch state.paneTab {
         case .files:
             FilesTab(state: state)
         case .usage:

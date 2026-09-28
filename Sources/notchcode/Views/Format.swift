@@ -57,6 +57,22 @@ enum Format {
         return "reset at " + formatter.string(from: date)
     }
 
+    /// A tool's short name: "Bash" stays "Bash"; an MCP tool
+    /// ("mcp__claude_ai_Google_Calendar__complete_authentication") becomes its last part.
+    static func toolName(_ tool: String) -> String {
+        guard mcpServer(tool) != nil else { return tool }
+        return tool.components(separatedBy: mcpSeparator).last ?? tool
+    }
+
+    /// The MCP server of an "mcp__server__tool" name, else nil.
+    static func mcpServer(_ tool: String) -> String? {
+        let parts = tool.components(separatedBy: mcpSeparator)
+        guard parts.count >= 3, parts[0] == "mcp" else { return nil }
+        return parts[1..<(parts.count - 1)].joined(separator: mcpSeparator)
+    }
+
+    private static let mcpSeparator = "__"
+
     /// "started 1:10 PM".
     static func started(_ date: Date) -> String {
         "started " + time.string(from: date)

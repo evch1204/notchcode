@@ -41,11 +41,13 @@ struct AttentionView: View {
 
             HStack(spacing: Theme.Size.spaceM) {
                 HStack(spacing: Theme.Size.spaceM) {
+                    // Never fixed-size: a long tool name must not push Allow out of the clip.
                     Text(question)
                         .font(Theme.Fonts.bodySemibold)
                         .foregroundStyle(Theme.Colors.ink)
                         .lineLimit(1)
-                        .fixedSize()
+                        .truncationMode(.middle)
+                        .layoutPriority(1)
                     Text(summary)
                         .font(Theme.Fonts.monoCaption)
                         .foregroundStyle(Theme.Colors.inkSecondary)
@@ -66,11 +68,15 @@ struct AttentionView: View {
         .frame(width: bodySize.width, height: bodySize.height, alignment: .top)
     }
 
+    /// "Allow Bash?"; an MCP tool by its own name ("Allow complete_authentication?").
     private var question: String {
-        request.kind == .commit ? "Commit?" : "Allow \(request.tool)?"
+        request.kind == .commit ? "Commit?" : "Allow \(Format.toolName(request.tool))?"
     }
 
+    /// The command or path; an MCP tool's server leads it ("claude_ai_Google_Calendar · …").
     private var summary: String {
-        request.kind == .commit ? request.title : request.detail
+        if request.kind == .commit { return request.title }
+        guard let server = Format.mcpServer(request.tool) else { return request.detail }
+        return request.detail.isEmpty ? server : server + Theme.Glyphs.separator + request.detail
     }
 }

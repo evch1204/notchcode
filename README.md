@@ -125,11 +125,13 @@ While the card is open the notch takes the keyboard; the moment it closes, focus
 | `⏎` | the primary action: allow, commit, open the selected session or file |
 | `⌫` | deny, or skip a commit |
 | `A` | allow always |
+| `E` | edit a proposed commit: Claude asks you for a new message |
 | `D` | show the diff behind a permission or commit request |
-| `1` – `4` | pick an option, or a tab |
-| `⇥` `⇧⇥` | next and previous tab |
+| `1` – `4` | pick a tool |
+| `⇥` `⇧⇥` | next and previous tool |
 | `↑` `↓` `←` `→` | move in a list or the file tree |
 | `y` | copy `path:line` of the first changed line |
+| `/` | filter the Files tree |
 | `⌥⏎` | jump to the session's terminal |
 | `⌘,` | Settings |
 | `⌘Q` | quit notchcode (while the card is open) |
