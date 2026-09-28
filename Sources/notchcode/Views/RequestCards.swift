@@ -1,43 +1,12 @@
 // RequestCards.swift
-// What the card shows when Claude is blocked on the owner: a permission,
-// a commit, or (read-only) a question.
+// What the well shows when Claude is blocked on the owner: a permission, a
+// commit, or (read-only) a question. The answers live in the strip's action
+// segments; the well shows what is being asked, the diff behind it, and the
+// way out to the terminal.
 
 import SwiftUI
 
 private let footerText = "At 0:00 the terminal asks instead. Nothing is denied for you."
-
-/// Three pills: two one-unit ghosts and a two-unit white primary.
-@MainActor
-private struct ActionRow: View {
-    let width: CGFloat
-    let deny: (title: String, key: String, action: () -> Void)
-    let middle: (title: String, key: String, action: () -> Void)
-    let primary: (title: String, key: String, action: () -> Void)
-
-    var body: some View {
-        let units = 2 + Theme.Size.primaryUnits
-        let unit = max(0, (width - 2 * Theme.Size.buttonSpacing) / units)
-        HStack(spacing: Theme.Size.buttonSpacing) {
-            Button(action: deny.action) {
-                PillLabel(title: deny.title, key: deny.key)
-            }
-            .buttonStyle(PillButtonStyle(variant: .destructive))
-            .frame(width: unit)
-
-            Button(action: middle.action) {
-                PillLabel(title: middle.title, key: middle.key)
-            }
-            .buttonStyle(PillButtonStyle(variant: .ghost))
-            .frame(width: unit)
-
-            Button(action: primary.action) {
-                PillLabel(title: primary.title, key: primary.key, onLight: true)
-            }
-            .buttonStyle(PillButtonStyle(variant: .primary))
-            .frame(width: unit * Theme.Size.primaryUnits)
-        }
-    }
-}
 
 @MainActor
 private struct RequestFooter: View {
@@ -60,7 +29,7 @@ private struct RequestFooter: View {
     }
 }
 
-/// "+12 −3 · Show changes   D": opens the request's diff inside the card.
+/// "+12 −3 · Show changes   D": opens the request's diff inside the well.
 @MainActor
 private struct ShowChangesRow: View {
     let file: FileChange
@@ -92,6 +61,25 @@ private struct ShowChangesRow: View {
     }
 }
 
+/// The request's title with the countdown ring on the right.
+@MainActor
+private struct RequestTitle: View {
+    let request: PendingRequest
+    var lines = 1
+
+    var body: some View {
+        HStack(alignment: .center) {
+            Text(request.title)
+                .font(Theme.Fonts.hero)
+                .tracking(Theme.Fonts.heroTracking)
+                .foregroundStyle(Theme.Colors.ink)
+                .lineLimit(lines)
+            Spacer(minLength: Theme.Size.spaceM)
+            DeadlineCountdown(request: request, ringSize: Theme.Size.countdownRingLarge, font: Theme.Fonts.bodyMedium)
+        }
+    }
+}
+
 @MainActor
 struct PermissionCard: View {
     @ObservedObject var state: AppState
@@ -103,15 +91,7 @@ struct PermissionCard: View {
     var body: some View {
         let open = state.requestDiffPath(for: request) != nil
         VStack(alignment: .leading, spacing: Theme.Size.spaceL) {
-            HStack(alignment: .center) {
-                Text(request.title)
-                    .font(Theme.Fonts.hero)
-                    .tracking(Theme.Fonts.heroTracking)
-                    .foregroundStyle(Theme.Colors.ink)
-                    .lineLimit(1)
-                Spacer(minLength: Theme.Size.spaceM)
-                DeadlineCountdown(request: request, ringSize: Theme.Size.countdownRingLarge, font: Theme.Fonts.bodyMedium)
-            }
+            RequestTitle(request: request)
 
             InsetGroup {
                 HStack(alignment: .top, spacing: Theme.Size.spaceM) {
@@ -133,7 +113,7 @@ struct PermissionCard: View {
             }
 
             if open, let file {
-                // Takes the room left above the pills, which never move.
+                // Takes the room left above the footer, which never moves.
                 DiffView(file: file, maxHeight: Theme.Size.requestDiffMaxHeight, scroll: state.requestDiffScroll)
                     .layoutPriority(-1)
                     .transition(Theme.Motion.requestDiffTransition)
@@ -149,13 +129,6 @@ struct PermissionCard: View {
             Spacer(minLength: 0)
                 .layoutPriority(-2)
 
-            ActionRow(
-                width: width,
-                deny: ("Deny", Theme.Keys.delete, { state.deny(id: request.id) }),
-                middle: ("Always", Theme.Keys.always, { state.allowAlways(id: request.id) }),
-                primary: ("Allow", Theme.Keys.enter, { state.allow(id: request.id) })
-            )
-
             RequestFooter(state: state, sessionId: request.sessionId)
         }
     }
@@ -167,7 +140,7 @@ struct CommitCard: View {
     let request: PendingRequest
     let width: CGFloat
 
-    /// A file row like the Changes tab's; click (or D on the cursor row) opens its diff under it.
+    /// A file row like the Changes tool's; click (or D on the cursor row) opens its diff under it.
     @ViewBuilder
     private func fileRow(_ file: FileChange, index: Int, openPath: String?) -> some View {
         let hasDiff = !AppState.diffLines(file).isEmpty
@@ -200,15 +173,7 @@ struct CommitCard: View {
     var body: some View {
         let openPath = state.requestDiffPath(for: request)
         VStack(alignment: .leading, spacing: Theme.Size.spaceL) {
-            HStack(alignment: .center) {
-                Text(request.title)
-                    .font(Theme.Fonts.hero)
-                    .tracking(Theme.Fonts.heroTracking)
-                    .foregroundStyle(Theme.Colors.ink)
-                    .lineLimit(openPath == nil ? 2 : 1)
-                Spacer(minLength: Theme.Size.spaceM)
-                DeadlineCountdown(request: request, ringSize: Theme.Size.countdownRingLarge, font: Theme.Fonts.bodyMedium)
-            }
+            RequestTitle(request: request, lines: openPath == nil ? 2 : 1)
 
             InsetGroup {
                 VStack(alignment: .leading, spacing: Theme.Size.spaceS) {
@@ -255,19 +220,12 @@ struct CommitCard: View {
             Spacer(minLength: 0)
                 .layoutPriority(-2)
 
-            ActionRow(
-                width: width,
-                deny: ("Skip", Theme.Keys.delete, { state.deny(id: request.id) }),
-                middle: ("Edit", Theme.Keys.edit, { state.requestCommitEdit(id: request.id) }),
-                primary: ("Commit", Theme.Keys.enter, { state.allow(id: request.id) })
-            )
-
             RequestFooter(state: state, sessionId: request.sessionId)
         }
     }
 }
 
-/// Preview only: no hook can answer a question, so the one action is teleport.
+/// Preview only: no hook can answer a question, so the one action (in the strip) is teleport.
 @MainActor
 struct QuestionCard: View {
     @ObservedObject var state: AppState
@@ -305,16 +263,16 @@ struct QuestionCard: View {
 
             Spacer(minLength: 0)
 
-            Button {
-                state.teleport(session: session)
-            } label: {
-                HStack(spacing: Theme.Size.pillSpacing) {
-                    Text("Answer in \(state.terminalName(for: session))")
-                    Image(systemName: Theme.Symbols.teleport)
-                    Keycap(Theme.Keys.enter, onLight: true)
+            HStack(spacing: Theme.Size.spaceM) {
+                Text("Only the terminal can take the answer.")
+                    .font(Theme.Fonts.caption)
+                    .foregroundStyle(Theme.Colors.inkTertiary)
+                    .lineLimit(1)
+                Spacer(minLength: Theme.Size.spaceS)
+                TeleportLink(title: "Answer in \(state.terminalName(for: session))") {
+                    state.teleport(session: session)
                 }
             }
-            .buttonStyle(PillButtonStyle(variant: .primary))
         }
     }
 }

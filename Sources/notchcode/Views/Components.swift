@@ -82,37 +82,6 @@ struct PillLabel: View {
     }
 }
 
-/// Tab pill in the card's tab row. With a namespace, the selected pill is one shared
-/// capsule that glides between tabs (matchedGeometryEffect on the pill only).
-@MainActor
-struct TabPillStyle: ButtonStyle {
-    var selected: Bool
-    var pill: Namespace.ID? = nil
-
-    static let pillId = "tabPill"
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(Theme.Fonts.bodyMedium)
-            .foregroundStyle(selected ? Theme.Colors.ink : Theme.Colors.inkSecondary)
-            .padding(.horizontal, Theme.Size.tabHPadding)
-            .frame(height: Theme.Size.tabHeight)
-            .background {
-                if selected {
-                    if let pill {
-                        Capsule(style: .continuous)
-                            .fill(Theme.Colors.tabSelected)
-                            .matchedGeometryEffect(id: Self.pillId, in: pill)
-                    } else {
-                        Capsule(style: .continuous).fill(Theme.Colors.tabSelected)
-                    }
-                }
-            }
-            .contentShape(Capsule(style: .continuous))
-            .opacity(configuration.isPressed ? Theme.Opacity.pressed : 1)
-    }
-}
-
 // MARK: - Motion helpers
 
 private struct PaneOffsetKey: EnvironmentKey {
@@ -168,9 +137,32 @@ struct RiseIn: ViewModifier {
     }
 }
 
+/// A strip segment that unfolds from behind the camera: it starts `unfoldDistance` toward
+/// the centre and transparent, then springs into place, `index` × 30 ms after the first.
+/// `towardCamera` is +1 for the left wing and −1 for the right wing. Reduce Motion: opacity only.
+struct Unfold: ViewModifier {
+    let index: Int
+    let towardCamera: CGFloat
+    @State private var shown = false
+
+    func body(content: Content) -> some View {
+        let reduce = Theme.Motion.reduceMotion
+        content
+            .opacity(shown ? 1 : 0)
+            .offset(x: shown || reduce ? 0 : towardCamera * Theme.Motion.unfoldDistance)
+            .onAppear {
+                withAnimation(Theme.Motion.unfold(index)) { shown = true }
+            }
+    }
+}
+
 extension View {
     func riseIn(_ index: Int) -> some View { modifier(RiseIn(index: index)) }
     func parallaxGroup() -> some View { modifier(ParallaxGroup()) }
+    /// Left wing: segments counted from the camera outward, sliding out to the left.
+    func unfoldLeft(_ index: Int) -> some View { modifier(Unfold(index: index, towardCamera: 1)) }
+    /// Right wing: segments counted from the camera outward, sliding out to the right.
+    func unfoldRight(_ index: Int) -> some View { modifier(Unfold(index: index, towardCamera: -1)) }
 }
 
 /// "Open in Ghostty ↗" text link.

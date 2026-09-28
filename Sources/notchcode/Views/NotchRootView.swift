@@ -1,8 +1,10 @@
 // NotchRootView.swift
 // One black shape that morphs between states. Width leads on the way out,
 // height leads on the way back. Content fades and rises in after the shape moves.
+// Inside one state the shape re-targets with one spring (the card changing tool).
 // Around the shape: the hover rim light (closed and resting), the attention
-// breath and clay bleed, and the teleport fold.
+// breath and clay bleed, and the teleport fold. Every light sits outside the
+// black silhouette, never under the camera.
 
 import SwiftUI
 import os
@@ -52,11 +54,18 @@ struct NotchRootView: View {
                 }
                 .frame(width: shapeWidth, height: shapeHeight, alignment: .top)
                 .clipShape(NotchShape(topRadius: topRadius, bottomRadius: bottomRadius))
-
-                rim(on: rimOn)
             }
             .frame(width: shapeWidth, height: shapeHeight, alignment: .top)
-            // The glow lives in a background so its size can never move the shape.
+            .keyframeAnimator(initialValue: CGFloat(1), trigger: breathTrigger) { view, scale in
+                view.scaleEffect(x: 1, y: scale, anchor: .top)
+            } keyframes: { _ in
+                CubicKeyframe(Theme.Motion.breathScale, duration: Theme.Motion.breathDuration * Theme.Motion.breathRiseShare)
+                SpringKeyframe(1, duration: Theme.Motion.breathDuration * (1 - Theme.Motion.breathRiseShare))
+            }
+            // Every light lives behind the black, outside the silhouette: the black covers
+            // whatever falls inside it, so nothing is drawn under the camera and the
+            // closed state stays the hardware notch. Backgrounds never move the shape.
+            .background(alignment: .top) { rim(on: rimOn) }
             .background(alignment: .top) { attentionBleed }
             .background(GeometryReader { g in
                 Color.clear.onChange(of: g.frame(in: .global), initial: true) { _, f in
@@ -75,28 +84,37 @@ struct NotchRootView: View {
 
     // MARK: Rim and bleed
 
-    /// A 2 pt light along the bottom edge, following the radius, with a soft glow.
+    /// A 2 pt light on the outer edge of the shape (sides below the ears, both bottom
+    /// corners, the bottom edge), outset by its own width so it never touches the black,
+    /// with a soft glow spilling about 10 pt below and around the wings. Drawn behind the
+    /// shape, so any glow that falls inside the silhouette is covered.
     /// Reduce Motion: the same light, no glow.
     private func rim(on: Bool) -> some View {
-        NotchRimShape(topRadius: topRadius, bottomRadius: bottomRadius, inset: Theme.Size.rimInset)
-            .stroke(Theme.Colors.rim, style: StrokeStyle(lineWidth: Theme.Size.rimLine, lineCap: .round))
-            .shadow(
-                color: Theme.Motion.reduceMotion ? Color.clear : Theme.Colors.rimGlow,
-                radius: Theme.Size.rimGlowRadius
-            )
-            .opacity(on ? 1 : 0)
-            .animation(on ? Theme.Motion.rimIn : Theme.Motion.rimOut, value: on)
-            .allowsHitTesting(false)
+        let path = NotchRimShape(topRadius: topRadius, bottomRadius: bottomRadius, outset: Theme.Size.rimOutset)
+        return ZStack {
+            if !Theme.Motion.reduceMotion {
+                path
+                    .stroke(Theme.Colors.rimGlow, style: StrokeStyle(lineWidth: Theme.Size.rimGlowLine, lineCap: .round))
+                    .blur(radius: Theme.Size.rimGlowRadius)
+            }
+            path
+                .stroke(Theme.Colors.rim, style: StrokeStyle(lineWidth: Theme.Size.rimLine, lineCap: .round))
+        }
+        .frame(width: shapeWidth, height: shapeHeight)
+        .opacity(on ? 1 : 0)
+        .animation(on ? Theme.Motion.rimIn : Theme.Motion.rimOut, value: on)
+        .allowsHitTesting(false)
     }
 
-    /// A blurred clay ellipse behind the shape, centred just below its bottom edge,
-    /// so only the glow below the black shows.
+    /// A blurred clay ellipse behind the shape, centred below its bottom edge and wider
+    /// than the whole shape, so the light falls under both wings rather than under the camera.
     private var attentionBleed: some View {
         Ellipse()
             .fill(Theme.Colors.attentionBleed)
             .frame(width: shapeWidth * Theme.Size.bleedWidthFactor, height: Theme.Size.bleedHeight)
             .blur(radius: Theme.Size.bleedBlur)
             .offset(y: shapeHeight - Theme.Size.bleedHeight / 2 + Theme.Size.bleedDrop)
+            .frame(width: shapeWidth, height: shapeHeight, alignment: .top)
             .opacity(bleed)
             .allowsHitTesting(false)
     }
@@ -157,6 +175,18 @@ struct NotchRootView: View {
             bottomRadius = bottom
             shownMode = mode
             bleed = mode == .attention ? Theme.Opacity.bleedRest : 0
+            return
+        }
+
+        if mode == shownMode && !state.teleportFold {
+            // Same state, new size: the card re-targets its height for another tool or a
+            // request's diff. One spring, no axis sequencing.
+            withAnimation(Theme.Motion.panelRetarget) {
+                shapeWidth = newWidth
+                shapeHeight = newHeight
+                topRadius = top
+                bottomRadius = bottom
+            }
             return
         }
 

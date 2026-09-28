@@ -393,8 +393,14 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
             return req.kind == .commit ? Theme.Size.commitCardHeight : Theme.Size.requestCardHeight
         }
         if showingQuestion { return Theme.Size.questionCardHeight }
-        if selectedTab == .settings { return Theme.Size.settingsCardHeight }
-        return Theme.Size.cardHeight
+        switch selectedTab {
+        case .settings: return Theme.Size.settingsCardHeight
+        case .sessions: return Theme.Size.sessionsCardHeight
+        case .changes: return Theme.Size.changesCardHeight
+        case .files: return Theme.Size.filesCardHeight
+        case .usage: return Theme.Size.usageCardHeight
+        default: return Theme.Size.cardHeight
+        }
     }
 
     func session(id: String) -> Session? {

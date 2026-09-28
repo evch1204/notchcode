@@ -2,7 +2,8 @@
 // Sessions exist but none works or needs the owner. Left: a static dot in the
 // session's colour (green done, grey idle) and the worktree name at 60%. Right:
 // "+N" only when other sessions exist. Nothing moves. Hover brightens the name
-// (the root view lights the rim); a click opens the card.
+// (the root view lights the rim) and, for click-to-open owners, swaps the right
+// wing for the four tools; a click opens the card.
 
 import SwiftUI
 
@@ -29,12 +30,14 @@ struct RestingView: View {
                     .truncationMode(.middle)
             }
         } right: {
-            if others > 0 {
-                Text(others == 1 ? "+1 session" : "+\(others) sessions")
-                    .font(Theme.Fonts.caption)
-                    .foregroundStyle(Theme.Colors.wingsCountText)
-                    .lineLimit(1)
-                    .help(others == 1 ? "1 other session" : "\(others) other sessions")
+            HoverToolsWing(state: state, bodyWidth: bodySize.width) {
+                if others > 0 {
+                    Text(others == 1 ? "+1 session" : "+\(others) sessions")
+                        .font(Theme.Fonts.caption)
+                        .foregroundStyle(Theme.Colors.wingsCountText)
+                        .lineLimit(1)
+                        .help(others == 1 ? "1 other session" : "\(others) other sessions")
+                }
             }
         }
         .frame(width: bodySize.width, height: bodySize.height)

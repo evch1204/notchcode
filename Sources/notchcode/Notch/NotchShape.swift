@@ -63,13 +63,15 @@ struct NotchShape: Shape {
     }
 }
 
-/// The bottom edge of `NotchShape`, inset so a stroke stays inside the black: from where the
-/// bottom-left corner starts, around it, along the bottom, and around the bottom-right corner.
-/// Used for the hover rim light, so the light follows the shape's radius exactly.
+/// The outline of `NotchShape` below its ears, pushed `outset` points outside the black so a
+/// stroke of that width never touches the silhouette: down the left side from where the ear
+/// ends, around the bottom-left corner, along the bottom, around the bottom-right corner, and
+/// up the right side. Used for the hover rim light, so the light follows the shape's radius
+/// and sits where the camera housing cannot hide it.
 struct NotchRimShape: Shape {
     var topRadius: CGFloat
     var bottomRadius: CGFloat
-    var inset: CGFloat
+    var outset: CGFloat
 
     var animatableData: AnimatablePair<CGFloat, CGFloat> {
         get { AnimatablePair(topRadius, bottomRadius) }
@@ -85,13 +87,15 @@ struct NotchRimShape: Shape {
         let bodyWidth = rect.width - 2 * top
         let bottom = max(0, min(bottomRadius, bodyWidth / 2, rect.height - top))
 
-        let left = rect.minX + top + inset
-        let right = rect.maxX - top - inset
-        let floor = rect.maxY - inset
-        let radius = max(0, bottom - inset)
+        let left = rect.minX + top - outset
+        let right = rect.maxX - top + outset
+        let floor = rect.maxY + outset
+        let radius = max(0, bottom + outset)
+        // The sides start where the ear meets the body.
+        let sideTop = min(rect.minY + top, floor - radius)
 
         var path = Path()
-        path.move(to: CGPoint(x: left, y: floor - radius))
+        path.move(to: CGPoint(x: left, y: sideTop))
         path.addArc(
             tangent1End: CGPoint(x: left, y: floor),
             tangent2End: CGPoint(x: left + radius, y: floor),
@@ -102,7 +106,7 @@ struct NotchRimShape: Shape {
             tangent2End: CGPoint(x: right, y: floor - radius),
             radius: radius
         )
-        path.addLine(to: CGPoint(x: right, y: floor - radius))
+        path.addLine(to: CGPoint(x: right, y: sideTop))
         return path
     }
 }

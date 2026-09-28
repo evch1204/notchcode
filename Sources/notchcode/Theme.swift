@@ -33,11 +33,42 @@ enum Theme {
         static let hairline = Color.white.opacity(0.10)
         static let track = Color.white.opacity(0.12)
         static let selection = Color.white.opacity(0.10)
-        static let tabSelected = Color.white.opacity(0.14)
         static let keycapFill = Color.white.opacity(0.10)
         static let keycapFillOnLight = Color.black.opacity(0.10)
         static let keycapTextOnLight = Color.black.opacity(0.62)
         static let cellEmpty = Color.white.opacity(0.14)
+
+        // The toolbar strip (the open card, and the collapsed strip on hover).
+        /// A tool segment at rest draws nothing; hover lifts it, selection fills it.
+        static let segmentHover = Color.white.opacity(0.09)
+        static let segmentPressed = Color.white.opacity(0.05)
+        static let toolSelected = Color.white.opacity(0.16)
+        static let segmentIcon = Color.white.opacity(0.66)
+        static let segmentIconSelected = ink
+        /// Keyboard focus ring that rides the selected tool while the card has the keys.
+        static let toolFocusRing = Color.white.opacity(0.38)
+        /// The short bar under the selected tool where the well hangs from the strip.
+        static let bridge = Color.white.opacity(0.30)
+        /// Hairline between the strip and the well.
+        static let stripDivider = Color.white.opacity(0.09)
+        /// The thin vertical rule between the four tools and the gear.
+        static let toolGroupRule = Color.white.opacity(0.14)
+        /// Small numeric badge on the Sessions tool.
+        static let toolBadgeFill = Color.white.opacity(0.14)
+        static let toolBadgeText = Color.white.opacity(0.8)
+        /// The card's content well: a lighter inset under the strip.
+        static let well = Color.white.opacity(0.045)
+        static let wellStroke = Color.white.opacity(0.06)
+
+        // Action segments (Deny · Always · Allow, Skip · Edit · Commit).
+        static let allowFill = Color.white
+        static let allowText = Color.black
+        /// The countdown draining along Allow's bottom edge.
+        static let allowBar = Color.black.opacity(0.35)
+        static let denyFill = Color(hex: 0xFF6961, opacity: 0.16)
+        static let denyText = Color(hex: 0xFF6961)
+        static let neutralActionFill = Color.white.opacity(0.10)
+        static let neutralActionText = ink
 
         static let clay = Color(hex: 0xD97757)
         /// "Needs you": Claude's clay. The triangle glyph, the two-row shape and the words
@@ -138,15 +169,17 @@ enum Theme {
         static let previewRemovedMark = red
         static let previewAddedNumber = green
 
-        // Sessions tab group header (it sticks, so it carries the card's own black).
-        static let groupHeaderBackground = notch
+        // Sessions tab group header. It sticks over the well, so it carries the well's
+        // colour flattened onto the black (4.5% white on black).
+        static let groupHeaderBackground = Color(hex: 0x0B0B0B)
         static let groupHeaderName = inkSecondary
         static let groupHeaderCount = inkTertiary
 
-        /// Hover rim light on the closed and resting shape, and its soft glow.
+        /// Hover rim light on the closed and resting shape, and its soft glow. Both sit
+        /// outside the black silhouette.
         static let rim = Color.white.opacity(0.55)
-        static let rimGlow = Color.white.opacity(0.12)
-        /// Clay bleed under the shape when attention arrives (scaled by the bleed opacity).
+        static let rimGlow = Color.white.opacity(0.22)
+        /// Clay bleed below the shape when attention arrives (scaled by the bleed opacity).
         static let attentionBleed = Color(hex: 0xD97757, opacity: 0.35)
         /// The resting dot: green when the session finished, grey when idle.
         static let restingDone = green
@@ -189,6 +222,15 @@ enum Theme {
         static let diffCell: CGFloat = 1.5
         static let agentSquare: CGFloat = 1.5
         static let snippet: CGFloat = 8
+
+        // The toolbar strip.
+        /// Tool and action segments.
+        static let segment: CGFloat = 6
+        static let toolFocus: CGFloat = 7
+        static let bridge: CGFloat = 1
+        static let toolBadge: CGFloat = 4
+        /// The card's content well.
+        static let well: CGFloat = 14
     }
 
     // MARK: - Sizes and spacing
@@ -208,15 +250,22 @@ enum Theme {
         static let wingsWidth: CGFloat = 470
         static let restingWidth: CGFloat = 420
         static let peekWidth: CGFloat = 580
-        static let attentionWidth: CGFloat = 620
+        /// Attention and the card share one width, so the three action segments fit the
+        /// right wing with room. The panel (900) holds the outer size plus ears and shadow.
+        static let attentionWidth: CGFloat = 640
         static let attentionExtraHeight: CGFloat = 40
-        static let cardWidth: CGFloat = 620
+        static let cardWidth: CGFloat = 640
         /// Minimum wing width on each side, used when the notch is wider than expected.
         static let minWing: CGFloat = 100
 
-        // Card content height below the notch row, per card kind.
-        /// Browsable tabs: includes the footer row (counts, settings gear).
+        // Card content height below the strip, per tool. The card re-targets its height
+        // with one spring when the tool changes, so each tool gets the room it needs.
+        /// Fallback for a tab without its own height.
         static let cardHeight: CGFloat = 424
+        static let sessionsCardHeight: CGFloat = 400
+        static let changesCardHeight: CGFloat = 424
+        static let filesCardHeight: CGFloat = 440
+        static let usageCardHeight: CGFloat = 380
         static let cardFooterHeight: CGFloat = 20
         static let requestCardHeight: CGFloat = 310
         /// A permission or commit card with its diff open. Keeps the panel (504) clear of the notch row plus shadow.
@@ -265,8 +314,6 @@ enum Theme {
         static let pillSpacing: CGFloat = 6
         static let smallPillHPadding: CGFloat = 6
         static let smallPillHeight: CGFloat = 16
-        static let tabHeight: CGFloat = 24
-        static let tabHPadding: CGFloat = 10
         static let chipHPadding: CGFloat = 6
         static let chipHeight: CGFloat = 18
         static let buttonSpacing: CGFloat = 8
@@ -280,8 +327,39 @@ enum Theme {
         static let legendDot: CGFloat = 6
         static let tilePadding: CGFloat = 10
         static let insetPadding: CGFloat = 10
+        /// Padding inside the card's content well.
+        static let wellPadding: CGFloat = 8
 
-        // Usage tab: one fixed page, never scrolls. Heights derive from `cardHeight`.
+        // The toolbar strip: tool segments.
+        static let toolWidth: CGFloat = 36
+        static let gearWidth: CGFloat = 26
+        static let toolHeight: CGFloat = 22
+        static let toolGap: CGFloat = 2
+        static let toolIcon: CGFloat = 11
+        /// The collapsed strip's tools on hover: narrower, so four fit the resting wing.
+        static let compactToolWidth: CGFloat = 20
+        static let compactToolGap: CGFloat = 1
+        static let toolGroupGap: CGFloat = 6
+        static let toolGroupRuleHeight: CGFloat = 12
+        static let toolRuleWidth: CGFloat = 1
+        static let toolFocusInset: CGFloat = -2
+        static let toolFocusLine: CGFloat = 1
+        static let bridgeWidth: CGFloat = 14
+        static let bridgeHeight: CGFloat = 2
+        static let toolBadgeHeight: CGFloat = 11
+        static let toolBadgeHPadding: CGFloat = 3
+        static let toolBadgeOffset: CGFloat = 4
+        // Action segments.
+        static let actionHeight: CGFloat = 22
+        static let actionHPadding: CGFloat = 6
+        static let actionGap: CGFloat = 3
+        static let actionKeyGap: CGFloat = 3
+        static let countdownBar: CGFloat = 2
+        static let countdownBarInset: CGFloat = 5
+        /// The open card's status segment (left wing).
+        static let statusSpacing: CGFloat = 8
+
+        // Usage tab: one fixed page, never scrolls. Heights derive from `usageCardHeight`.
         static let usageRowSpacing: CGFloat = 10
         static let usageTileSpacing: CGFloat = 8
         static let usageLineSpacing: CGFloat = 4
@@ -291,28 +369,34 @@ enum Theme {
         static let usageFootnoteHeight: CGFloat = 14
         /// Share of the tile rows' height that goes to the big 5-hour and Week tiles.
         static let usageBigTileShare: CGFloat = 0.56
-        /// Height of a browsable tab pane: the card minus its paddings, the tab row and the footer.
-        static var tabPaneHeight: CGFloat {
-            cardHeight - spaceM - sidePadding - tabHeight - cardFooterHeight - 2 * spaceM
+        /// Height of a tool's pane inside the well: the card minus the bridge row, the two
+        /// gaps around the well, the footer, the bottom padding and the well's own padding.
+        static func tabPaneHeight(cardHeight: CGFloat) -> CGFloat {
+            cardHeight - bridgeHeight - 2 * spaceM - cardFooterHeight - sidePadding - 2 * wellPadding
         }
         static var usageTileRowsHeight: CGFloat {
-            tabPaneHeight - usageTokenBlockHeight - usageFootnoteHeight - 3 * usageRowSpacing
+            tabPaneHeight(cardHeight: usageCardHeight) - usageTokenBlockHeight - usageFootnoteHeight - 3 * usageRowSpacing
         }
         static var usageBigTileHeight: CGFloat { (usageTileRowsHeight * usageBigTileShare).rounded(.down) }
         static var usageSmallTileHeight: CGFloat { usageTileRowsHeight - usageBigTileHeight }
 
-        // Hover rim light.
+        // Hover rim light, drawn outside the silhouette (the camera hides anything inside).
         static let rimLine: CGFloat = 2
-        static let rimGlowRadius: CGFloat = 12
-        /// The rim sits this far inside the shape's edge so the stroke never leaves the black.
-        static let rimInset: CGFloat = 1
+        /// The rim's path sits this far outside the shape's edge (its own line width), so
+        /// the stroke never touches the black.
+        static let rimOutset: CGFloat = 2
+        /// The glow: a wider stroke on the same path, blurred, spilling about 10 pt out
+        /// below and around the wings.
+        static let rimGlowLine: CGFloat = 6
+        static let rimGlowRadius: CGFloat = 8
 
-        // Clay bleed under the attention shape.
-        static let bleedWidthFactor: CGFloat = 0.8
+        // Clay bleed below the attention shape. Wider than the whole shape so both wings
+        // carry it, centred below the bottom edge so nothing relies on the camera area.
+        static let bleedWidthFactor: CGFloat = 1.1
         static let bleedHeight: CGFloat = 44
         static let bleedBlur: CGFloat = 22
         /// How far below the shape's bottom edge the bleed's centre sits.
-        static let bleedDrop: CGFloat = 4
+        static let bleedDrop: CGFloat = 6
 
         // Done peek check, drawn in a unit square inside the peek circle.
         static let checkLine: CGFloat = 1.8
@@ -443,6 +527,8 @@ enum Theme {
         /// Closing runs backwards, faster.
         @MainActor static var closeWidth: Animation { reduceMotion ? reduced : .spring(response: 0.34, dampingFraction: 0.86) }
         @MainActor static var closeHeight: Animation { reduceMotion ? reduced : .spring(response: 0.30, dampingFraction: 0.90) }
+        /// Same state, new size (another tool, a request's diff): one spring, no axis sequencing.
+        @MainActor static var panelRetarget: Animation { reduceMotion ? reduced : .spring(response: 0.42, dampingFraction: 0.8) }
         /// Gap between the leading axis and the following axis.
         static let axisDelay: Double = 0.06
 
@@ -470,6 +556,38 @@ enum Theme {
             )
         }
 
+        // The strip unfolds from behind the camera: each segment starts 26 pt toward the
+        // centre and transparent, then springs out, 30 ms after the one nearer the camera.
+        static let unfoldDistance: CGFloat = 26
+        static let unfoldStagger: Double = 0.03
+        static let unfoldDuration: Double = 0.28
+        static let unfoldDelay: Double = 0.10
+        @MainActor static func unfold(_ index: Int) -> Animation {
+            reduceMotion
+                ? reduced.delay(unfoldDelay)
+                : .spring(response: unfoldDuration, dampingFraction: 0.82).delay(unfoldDelay + unfoldStagger * Double(index))
+        }
+
+        // Segments: hover lift, press depress, selection glide.
+        static let hoverLift: Animation = .easeOut(duration: 0.15)
+        static let pressDuration: Double = 0.12
+        static let pressScale: CGFloat = 0.94
+        static var press: Animation { .easeOut(duration: pressDuration) }
+        @MainActor static var toolSelect: Animation { reduceMotion ? reduced : .spring(response: 0.32, dampingFraction: 0.72) }
+        /// Allow pops in (0.92 → 1.08 → 1) when it arrives.
+        static let actionPopStart: CGFloat = 0.92
+        static let actionPopOvershoot: CGFloat = 1.08
+        static let actionPopDuration: Double = 0.34
+        /// Share of the pop spent rising to the overshoot.
+        static let actionPopRiseShare: Double = 0.55
+        static var actionPopSettle: Animation {
+            .spring(response: actionPopDuration * (1 - actionPopRiseShare), dampingFraction: 0.8)
+        }
+
+        // Hover on the collapsed strip: the right wing crossfades to the tools and back.
+        static var toolsRevealIn: Animation { .easeOut(duration: 0.18) }
+        static var toolsRevealOut: Animation { .easeIn(duration: 0.2) }
+
         // Hover rim light.
         static let rimDelay: Double = 0.25
         static var rimIn: Animation { .easeOut(duration: 0.18) }
@@ -478,6 +596,8 @@ enum Theme {
         // Attention arrival: a 3% breath from the top edge and a clay bleed.
         static let breathScale: CGFloat = 1.03
         static let breathDuration: Double = 0.5
+        /// Share of the breath spent rising to the 3%; the rest springs back.
+        static let breathRiseShare: Double = 0.4
         static let bleedInDuration: Double = 0.3
         /// The bleed has settled to its resting opacity by this long after arrival.
         static let bleedSettledAt: Double = 1
@@ -492,6 +612,8 @@ enum Theme {
         static var tabOut: Animation { .easeOut(duration: tabOutDuration) }
         /// Inset groups inside a sliding pane move by this share of the pane's offset, on top of it.
         static let tabParallax: CGFloat = 0.4
+        /// The pane slides this far toward its new anchor, not the whole width: it re-anchors, it does not page.
+        static let paneSlide: CGFloat = 48
         /// Usage bars fill after the pane has landed.
         static let barFillDuration: Double = 0.5
         static var barFill: Animation { .easeOut(duration: barFillDuration).delay(tabInDuration) }
@@ -619,6 +741,8 @@ enum Theme {
         static let tinySize: CGFloat = 10
         static let chevronSize: CGFloat = 9
         static let treeChevronSize: CGFloat = 8
+        static let toolBadgeSize: CGFloat = 8.5
+        static let actionSize: CGFloat = 12
 
         static let caption = Font.system(size: captionSize).monospacedDigit()
         static let captionMedium = Font.system(size: captionSize, weight: .medium).monospacedDigit()
@@ -643,6 +767,8 @@ enum Theme {
         static let treeChevron = Font.system(size: treeChevronSize, weight: .semibold)
         static let badge = Font.system(size: tinySize, design: .monospaced)
         static let groupHeader = Font.system(size: captionSize, weight: .semibold).monospacedDigit()
+        static let toolBadge = Font.system(size: toolBadgeSize, weight: .semibold).monospacedDigit()
+        static let action = Font.system(size: actionSize, weight: .semibold).monospacedDigit()
 
         static func symbol(_ size: CGFloat) -> Font { .system(size: size, weight: .semibold) }
     }
@@ -662,6 +788,24 @@ enum Theme {
         static let expand = "chevron.down"
         static let filter = "line.3.horizontal.decrease"
         static let folder = "folder"
+
+        // The tools in the strip.
+        static let sessions = "rectangle.stack"
+        static let changes = "plusminus.circle"
+        static let files = "folder"
+        static let usage = "gauge.with.needle"
+
+        static func tool(_ tab: CardTab) -> String {
+            switch tab {
+            case .sessions: return sessions
+            case .changes: return changes
+            case .files: return files
+            case .usage: return usage
+            case .settings: return settings
+            case .permission, .commit: return attention
+            case .question: return question
+            }
+        }
     }
 
     // MARK: - Key labels for keycaps

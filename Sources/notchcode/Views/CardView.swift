@@ -1,6 +1,11 @@
 // CardView.swift
-// The open card. Header in the wings (session on the left, usage on the right),
-// then either a pending request or the companion tabs.
+// The open panel. The strip stays on top as the toolbar (status on the left, the
+// tools with the selected one filled on the right, the gear after a rule). Under
+// it, a hairline with a short bridge beneath the selected tool, then the content
+// well: a request, a question, Settings, or the selected tool's pane. The footer
+// under the well carries the keys for that tool. Switching tools glides the fill,
+// slides the bridge, re-targets the panel's height, and slides the pane toward
+// its new anchor with parallax.
 
 import SwiftUI
 
@@ -8,174 +13,87 @@ import SwiftUI
 struct CardView: View {
     @ObservedObject var state: AppState
     let bodySize: CGSize
-    @Namespace private var tabPill
 
     private var contentWidth: CGFloat { bodySize.width - 2 * Theme.Size.sidePadding }
     private var contentHeight: CGFloat { bodySize.height - state.layout.notchHeight }
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-                .contentShape(Rectangle())
-                .onTapGesture { state.closeCard() }
+            strip
                 .riseIn(0)
 
-            Group {
-                if let request = state.currentPending {
-                    Group {
-                        if request.kind == .commit {
-                            CommitCard(state: state, request: request, width: contentWidth)
-                        } else {
-                            PermissionCard(state: state, request: request, width: contentWidth)
-                        }
-                    }
+            VStack(alignment: .leading, spacing: Theme.Size.spaceM) {
+                BridgeDivider(state: state, contentWidth: contentWidth)
+                    .riseIn(0)
+
+                well
                     .riseIn(1)
-                } else if state.showingQuestion, let question = state.question {
-                    QuestionCard(state: state, question: question)
-                        .riseIn(1)
-                } else if state.selectedTab == .settings {
-                    SettingsPage(state: state)
-                        .riseIn(1)
-                } else {
-                    VStack(alignment: .leading, spacing: Theme.Size.spaceM) {
-                        tabRow
-                            .riseIn(1)
-                        tabPanes
-                            .riseIn(2)
-                        footer
-                            .riseIn(3)
-                    }
-                }
+
+                footer
+                    .riseIn(2)
             }
             .padding(.horizontal, Theme.Size.sidePadding)
-            .padding(.top, Theme.Size.spaceM)
             .padding(.bottom, Theme.Size.sidePadding)
             .frame(width: bodySize.width, height: contentHeight, alignment: .top)
         }
         .frame(width: bodySize.width, height: bodySize.height, alignment: .top)
     }
 
-    // MARK: Header
+    // MARK: Strip
 
-    private var header: some View {
+    private var strip: some View {
         let session = state.focusedSession
-        let needsYou = state.currentPending != nil
+        let shown: SessionState = state.currentPending != nil ? .needsYou : (session.map { state.shownState($0) } ?? .idle)
         return WingRow(layout: state.layout, bodyWidth: bodySize.width) {
-            HStack(spacing: Theme.Size.spaceM) {
-                if needsYou {
-                    CircleGlyph(symbol: Theme.Symbols.attention, tint: Theme.Colors.attention, size: Theme.Size.iconCircle)
-                } else {
-                    ZStack {
-                        Circle().fill(Theme.Colors.inset)
-                        SparkleGlyph(pulsing: session?.state == .working)
-                    }
-                    .frame(width: Theme.Size.iconCircle, height: Theme.Size.iconCircle)
-                }
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(session?.displayFull ?? "notchcode")
-                        .font(Theme.Fonts.bodySemibold)
-                        .foregroundStyle(Theme.Colors.ink)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    if let session {
-                        headerSubtitle(session)
-                    }
-                }
-            }
+            StatusSegment(state: state, session: session, shown: shown)
         } right: {
-            headerUsage
+            StripRightWing(state: state)
         }
+        .contentShape(Rectangle())
+        .onTapGesture { state.closeCard() }
     }
 
-    /// "notchcode · main · Editing · ■ Explore ■ general-purpose": one coloured square per running agent.
-    /// With a second session in the same folder: "notchcode · main · opus · started 1:10 PM · Editing".
-    private func headerSubtitle(_ session: Session) -> some View {
-        let running = state.runningAgents(for: session.id)
-        let shown = Array(running.prefix(Theme.Size.maxHeaderAgents))
-        var extras: [String] = []
-        if state.isAmbiguous(session) {
-            if let model = state.modelShortName(for: session.id) { extras.append(model) }
-            extras.append(Format.started(state.startTime(for: session)))
-        }
-        if let verb = session.verb, state.shownState(session) == .working { extras.append(verb) }
-        let text = Format.sessionSubtitle(session, extra: extras.joined(separator: Theme.Glyphs.separator))
-        return HStack(spacing: Theme.Size.spaceS) {
-            if !text.isEmpty {
-                Text(text + (running.isEmpty ? "" : Theme.Glyphs.separator))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-            ForEach(shown) { agent in
-                HStack(spacing: Theme.Size.agentSquareSpacing) {
-                    AgentSquare(colorIndex: state.agentColorIndex(agent))
-                    Text(agent.type)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
+    // MARK: Well
+
+    /// The content well: what a window shows under its toolbar.
+    private var well: some View {
+        Group {
+            if let request = state.currentPending {
+                Group {
+                    if request.kind == .commit {
+                        CommitCard(state: state, request: request, width: wellContentWidth)
+                    } else {
+                        PermissionCard(state: state, request: request, width: wellContentWidth)
+                    }
                 }
-                .layoutPriority(1)
-            }
-            if running.count > shown.count {
-                Text("+\(running.count - shown.count)")
-                    .lineLimit(1)
-                    .fixedSize()
+                .padding(Theme.Size.wellPadding)
+            } else if state.showingQuestion, let question = state.question {
+                QuestionCard(state: state, question: question)
+                    .padding(Theme.Size.wellPadding)
+            } else if state.selectedTab == .settings {
+                SettingsPage(state: state)
+                    .padding(Theme.Size.wellPadding)
+            } else {
+                tabPanes
+                    .padding(Theme.Size.wellPadding)
             }
         }
-        .font(Theme.Fonts.monoSmall)
-        .foregroundStyle(Theme.Colors.inkTertiary)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.Radius.well, style: .continuous)
+                .fill(Theme.Colors.well)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.well, style: .continuous)
+                .strokeBorder(Theme.Colors.wellStroke, lineWidth: Theme.Size.hairline)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.well, style: .continuous))
     }
 
-    /// The 5-hour limit when the status line reported it recently, else context with "ctx".
-    @ViewBuilder
-    private var headerUsage: some View {
-        if state.limitsAreFresh, let percent = state.usage.fiveHourPercent {
-            HStack(spacing: Theme.Size.spaceM) {
-                Text("5h")
-                    .font(Theme.Fonts.caption)
-                    .foregroundStyle(Theme.Colors.inkTertiary)
-                UsageBar(fraction: percent / 100, tint: Theme.Colors.limitBar)
-                    .frame(width: Theme.Size.headerBarWidth)
-                Text(Format.percent(min(100, percent)))
-                    .font(Theme.Fonts.captionMedium)
-                    .foregroundStyle(Theme.Colors.inkSecondary)
-            }
-            .help("Current session (5h) limit")
-        } else if let percent = state.contextPercent {
-            HStack(spacing: Theme.Size.spaceM) {
-                Text("ctx")
-                    .font(Theme.Fonts.caption)
-                    .foregroundStyle(Theme.Colors.inkTertiary)
-                UsageBar(fraction: percent / 100, tint: Theme.Colors.contextBar)
-                    .frame(width: Theme.Size.headerBarWidth)
-                Text(Format.percent(percent))
-                    .font(Theme.Fonts.captionMedium)
-                    .foregroundStyle(Theme.Colors.inkSecondary)
-            }
-            .help("Context window used")
-        } else {
-            Color.clear
-        }
-    }
+    private var wellContentWidth: CGFloat { contentWidth - 2 * Theme.Size.wellPadding }
 
-    // MARK: Tabs
-
-    private var tabRow: some View {
-        HStack(spacing: Theme.Size.spaceS) {
-            ForEach(Array(CardTab.browsable.enumerated()), id: \.offset) { item in
-                Button {
-                    state.selectTab(item.element)
-                } label: {
-                    Text(item.element.label)
-                }
-                .buttonStyle(TabPillStyle(selected: state.selectedTab == item.element, pill: tabPill))
-            }
-            Spacer(minLength: Theme.Size.spaceM)
-            Keycap(Theme.Keys.tab)
-        }
-        .animation(Theme.Motion.tabPill, value: state.selectedTab)
-    }
-
-    /// The tab body, sliding in the direction of the tab change. The pane's offset reaches
-    /// its inset groups through `PaneParallax`, so they move a little further (parallax).
+    /// The tool's pane, sliding a short way toward its anchor when the tool changes. The pane's
+    /// offset reaches its inset groups through `PaneParallax`, so they move a little further.
     /// Reduce Motion: a crossfade.
     private var tabPanes: some View {
         ZStack(alignment: .top) {
@@ -193,16 +111,14 @@ struct CardView: View {
             return AnyTransition.opacity.animation(Theme.Motion.reduced)
         }
         let forward = state.tabMovedForward
-        let distance = contentWidth
-        let inEdge: Edge = forward ? .trailing : .leading
-        let outEdge: Edge = forward ? .leading : .trailing
-        let insertion = AnyTransition.move(edge: inEdge)
+        let distance = Theme.Motion.paneSlide
+        let insertion = AnyTransition.offset(x: forward ? distance : -distance)
             .combined(with: .opacity)
             .combined(with: .modifier(
                 active: PaneParallax(offset: forward ? distance : -distance),
                 identity: PaneParallax(offset: 0)
             ))
-        let removal = AnyTransition.move(edge: outEdge)
+        let removal = AnyTransition.offset(x: forward ? -distance : distance)
             .combined(with: .opacity)
             .combined(with: .modifier(
                 active: PaneParallax(offset: forward ? -distance : distance),
@@ -212,6 +128,20 @@ struct CardView: View {
             insertion: insertion.animation(Theme.Motion.tabIn),
             removal: removal.animation(Theme.Motion.tabOut)
         )
+    }
+
+    @ViewBuilder
+    private var tabBody: some View {
+        switch state.selectedTab {
+        case .files:
+            FilesTab(state: state)
+        case .usage:
+            UsageTab(state: state)
+        case .sessions:
+            SessionsTab(state: state)
+        default:
+            ChangesTab(state: state)
+        }
     }
 
     // MARK: Footer
@@ -228,57 +158,79 @@ struct CardView: View {
                     .lineLimit(1)
             }
             Spacer(minLength: Theme.Size.spaceM)
-            Button {
-                state.openSettings()
-            } label: {
-                HStack(spacing: Theme.Size.spaceS) {
-                    Image(systemName: Theme.Symbols.settings)
-                        .font(Theme.Fonts.symbol(Theme.Size.gearSize))
-                        .foregroundStyle(Theme.Colors.inkSecondary)
-                    Keycap(Theme.Keys.settings)
-                }
-                .contentShape(Rectangle())
+            headerUsage
+            HStack(spacing: Theme.Size.spaceS) {
+                Keycap(Theme.Keys.escape)
+                footerLabel(state.selectedTab == .settings ? "back" : "close")
             }
-            .buttonStyle(.plain)
-            .help("Settings")
+            .fixedSize()
         }
         .frame(height: Theme.Size.cardFooterHeight)
     }
 
-    /// Keycap hints for the current tab.
+    /// Keycap hints for the current tool.
     @ViewBuilder
     private var footerKeys: some View {
-        switch state.selectedTab {
-        case .changes:
+        if let request = state.currentPending {
             HStack(spacing: Theme.Size.spaceS) {
-                Keycap(Theme.Keys.enter)
-                footerLabel("open")
-                Keycap(Theme.Keys.copy)
-                footerLabel("copy path:line")
+                if request.kind == .commit {
+                    Keycap(Theme.Keys.edit)
+                    footerLabel("edit")
+                } else {
+                    Keycap(Theme.Keys.always)
+                    footerLabel("always")
+                }
+                if request.files.contains(where: { !AppState.diffLines($0).isEmpty }) {
+                    Keycap(Theme.Keys.diff)
+                    footerLabel("diff")
+                }
             }
             .fixedSize()
-        case .files:
-            HStack(spacing: Theme.Size.spaceS) {
-                Keycap(Theme.Keys.enter)
-                footerLabel("open")
-                Keycap(Theme.Keys.slash)
-                footerLabel("filter")
-                Keycap(Theme.Keys.copy)
-                footerLabel("copy path:line")
-                Keycap(Theme.Keys.optionEnter)
-                footerLabel("terminal")
+        } else {
+            switch state.selectedTab {
+            case .changes:
+                HStack(spacing: Theme.Size.spaceS) {
+                    Keycap(Theme.Keys.enter)
+                    footerLabel("open")
+                    Keycap(Theme.Keys.copy)
+                    footerLabel("copy path:line")
+                }
+                .fixedSize()
+            case .files:
+                HStack(spacing: Theme.Size.spaceS) {
+                    Keycap(Theme.Keys.enter)
+                    footerLabel("open")
+                    Keycap(Theme.Keys.slash)
+                    footerLabel("filter")
+                    Keycap(Theme.Keys.copy)
+                    footerLabel("copy path:line")
+                    Keycap(Theme.Keys.optionEnter)
+                    footerLabel("terminal")
+                }
+                .fixedSize()
+            case .sessions:
+                HStack(spacing: Theme.Size.spaceS) {
+                    Keycap(Theme.Keys.enter)
+                    footerLabel("changes")
+                    Keycap(Theme.Keys.optionEnter)
+                    footerLabel("terminal")
+                    Keycap(Theme.Keys.tab)
+                    footerLabel("next tool")
+                }
+                .fixedSize()
+            case .settings:
+                HStack(spacing: Theme.Size.spaceS) {
+                    Keycap(Theme.Keys.settings)
+                    footerLabel("toggles this page")
+                }
+                .fixedSize()
+            default:
+                HStack(spacing: Theme.Size.spaceS) {
+                    Keycap(Theme.Keys.tab)
+                    footerLabel("next tool")
+                }
+                .fixedSize()
             }
-            .fixedSize()
-        case .sessions:
-            HStack(spacing: Theme.Size.spaceS) {
-                Keycap(Theme.Keys.enter)
-                footerLabel("changes")
-                Keycap(Theme.Keys.optionEnter)
-                footerLabel("terminal")
-            }
-            .fixedSize()
-        default:
-            EmptyView()
         }
     }
 
@@ -288,9 +240,9 @@ struct CardView: View {
             .foregroundStyle(Theme.Colors.inkTertiary)
     }
 
-    /// "2 working · 1 waiting · 3 agents" on the Sessions tab.
+    /// "2 working · 1 waiting · 3 agents" on the Sessions tool.
     private var footerCounts: String {
-        guard state.selectedTab == .sessions else { return "" }
+        guard state.currentPending == nil, state.selectedTab == .sessions else { return "" }
         let pendingIds = Set(state.pending.map { $0.sessionId })
         var working = 0, waiting = 0, done = 0, idle = 0
         for session in state.sessions {
@@ -307,17 +259,80 @@ struct CardView: View {
         return Format.sessionCounts(working: working, waiting: waiting, done: done, idle: idle, agents: state.runningAgentCount)
     }
 
+    /// The 5-hour limit when the status line reported it recently, else context with "ctx".
     @ViewBuilder
-    private var tabBody: some View {
-        switch state.selectedTab {
-        case .files:
-            FilesTab(state: state)
-        case .usage:
-            UsageTab(state: state)
-        case .sessions:
-            SessionsTab(state: state)
-        default:
-            ChangesTab(state: state)
+    private var headerUsage: some View {
+        if state.limitsAreFresh, let percent = state.usage.fiveHourPercent {
+            HStack(spacing: Theme.Size.spaceS) {
+                Text("5h")
+                    .font(Theme.Fonts.caption)
+                    .foregroundStyle(Theme.Colors.inkTertiary)
+                UsageBar(fraction: percent / 100, tint: Theme.Colors.limitBar)
+                    .frame(width: Theme.Size.headerBarWidth)
+                Text(Format.percent(min(100, percent)))
+                    .font(Theme.Fonts.captionMedium)
+                    .foregroundStyle(Theme.Colors.inkSecondary)
+            }
+            .fixedSize()
+            .help("Current session (5h) limit")
+        } else if let percent = state.contextPercent {
+            HStack(spacing: Theme.Size.spaceS) {
+                Text("ctx")
+                    .font(Theme.Fonts.caption)
+                    .foregroundStyle(Theme.Colors.inkTertiary)
+                UsageBar(fraction: percent / 100, tint: Theme.Colors.contextBar)
+                    .frame(width: Theme.Size.headerBarWidth)
+                Text(Format.percent(percent))
+                    .font(Theme.Fonts.captionMedium)
+                    .foregroundStyle(Theme.Colors.inkSecondary)
+            }
+            .fixedSize()
+            .help("Context window used")
         }
+    }
+}
+
+/// The hairline between the strip and the well, with a short bridge under the selected
+/// tool: where the panel hangs from. It slides along the strip when the tool changes.
+/// Requests and questions hang from the action segments instead, so they show none.
+@MainActor
+struct BridgeDivider: View {
+    @ObservedObject var state: AppState
+    let contentWidth: CGFloat
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Rectangle()
+                .fill(Theme.Colors.stripDivider)
+                .frame(height: Theme.Size.hairline)
+            if let x = bridgeCentre {
+                RoundedRectangle(cornerRadius: Theme.Radius.bridge, style: .continuous)
+                    .fill(Theme.Colors.bridge)
+                    .frame(width: Theme.Size.bridgeWidth, height: Theme.Size.bridgeHeight)
+                    .offset(x: x - Theme.Size.bridgeWidth / 2, y: -Theme.Size.bridgeHeight / 2)
+                    .animation(Theme.Motion.toolSelect, value: x)
+            }
+        }
+        .frame(width: contentWidth, height: Theme.Size.bridgeHeight, alignment: .topLeading)
+    }
+
+    /// The selected tool's centre, in the content's coordinates: measured in from the strip's
+    /// trailing edge, tool by tool, so it lands under the icon whatever the panel's width.
+    private var bridgeCentre: CGFloat? {
+        guard state.currentPending == nil, !state.showingQuestion else { return nil }
+        let tab = state.selectedTab
+        let step = Theme.Size.toolWidth + Theme.Size.toolGap
+        // The rule with its padding, and the strip's gap on each side of it.
+        let rule = Theme.Size.toolRuleWidth + 2 * Theme.Size.toolGroupGap + 2 * Theme.Size.toolGap
+        let fromTrailing: CGFloat
+        if tab == .settings {
+            fromTrailing = Theme.Size.gearWidth / 2
+        } else if let index = CardTab.browsable.firstIndex(of: tab) {
+            let after = CardTab.browsable.count - 1 - index
+            fromTrailing = Theme.Size.gearWidth + rule + CGFloat(after) * step + Theme.Size.toolWidth / 2
+        } else {
+            return nil
+        }
+        return contentWidth - Theme.Size.wingEdgeInset - fromTrailing
     }
 }

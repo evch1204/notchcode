@@ -4,6 +4,7 @@
 // while that session runs subagents and "+1" for each other live session.
 // No clock here: the only timer in the collapsed states is the permission
 // countdown in the two-row attention state. Nothing is drawn over the camera.
+// Hover (click-to-open owners): the right wing crossfades to the four tools.
 
 import SwiftUI
 
@@ -18,7 +19,9 @@ struct WingsView: View {
         WingRow(layout: state.layout, bodyWidth: bodySize.width) {
             left(session: session, shown: shown)
         } right: {
-            right(session: session, shown: shown)
+            HoverToolsWing(state: state, bodyWidth: bodySize.width) {
+                right(session: session, shown: shown)
+            }
         }
         .frame(width: bodySize.width, height: bodySize.height)
         .contentShape(Rectangle())
