@@ -70,15 +70,15 @@ struct NotchShape: Shape {
     }
 }
 
-/// The bottom of `NotchShape`, pushed `outset` points outside the black so a stroke of twice
-/// that width runs from the silhouette outwards: from where the bottom-left corner leaves the
-/// left side, around that corner, along the bottom edge, and around the bottom-right corner to
-/// where it meets the right side. No sides, no top. Used for the hover rim light, so the light
-/// follows the shape's radius; the camera housing hides its centre 180 pt, the wings show it.
+/// The hover rim light: the Motion board M7's `inset 0 -2px 0 0` mirrored outward. The
+/// shape's body shifted `rimLine` down, minus `NotchShape` in place: a crescent `rimLine`
+/// thick under the flat bottom edge that thins to nothing up each bottom corner, vanishing
+/// where the arc turns vertical. Nothing on the sides or top. Fill it, don't stroke it.
+/// The ears are left out of the shifted copy (the board's box has none): shifted, a concave
+/// ear would leave a sliver of light along the screen edge.
 struct NotchRimShape: Shape {
     var topRadius: CGFloat
     var bottomRadius: CGFloat
-    var outset: CGFloat
 
     var animatableData: AnimatablePair<CGFloat, CGFloat> {
         get { AnimatablePair(topRadius, bottomRadius) }
@@ -91,26 +91,28 @@ struct NotchRimShape: Shape {
     func path(in rect: CGRect) -> Path {
         // Same clamping as NotchShape, so both agree at every size.
         let (top, bottom) = clampedRadii(top: topRadius, bottom: bottomRadius, in: rect)
+        let left = rect.minX + top
+        let right = rect.maxX - top
+        let drop = Theme.Size.rimLine
 
-        let left = rect.minX + top - outset
-        let right = rect.maxX - top + outset
-        let floor = rect.maxY + outset
-        let radius = max(0, bottom + outset)
-        let cornerTop = floor - radius
+        // The body: the shape without its ears, shifted down.
+        var body = Path()
+        body.move(to: CGPoint(x: left, y: rect.minY))
+        body.addArc(
+            tangent1End: CGPoint(x: left, y: rect.maxY),
+            tangent2End: CGPoint(x: left + bottom, y: rect.maxY),
+            radius: bottom
+        )
+        body.addArc(
+            tangent1End: CGPoint(x: right, y: rect.maxY),
+            tangent2End: CGPoint(x: right, y: rect.maxY - bottom),
+            radius: bottom
+        )
+        body.addLine(to: CGPoint(x: right, y: rect.minY))
+        body.closeSubpath()
 
-        var path = Path()
-        path.move(to: CGPoint(x: left, y: cornerTop))
-        path.addArc(
-            tangent1End: CGPoint(x: left, y: floor),
-            tangent2End: CGPoint(x: left + radius, y: floor),
-            radius: radius
-        )
-        path.addArc(
-            tangent1End: CGPoint(x: right, y: floor),
-            tangent2End: CGPoint(x: right, y: cornerTop),
-            radius: radius
-        )
-        path.addLine(to: CGPoint(x: right, y: cornerTop))
-        return path
+        let shifted = body.applying(CGAffineTransform(translationX: 0, y: drop))
+        let shape = NotchShape(topRadius: topRadius, bottomRadius: bottomRadius).path(in: rect)
+        return shifted.subtracting(shape)
     }
 }

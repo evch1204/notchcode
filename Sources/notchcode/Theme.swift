@@ -247,8 +247,8 @@ enum Theme {
             }
         }
 
-        /// Hover rim light along the bottom edge of the closed and resting shape (50% white),
-        /// and its soft glow (12%). Both sit outside the black silhouette.
+        /// Hover rim light (Motion board M7): the crescent under the bottom edge of the closed
+        /// and resting shape (50% white), and its glow (12%). Both sit outside the black.
         static let rim = ink.opacity(0.5)
         static let rimGlow = ink.opacity(0.12)
         /// Clay bleed below the shape when attention arrives (scaled by the bleed opacity).
@@ -503,16 +503,14 @@ enum Theme {
         static var usageBigTileHeight: CGFloat { (usageTileRowsHeight * usageBigTileShare).rounded(.down) }
         static var usageSmallTileHeight: CGFloat { usageTileRowsHeight - usageBigTileHeight }
 
-        // Hover rim light: a 2 pt line hugging the bottom edge and both bottom corners,
-        // just outside the silhouette (the camera hides anything inside). No sides, no top.
+        // Hover rim light, the Motion board M7: the CSS `inset 0 -2px 0 0 white/50%` mirrored
+        // outward (the shape shifted 2 pt down minus the shape: a 2 pt band under the flat
+        // bottom edge that thins to nothing up each corner) and its `0 2px 12px white/12%`
+        // glow behind the black. 2 px per pt.
         static let rimLine: CGFloat = 2
-        /// Half the line width, so the stroke runs from the black's edge outwards.
-        static let rimOutset: CGFloat = rimLine / 2
-        /// The glow: the board's 12 px CSS blur (a 6 pt Gaussian radius) on a wider copy
-        /// of the line, dropped 2 pt, spilling below the shape and under the wings.
-        static let rimGlowLine: CGFloat = 4
-        static let rimGlowRadius: CGFloat = 6
+        /// The glow: the whole shape dropped 2 pt and blurred 6 pt (the board's 12 px blur).
         static let rimGlowDrop: CGFloat = 2
+        static let rimGlowRadius: CGFloat = 6
 
         // Clay bleed below the attention shape. Wider than the whole shape so both wings
         // carry it, centred below the bottom edge so nothing relies on the camera area.
