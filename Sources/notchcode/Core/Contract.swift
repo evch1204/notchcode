@@ -323,6 +323,10 @@ struct UsageSnapshot: Equatable {
     var todayCostUSD: Double?
     var todayTokens: TokenUsage?
     var sessionTokens: TokenUsage?
+    /// Today's tokens and estimated cost on Fable models, from the transcripts' model ids.
+    /// Claude Code's status line carries no per-model limit, so there is no Fable percent.
+    var todayFableTokens: TokenUsage?
+    var todayFableCostUSD: Double?
     var costIsEstimate: Bool = true // true when computed from tokens with our rate table, not reported by Claude
 }
 

@@ -34,7 +34,7 @@ Press the notch at any time and a card opens with five tools. `1`–`5` or `⇥`
 | Changes | each turn you sent, the files it changed (subagent edits too), and the full diff under any file. |
 | Files | the repository tree, changed files badged, and a preview with changed lines tinted; `⌘B` folds the tree away, and Markdown renders with a Preview · Code switch. |
 | Git | the focused session's worktree, or any local branch of a repository a session runs in (`W` opens the picker: each branch with where it lives, "worktree harbor", "main checkout" or "not checked out"). Uncommitted files and the last five commits on the left, the selected file's diff on the right with line numbers, changed words lit and a minimap. A branch checked out nowhere shows its changes against main, read-only. Push (or Publish) asks before it pushes. |
-| Usage | 5-hour and weekly limits with reset times, context used, tokens for the session and today, an estimated cost. |
+| Usage | 5-hour and weekly limits with reset times, context used, tokens for the session and today, an estimated cost, and today's Fable share. |
 
 ### Git without leaving the notch
 

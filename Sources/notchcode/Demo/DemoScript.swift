@@ -46,7 +46,6 @@ final class DemoScript {
         await pause(1.5)
 
         // A session starts and begins thinking. A second one is already busy.
-        state.usage = demoUsage()
         send(.sessionStart, session: ponyfish, cwd: ponyfishCWD, payload: [:])
         state.mutateSession(ponyfish) {
             $0.branch = "main"
@@ -381,7 +380,7 @@ final class DemoScript {
         let weekReset = now.addingTimeInterval(3 * 86400)
         send(.statusline, session: ponyfish, cwd: ponyfishCWD, payload: [
             "session_id": .string(ponyfish),
-            "model": .object(["id": .string("claude-opus-4-1")]),
+            "model": .object(["id": .string("claude-opus-5")]),
             "rate_limits": .object([
                 "five_hour": .object([
                     "used_percentage": .number(61),
@@ -393,16 +392,6 @@ final class DemoScript {
                 ]),
             ]),
         ])
-    }
-
-    private func demoUsage() -> UsageSnapshot {
-        UsageSnapshot(
-            contextUsed: 48_000,
-            contextLimit: 200_000,
-            sessionCostUSD: 1.42,
-            todayCostUSD: 6.80,
-            todayTokens: TokenUsage(input: 38_400, output: 21_900, cacheRead: 612_000, cacheWrite: 84_300)
-        )
     }
 
     private func demoTurns() -> [TranscriptTurn] {
@@ -457,7 +446,7 @@ final class DemoScript {
                     ]),
                 ],
                 tokens: TokenUsage(input: 9_100, output: 6_200, cacheRead: 180_000, cacheWrite: 22_000),
-                model: "claude-opus-4-1"
+                model: "claude-fable-5-1"
             ),
             TranscriptTurn(
                 id: "demo-turn-2",
@@ -511,7 +500,7 @@ final class DemoScript {
                     ]),
                 ],
                 tokens: TokenUsage(input: 12_300, output: 8_800, cacheRead: 240_000, cacheWrite: 31_000),
-                model: "claude-opus-4-1"
+                model: "claude-fable-5-1"
             ),
             TranscriptTurn(
                 id: "demo-turn-3",
@@ -534,7 +523,7 @@ final class DemoScript {
                     ]),
                 ],
                 tokens: TokenUsage(input: 4_200, output: 2_100, cacheRead: 96_000, cacheWrite: 8_000),
-                model: "claude-opus-4-1"
+                model: "claude-opus-5"
             ),
         ]
     }
@@ -551,7 +540,7 @@ final class DemoScript {
                 assistantSummary: "The socket is created after the first hook fires.",
                 files: [],
                 tokens: TokenUsage(input: 3_100, output: 1_400, cacheRead: 52_000, cacheWrite: 6_000),
-                model: "claude-sonnet-4-5"
+                model: "claude-sonnet-5-5"
             ),
             TranscriptTurn(
                 id: "demo-bluefin-2",
@@ -574,7 +563,7 @@ final class DemoScript {
                     ]),
                 ],
                 tokens: TokenUsage(input: 2_000, output: 900, cacheRead: 40_000, cacheWrite: 3_000),
-                model: "claude-sonnet-4-5"
+                model: "claude-sonnet-5-5"
             ),
         ]
     }

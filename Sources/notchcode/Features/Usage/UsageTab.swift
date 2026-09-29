@@ -1,6 +1,6 @@
 // UsageTab.swift
 // One fixed page, never scrolls. Row 1: two big tiles, 5-hour and Week (percent, bar,
-// reset). Row 2: three small tiles, Context, This session, Today. Row 3: one four-part
+// reset). Row 2: four small tiles, Context, This session, Today, Fable. Row 3: one four-part
 // token bar with inline legend chips. Footer: where the numbers come from, and how
 // old the limits are. Limits keep their last known value between status line reports
 // (it only reports when Claude Code redraws it); "—" and "connect the status line"
@@ -45,6 +45,7 @@ struct UsageTab: View {
                     value: usage.todayTokens.map { Format.tokens($0.total) },
                     detail: usage.todayCostUSD.map { cost(Format.money($0), estimated: usage.costIsEstimate) }
                 )
+                fableTile(usage)
             }
             .frame(height: Theme.Size.usageSmallTileHeight)
 
@@ -79,6 +80,23 @@ struct UsageTab: View {
             title: "Context",
             value: percent.map { Format.percent($0) + " of " + Format.tokens(limit) },
             detail: usage.contextUsed.map { Format.tokens($0) }
+        )
+    }
+
+    /// Today's tokens on Fable models, "~$9.80 · 78%" (cost, share of today's tokens).
+    /// No weekly Fable percent: the status line forwards no per-model window.
+    private func fableTile(_ usage: UsageSnapshot) -> some View {
+        let fable = usage.todayFableTokens
+        let todayTotal = usage.todayTokens?.total ?? 0
+        let detail = usage.todayFableCostUSD.map { costUSD -> String in
+            let text = cost(Format.money(costUSD), estimated: usage.costIsEstimate)
+            guard let fable, todayTotal > 0 else { return text }
+            return text + Theme.Glyphs.separator + Format.percent(Double(fable.total) / Double(todayTotal) * 100)
+        }
+        return SmallTile(
+            title: "Fable",
+            value: fable.map { Format.tokens($0.total) },
+            detail: detail
         )
     }
 

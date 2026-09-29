@@ -19,13 +19,25 @@ enum UsageCalculator {
     static let sonnet = Rates(input: 3, output: 15, cacheRead: 0.30, cacheWrite: 3.75)
     static let haiku = Rates(input: 0.8, output: 4, cacheRead: 0.08, cacheWrite: 1)
 
-    /// By substring of the model id. "fable" and "mythos" are priced like opus; unknown like sonnet.
-    static func rates(forModel model: String?) -> Rates {
+    enum ModelFamily { case fable, opus, sonnet, haiku, other }
+
+    /// By substring of the model id, lowercased: "claude-fable-5-1", "fable", "claude-opus-5", …
+    static func family(of model: String?) -> ModelFamily {
         let m = (model ?? "").lowercased()
-        if m.contains("opus") || m.contains("fable") || m.contains("mythos") { return opus }
-        if m.contains("sonnet") { return sonnet }
-        if m.contains("haiku") { return haiku }
-        return sonnet
+        if m.contains("fable") || m.contains("mythos") { return .fable }
+        if m.contains("opus") { return .opus }
+        if m.contains("sonnet") { return .sonnet }
+        if m.contains("haiku") { return .haiku }
+        return .other
+    }
+
+    /// Fable is priced like opus; unknown models like sonnet.
+    static func rates(forModel model: String?) -> Rates {
+        switch family(of: model) {
+        case .fable, .opus: return opus
+        case .sonnet, .other: return sonnet
+        case .haiku: return haiku
+        }
     }
 
     static func costUSD(_ usage: TokenUsage, model: String?) -> Double {
@@ -38,7 +50,8 @@ enum UsageCalculator {
 
     /// `session*` and `contextUsed` for `sessionId` (nil when it has no turns);
     /// `today*` over every session's turns that started today, local time
-    /// (nil only when there are no turns at all).
+    /// (nil only when there are no turns at all); `todayFable*` over the same turns on Fable
+    /// models (zero, not nil, when there are turns but none on Fable).
     static func snapshot(sessionId: String?,
                          turnsBySession: [String: [TranscriptTurn]],
                          contextLimit: Int = 200_000) -> UsageSnapshot {
@@ -59,6 +72,9 @@ enum UsageCalculator {
             let (tokens, cost) = totals(today)
             snap.todayTokens = tokens
             snap.todayCostUSD = cost
+            let (fableTokens, fableCost) = totals(today.filter { family(of: $0.model) == .fable })
+            snap.todayFableTokens = fableTokens
+            snap.todayFableCostUSD = fableCost
         }
         return snap
     }
