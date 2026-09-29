@@ -73,6 +73,7 @@ extension AppState {
         treeSnapshots[sid] = nil
         clearNeedsYou(sid)
         openTurns.remove(sid)
+        stoppedWithAgents.remove(sid)
         updateSession(sid) {
             $0.state = .idle
             $0.verb = nil
@@ -98,6 +99,7 @@ extension AppState {
         statusline[sid] = nil
         clearNeedsYou(sid)
         openTurns.remove(sid)
+        stoppedWithAgents.remove(sid)
         if let ended = agents.removeValue(forKey: sid) {
             let ids = Set(ended.map { $0.id })
             agentKeys = agentKeys.filter { !ids.contains($0.value) }
@@ -177,6 +179,7 @@ extension AppState {
 
         // Claude Code's own helper runs fire hooks like any session, so one may already be listed.
         let headless = Set(discovered.filter(\.isHeadless).map(\.id))
+        headlessIds.formUnion(headless)
         if !headless.isEmpty, sessions.contains(where: { headless.contains($0.id) }) {
             sessions.removeAll { headless.contains($0.id) }
         }

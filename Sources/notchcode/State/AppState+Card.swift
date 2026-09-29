@@ -241,18 +241,16 @@ extension AppState {
         }
 
         if let req = currentPending {
-            if [.primary, .deny, .always, .edit].contains(key), Date() < answerKeysAllowedAt {
-                return true // swallowed: the request only just arrived
-            }
+            // `answer` swallows a press that comes before `answerKeysAllowedAt`.
             switch key {
-            case .primary: allow(id: req.id)
-            case .deny: deny(id: req.id)
+            case .primary: answer(.allow, to: req)
+            case .deny: answer(.deny, to: req)
             case .always:
                 guard req.kind == .permission else { return false }
-                allowAlways(id: req.id)
+                answer(.always, to: req)
             case .edit:
                 guard req.kind == .commit else { return false }
-                requestCommitEdit(id: req.id)
+                answer(.edit, to: req)
             case .diff:
                 return toggleRequestDiffAtCursor(req)
             case .up, .down:

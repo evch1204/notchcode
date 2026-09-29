@@ -959,6 +959,8 @@ enum Theme {
     enum Limits {
         /// The commit card lists at most this many files, then "N more".
         static let commitMaxFileRows: Int = 5
+        /// The permission card lists at most this many of the rules Always would add, then "+N more".
+        static let alwaysRuleLines: Int = 3
         /// File previews kept in memory for flipping back and forth.
         static let maxCachedPreviews: Int = 8
         /// A snippet shorter than this opens inline by default.

@@ -29,6 +29,7 @@ enum TranscriptReader {
     static func turns(transcriptPath: String) throws -> [TranscriptTurn] {
         let mainStamp = FileStamp(path: transcriptPath)
         let raw = try turnCache.value(for: transcriptPath)
+        recordQuestion(raw.last?.question, for: transcriptPath)
         let dir = subagentsDirectory(forTranscript: transcriptPath)
         let metaIds = subagentToolUseMap(directory: dir)
 
@@ -155,6 +156,21 @@ enum TranscriptReader {
 
     private static let lastMessageLock = NSLock()
     private static var lastMessageContext: [String: Int] = [:]
+
+    private static let questionLock = NSLock()
+    private static var lastQuestions: [String: AskedQuestion] = [:]
+
+    /// The newest turn's last `AskUserQuestion` call, as of the last `turns` read: the
+    /// Notification that says Claude waits carries only a message, not the options.
+    static func lastQuestion(transcriptPath: String) -> AskedQuestion? {
+        questionLock.lock(); defer { questionLock.unlock() }
+        return lastQuestions[transcriptPath]
+    }
+
+    private static func recordQuestion(_ question: AskedQuestion?, for path: String) {
+        questionLock.lock(); defer { questionLock.unlock() }
+        lastQuestions[path] = question
+    }
 
     private static func recordLastMessageContext(_ values: [String: Int]) {
         lastMessageLock.lock(); defer { lastMessageLock.unlock() }
@@ -375,6 +391,13 @@ enum TranscriptDates {
 // MARK: - Turn building
 
 /// One turn as parsed from the main transcript, before its subagents' edits are merged in.
+/// An `AskUserQuestion` call's first question: `questions[0]` with its header and option labels.
+struct AskedQuestion: Equatable {
+    var question: String
+    var header: String?
+    var options: [String]
+}
+
 fileprivate struct RawTurn {
     var id: String
     var prompt: String
@@ -385,6 +408,7 @@ fileprivate struct RawTurn {
     var log: EditLog
     var cwd: String?
     var lastContext: Int?
+    var question: AskedQuestion?
 }
 
 private struct TurnBuilder {
@@ -418,6 +442,7 @@ private struct TurnBuilder {
             guard let message = line["message"] as? [String: Any] else { return }
             if let model = message["model"] as? String, !model.hasPrefix("<") { current!.model = model }
             if let context = current!.log.consumeAssistant(message) { current!.lastContext = context }
+            if let asked = Self.askedQuestion(message) { current!.question = asked }
             if current!.summary == nil, let blocks = message["content"] as? [[String: Any]] {
                 for block in blocks where (block["type"] as? String) == "text" {
                     guard let text = block["text"] as? String else { continue }
@@ -430,6 +455,20 @@ private struct TurnBuilder {
         default:
             break
         }
+    }
+
+    /// The last `AskUserQuestion` tool_use in an assistant message, if any.
+    private static func askedQuestion(_ message: [String: Any]) -> AskedQuestion? {
+        guard let blocks = message["content"] as? [[String: Any]] else { return nil }
+        var found: AskedQuestion?
+        for block in blocks where (block["type"] as? String) == "tool_use" && (block["name"] as? String) == "AskUserQuestion" {
+            guard let input = block["input"] as? [String: Any],
+                  let first = (input["questions"] as? [[String: Any]])?.first,
+                  let text = first["question"] as? String else { continue }
+            let options = ((first["options"] as? [[String: Any]]) ?? []).compactMap { $0["label"] as? String }
+            found = AskedQuestion(question: text, header: first["header"] as? String, options: options)
+        }
+        return found
     }
 
     mutating func finish() -> [RawTurn] {

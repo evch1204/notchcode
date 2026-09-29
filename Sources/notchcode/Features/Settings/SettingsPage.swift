@@ -100,7 +100,7 @@ struct SettingsPage: View {
                     }
 
                     SettingsGroup(title: "Agents") {
-                        SettingsRow(label: "Show running agents in the notch") {
+                        SettingsRow(label: "Show the running agent count beside the closed notch") {
                             SmallSwitch(isOn: $state.prefs.showAgentsInWings)
                         }
                     }

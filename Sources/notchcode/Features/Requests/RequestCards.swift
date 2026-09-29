@@ -7,6 +7,8 @@
 import SwiftUI
 
 private let footerText = "At 0:00 the terminal asks instead. Nothing is denied for you."
+/// The command box's scroll view, for how far its text has scrolled.
+private let commandBoxSpace = "commandBox"
 
 @MainActor
 private struct RequestFooter: View {
@@ -80,6 +82,90 @@ private struct RequestTitle: View {
     }
 }
 
+/// A Bash command in full: it wraps, is never cut, and scrolls inside its box when taller
+/// than the card allows, with "… 3 more lines · scroll" while more is below. Allow runs all
+/// of it, so the owner must be able to read all of it.
+@MainActor
+private struct CommandBox: View {
+    let command: String
+    let tool: String
+
+    @State private var contentHeight: CGFloat = 0
+    @State private var viewportHeight: CGFloat = 0
+    /// How far the text has scrolled up, in points.
+    @State private var scrolled: CGFloat = 0
+
+    private static let lineHeight = NSLayoutManager().defaultLineHeight(
+        for: NSFont.monospacedSystemFont(ofSize: Theme.Fonts.bodySize, weight: .regular))
+
+    var body: some View {
+        InsetGroup {
+            VStack(alignment: .leading, spacing: Theme.Size.spaceS) {
+                HStack(alignment: .top, spacing: Theme.Size.spaceM) {
+                    ScrollView(.vertical, showsIndicators: false) {
+                        Text(command)
+                            .font(Theme.Fonts.mono)
+                            .foregroundStyle(Theme.Colors.ink)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(commandBoxSpace)) } action: {
+                                contentHeight = $0.height
+                                scrolled = max(0, -$0.minY)
+                            }
+                    }
+                    .coordinateSpace(name: commandBoxSpace)
+                    .frame(
+                        minHeight: min(contentHeight, Theme.Size.requestDiffMinHeight),
+                        maxHeight: min(contentHeight, Theme.Size.requestDiffMaxHeight)
+                    )
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewportHeight = $0 }
+                    ToolChip(tool: tool)
+                }
+                if let note {
+                    Text(note)
+                        .font(Theme.Fonts.caption)
+                        .foregroundStyle(Theme.Colors.inkTertiary)
+                        .lineLimit(1)
+                }
+            }
+        }
+    }
+
+    /// "… 3 more lines · scroll" while text is below the box, "end of command" once scrolled
+    /// to the bottom of a command that did not fit, nil when it all fits.
+    private var note: String? {
+        guard viewportHeight > 0, contentHeight.rounded() > viewportHeight.rounded() else { return nil }
+        let below = Int(((contentHeight - viewportHeight - scrolled) / Self.lineHeight).rounded(.up))
+        guard below > 0 else { return "end of command" }
+        let count = below == 1 ? "1 more line" : "\(below) more lines"
+        return Theme.Glyphs.ellipsis + " " + count + Theme.Glyphs.separator + "scroll"
+    }
+}
+
+/// Every rule Always would add (all of them are sent back), in tertiary ink: at most
+/// `alwaysRuleLines`, then "+N more".
+@MainActor
+private struct AlwaysRules: View {
+    let rules: [String]
+
+    var body: some View {
+        let shown = rules.prefix(Theme.Limits.alwaysRuleLines)
+        VStack(alignment: .leading, spacing: Theme.Size.spaceXS) {
+            ForEach(Array(shown.enumerated()), id: \.offset) { item in
+                Text(item.element)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            if rules.count > shown.count {
+                Text("+\(rules.count - shown.count) more")
+            }
+        }
+        .font(Theme.Fonts.caption)
+        .foregroundStyle(Theme.Colors.inkTertiary)
+        .help(rules.joined(separator: "\n"))
+    }
+}
+
 @MainActor
 struct PermissionCard: View {
     @ObservedObject var state: AppState
@@ -92,15 +178,20 @@ struct PermissionCard: View {
         VStack(alignment: .leading, spacing: Theme.Size.spaceL) {
             RequestTitle(request: request)
 
-            InsetGroup {
-                HStack(alignment: .top, spacing: Theme.Size.spaceM) {
-                    Text(request.detail)
-                        .font(Theme.Fonts.mono)
-                        .foregroundStyle(Theme.Colors.ink)
-                        .lineLimit(file == nil ? 4 : 2)
-                        .truncationMode(.middle)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    ToolChip(tool: request.tool)
+            if request.tool == "Bash" {
+                CommandBox(command: request.detail, tool: request.tool)
+                    .layoutPriority(-1)
+            } else {
+                InsetGroup {
+                    HStack(alignment: .top, spacing: Theme.Size.spaceM) {
+                        Text(request.detail)
+                            .font(Theme.Fonts.mono)
+                            .foregroundStyle(Theme.Colors.ink)
+                            .lineLimit(file == nil ? 4 : 2)
+                            .truncationMode(.middle)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        ToolChip(tool: request.tool)
+                    }
                 }
             }
 
@@ -123,6 +214,10 @@ struct PermissionCard: View {
                     .font(Theme.Fonts.body)
                     .foregroundStyle(Theme.Colors.inkSecondary)
                     .lineLimit(open ? 1 : 2)
+            }
+
+            if !request.alwaysRules.isEmpty {
+                AlwaysRules(rules: request.alwaysRules)
             }
 
             Spacer(minLength: 0)

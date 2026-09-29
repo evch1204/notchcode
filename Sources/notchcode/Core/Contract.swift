@@ -205,7 +205,7 @@ struct Preferences: Equatable, Codable {
     var peekSeconds: Double = 4
     var openGesture: OpenGesture = .click
     var hotkeyEnabled: Bool = true             // ⌥ space
-    var showAgentsInWings: Bool = true         // subagent count and lanes in the collapsed state
+    var showAgentsInWings: Bool = true         // the running subagent count in the closed state's wings
     var systemNotifications: Bool = false      // also post a macOS notification for blocking events
 }
 
@@ -220,6 +220,10 @@ struct PendingRequest: Identifiable, Equatable {
     var detail: String              // the command, the path, or the commit body
     var reason: String?
     var files: [FileChange] = []    // commit only
+    /// What "Always" would add: one line per `permission_suggestions` entry, all of which are sent back.
+    var alwaysRules: [String] = []
+    /// The payload's `tool_use_id`: the plugin and Connect both installed send one call twice.
+    var toolUseId: String? = nil
     var receivedAt: Date
     var deadline: Date
 }
@@ -360,7 +364,8 @@ enum JSONValue: Codable, Equatable {
 
     var stringValue: String? { if case .string(let s) = self { return s }; return nil }
     var doubleValue: Double? { if case .number(let n) = self { return n }; return nil }
-    var intValue: Int? { doubleValue.map { Int($0) } }
+    /// Nil for a number no Int can hold (Int(_:) would trap on it); a fraction is cut toward zero.
+    var intValue: Int? { doubleValue.flatMap { Int(exactly: $0.rounded(.towardZero)) } }
     var boolValue: Bool? { if case .bool(let b) = self { return b }; return nil }
     var arrayValue: [JSONValue]? { if case .array(let a) = self { return a }; return nil }
     var objectValue: [String: JSONValue]? { if case .object(let o) = self { return o }; return nil }

@@ -16,6 +16,9 @@ struct RequestDiffScroll: Equatable {
     var delta = 0
 }
 
+/// The owner's answer to a request: Allow (Commit), Deny (Skip), Always, or Edit.
+enum RequestAnswer { case allow, deny, always, edit }
+
 extension AppState {
 
     // MARK: - Request card diff
@@ -62,20 +65,33 @@ extension AppState {
 
     // MARK: - Owner actions
 
-    func allow(id: String) {
+    /// Every answer, key or click, comes through here. None counts before
+    /// `answerKeysAllowedAt`: a press meant for the terminal, or a click as the card slides
+    /// in under the pointer, must not answer a request the owner has not seen.
+    func answer(_ kind: RequestAnswer, to req: PendingRequest) {
+        guard Date() >= answerKeysAllowedAt else { return }
+        switch kind {
+        case .allow: allow(id: req.id)
+        case .deny: deny(id: req.id)
+        case .always: allowAlways(id: req.id)
+        case .edit: requestCommitEdit(id: req.id)
+        }
+    }
+
+    private func allow(id: String) {
         resolve(id, with: HookReply(id: id, decision: .allow))
     }
 
-    func deny(id: String) {
+    private func deny(id: String) {
         resolve(id, with: HookReply(id: id, decision: .deny, reason: "The owner denied this from notchcode."))
     }
 
-    func allowAlways(id: String) {
+    private func allowAlways(id: String) {
         resolve(id, with: HookReply(id: id, decision: .allow, always: true))
     }
 
     /// Commit card "Edit": let Claude know the owner wants a different message.
-    func requestCommitEdit(id: String) {
+    private func requestCommitEdit(id: String) {
         resolve(id, with: HookReply(
             id: id,
             decision: .deny,
@@ -86,6 +102,13 @@ extension AppState {
     // MARK: - Pending requests
 
     func enqueue(_ request: PendingRequest, reply: @escaping ReplyHandler) {
+        // The plugin and Connect both installed: one tool call arrives twice. Keep the first;
+        // the second hook falls back to Claude Code, which the first answer settles.
+        if let toolUseId = request.toolUseId,
+           pending.contains(where: { $0.sessionId == request.sessionId && $0.toolUseId == toolUseId && $0.id != request.id }) {
+            reply(HookReply(id: request.id, decision: .none))
+            return
+        }
         if handlers[request.id] != nil {
             // Same id twice: answer the old one so it is never left hanging.
             resolve(request.id, with: HookReply(id: request.id, decision: .none))

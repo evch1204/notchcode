@@ -48,11 +48,13 @@ struct AttentionView: View {
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .layoutPriority(1)
+                    // The doorbell: one line, cut at the end so the command reads from its
+                    // start. The card shows all of it.
                     Text(request.summary)
                         .font(Theme.Fonts.monoCaption)
                         .foregroundStyle(Theme.Colors.inkSecondary)
                         .lineLimit(1)
-                        .truncationMode(.middle)
+                        .truncationMode(.tail)
                     Spacer(minLength: 0)
                 }
                 .contentShape(Rectangle())

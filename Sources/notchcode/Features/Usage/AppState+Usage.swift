@@ -69,8 +69,15 @@ extension AppState {
         let context = payload["context_window"]
         var facts = StatuslineFacts(updatedAt: now)
         facts.contextPercent = context?["used_percentage"]?.doubleValue.map { min(100, max(0, $0)) }
-        facts.contextUsed = context?["used"]?.intValue
-        facts.contextLimit = (context?["limit"] ?? context?["context_window_size"])?.intValue
+        // Tokens in context: the latest response's input side (input + cache write + cache
+        // read in `current_usage`), else `total_input_tokens`; `used` / `limit` are fallbacks
+        // no Claude Code version was seen to send.
+        let current = context?["current_usage"]
+        let inputSide = ["input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"]
+            .compactMap { current?[$0]?.intValue }
+        let latest = inputSide.isEmpty ? nil : inputSide.reduce(0, +)
+        facts.contextUsed = latest ?? (context?["total_input_tokens"] ?? context?["used"])?.intValue
+        facts.contextLimit = (context?["context_window_size"] ?? context?["limit"])?.intValue
         facts.costUSD = payload["cost"]?["total_cost_usd"]?.doubleValue
         facts.model = payload["model"]?["id"]?.stringValue
         let hasFacts = facts.contextPercent != nil || facts.contextUsed != nil || facts.costUSD != nil || facts.model != nil

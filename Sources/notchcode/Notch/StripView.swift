@@ -478,17 +478,17 @@ struct ActionStrip: View {
         let actions = request.kind.actions
         HStack(spacing: Theme.Size.actionGap) {
             ActionSegment(title: actions.deny.title, key: actions.deny.key, role: actions.deny.role) {
-                state.deny(id: request.id)
+                state.answer(.deny, to: request)
             }
             .help(actions.deny.help)
             .unfoldRight(0)
             ActionSegment(title: actions.middle.title, key: allKeys ? actions.middle.key : nil, role: actions.middle.role) {
-                if request.kind == .commit { state.requestCommitEdit(id: request.id) } else { state.allowAlways(id: request.id) }
+                state.answer(request.kind == .commit ? .edit : .always, to: request)
             }
             .help(actions.middle.help)
             .unfoldRight(1)
             ActionSegment(title: actions.allow.title, key: actions.allow.key, role: actions.allow.role, countdown: request) {
-                state.allow(id: request.id)
+                state.answer(.allow, to: request)
             }
             .help(actions.allow.help)
             .popIn()

@@ -18,6 +18,12 @@ extension AppState {
             return
         }
 
+        // Claude Code's own helper runs (sdk-cli) fire hooks too; PLAN says they never show.
+        if headlessIds.contains(sid) {
+            if envelope.isBlocking { reply(HookReply(id: envelope.id, decision: .none)) }
+            return
+        }
+
         hookSeenAt[sid] = Date()
         endedAt[sid] = nil
 
@@ -67,28 +73,42 @@ extension AppState {
             handleNotification(payload, sessionId: sid)
 
         case .stop:
-            updateSession(sid) {
-                $0.state = .done
-                $0.verb = nil
-            }
             if question?.sessionId == sid { question = nil }
-            showPeek(donePeek(for: sid))
-            turnFiles[sid] = []
-            turnLineCounts[sid] = nil
-            turnShellCounts[sid] = nil
+            if runningAgents(for: sid).isEmpty {
+                finishTurn(sid)
+            } else {
+                // Background agents still run: the session is not done, and their edits
+                // (Bash ones included) still count toward this turn. The last SubagentStop
+                // finishes it.
+                stoppedWithAgents.insert(sid)
+                updateSession(sid) {
+                    $0.state = .working
+                    if $0.verb == nil { $0.verb = "Agents" }
+                }
+            }
             reloadTurns(for: sid)
 
         case .userPrompt:
-            let prompt = payload["prompt"]?.stringValue ?? ""
             updateSession(sid) {
                 $0.state = .working
                 $0.verb = "Thinking"
             }
-            // Shell changes still waiting for the previous turn: attach them now or never.
+            // A wakeup (a background agent's task notification, a loop or a schedule) fires
+            // this hook too, with `source` other than "user". The transcript reader does not
+            // count it as a turn, so neither does the app: the turn, its files and its tree
+            // baseline carry on. No `source` (older Claude Code) is a prompt.
+            if let source = payload["source"]?.stringValue, source != "user" {
+                reloadTurns(for: sid)
+                break
+            }
+            let prompt = payload["prompt"]?.stringValue ?? ""
+            stoppedWithAgents.remove(sid)
+            // Shell changes still held for the previous turn were made before this prompt,
+            // so the newest transcript turn is theirs.
             if let held = shellFiles[sid]?[Self.pendingTurnKey] {
                 shellFiles[sid]?[Self.pendingTurnKey] = nil
-                if let turnId = shellTurnId(for: sid, in: turnsBySession[sid] ?? []) {
-                    attachShellFiles(held, sessionId: sid, turnId: turnId)
+                if let newest = (turnsBySession[sid] ?? []).max(by: { $0.startedAt < $1.startedAt }) {
+                    attachShellFiles(held, sessionId: sid, turnId: newest.id)
                 }
             }
             turnStarts[sid] = Date()
@@ -124,6 +144,12 @@ extension AppState {
                     colorIndex: agentColorIndex(agent)
                 ))
             }
+            // The last agent of a turn that already stopped: the turn is done now. Their own
+            // tool hooks reopened it (`openTurns`), so it closes again here.
+            if stoppedWithAgents.contains(sid), runningAgents(for: sid).isEmpty {
+                openTurns.remove(sid)
+                if !pending.contains(where: { $0.sessionId == sid }) { finishTurn(sid) }
+            }
             // The agent's edits are in the turns now.
             reloadTurns(for: sid)
 
@@ -147,6 +173,21 @@ extension AppState {
         afterPendingChange(sessionId: sid)
     }
 
+    /// A turn with no agent left running is done: the session shows done, the done peek
+    /// counts the turn's files, and the turn's tallies start over. Stop, or the last
+    /// SubagentStop after a Stop that found agents running.
+    private func finishTurn(_ sid: String) {
+        stoppedWithAgents.remove(sid)
+        updateSession(sid) {
+            $0.state = .done
+            $0.verb = nil
+        }
+        showPeek(donePeek(for: sid))
+        turnFiles[sid] = []
+        turnLineCounts[sid] = nil
+        turnShellCounts[sid] = nil
+    }
+
     // MARK: - Envelope handling
 
     private func handlePermission(_ envelope: HookEnvelope, sessionId: String, reply: @escaping ReplyHandler) {
@@ -162,6 +203,8 @@ extension AppState {
             title: HookText.permissionTitle(tool: tool),
             detail: HookText.permissionDetail(tool: tool, input: input),
             reason: HookText.permissionReason(payload: payload),
+            alwaysRules: HookText.alwaysRules(payload: payload),
+            toolUseId: payload["tool_use_id"]?.stringValue,
             receivedAt: now,
             deadline: now.addingTimeInterval(Theme.Timing.permissionDeadline)
         )
@@ -181,7 +224,9 @@ extension AppState {
         let command = payload["tool_input"]?["command"]?.stringValue ?? ""
         let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        if tool == "Bash" && trimmed.hasPrefix("git commit") {
+        // Commit answers for the whole command, so only a plain `git commit` gets the commit
+        // card. Anything riding on it goes through the permission card, which shows it all.
+        if tool == "Bash" && HookText.isPlainCommit(trimmed) {
             let now = Date()
             // A file with no recorded patch still opens to its snippet.
             let latestFiles = (turns(for: sessionId).first?.files ?? []).map { file -> FileChange in
@@ -198,6 +243,7 @@ extension AppState {
                 detail: trimmed,
                 reason: payload["tool_input"]?["description"]?.stringValue,
                 files: latestFiles,
+                toolUseId: payload["tool_use_id"]?.stringValue,
                 receivedAt: now,
                 deadline: now.addingTimeInterval(Theme.Timing.permissionDeadline)
             )
@@ -273,6 +319,8 @@ extension AppState {
             markNeedsYou(sessionId)
             if type == "agent_needs_input" && !message.isEmpty {
                 question = QuestionPreview(sessionId: sessionId, question: message, options: [])
+                fillQuestionOptions(sessionId)
+                reloadTurns(for: sessionId)
             }
         case "agent_completed":
             clearNeedsYou(sessionId)

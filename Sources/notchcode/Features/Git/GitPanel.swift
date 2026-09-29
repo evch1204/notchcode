@@ -275,9 +275,9 @@ extension AppState {
     }
 
     /// The commits a push would send, for the pill's "Push 3" or "Publish 4"; nil when none
-    /// or unknown.
+    /// or unknown. A branch page counts them too (`GitRunner.readBranch` fills `unpushed`).
     var gitPushCount: Int? {
-        guard let snap = focusedGit, snap.isRepo, snap.checkedOut, snap.branch != nil, snap.remote != nil,
+        guard let snap = focusedGit, snap.isRepo, snap.branch != nil, snap.remote != nil,
               snap.unpushed > 0 else { return nil }
         return snap.unpushed
     }

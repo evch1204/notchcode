@@ -15,7 +15,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     @Published var pending: [PendingRequest] = [] {
         didSet {
             // A new request under the owner's fingers: ⏎ or ⌫ typed for the terminal must not
-            // answer it. Answer keys wait `requestKeyGuard`; clicks stay immediate.
+            // answer it. Answers wait `requestKeyGuard`, keys and clicks alike (`answer(_:to:)`).
             if let id = pending.first?.id, id != oldValue.first?.id {
                 answerKeysAllowedAt = Date().addingTimeInterval(Theme.Timing.requestKeyGuard)
                 // The request takes the well; the Files filter is gone, so it must not keep the keys.
@@ -23,7 +23,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
             }
         }
     }
-    /// Answer keys (⏎, ⌫, A, E) are ignored before this moment.
+    /// Answers (⏎, ⌫, A, E, or a click on an action) are ignored before this moment.
     var answerKeysAllowedAt = Date.distantPast
     @Published var peek: Peek?
     @Published private(set) var mode: NotchMode = .closed
@@ -175,6 +175,12 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     var needsYouTasks: [String: Task<Void, Never>] = [:]
     /// Sessions with a turn in progress as far as hooks know: activity seen, no Stop yet.
     var openTurns: Set<String> = []
+    /// Sessions whose Stop came while agents still ran: they stay working, and the last
+    /// SubagentStop finishes the turn (done peek, tallies cleared).
+    var stoppedWithAgents: Set<String> = []
+    /// Claude Code's own helper runs (entrypoint sdk-cli), from the transcript watcher.
+    /// Their hooks are ignored: PLAN says they never show.
+    var headlessIds: Set<String> = []
     var peekTask: Task<Void, Never>?
     /// Files edited in the current turn, per session, in first-edit order.
     var turnFiles: [String: [String]] = [:]

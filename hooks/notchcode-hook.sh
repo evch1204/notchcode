@@ -31,8 +31,10 @@ payload=$(cat 2>/dev/null | tr '\r\n' '  ')
 
 [ -n "$payload" ] || payload='{}'
 
+# A JSON string body: tabs become spaces and every other control character goes, so a
+# stray one in TERM_PROGRAM or a path cannot make the envelope invalid JSON.
 esc() {
-  printf '%s' "$1" | tr -d '\r\n' | sed 's/\\/\\\\/g; s/"/\\"/g'
+  printf '%s' "$1" | tr '\t' ' ' | tr -d '\000-\010\012-\037' | sed 's/\\/\\\\/g; s/"/\\"/g'
 }
 
 # The first "cwd" string in the payload, unescaped. Falls back to $PWD.
@@ -67,7 +69,8 @@ tree_report() {
   export GIT_OPTIONAL_LOCKS
   top=$(git -C "$1" rev-parse --show-toplevel 2>/dev/null) || return 1
   [ -n "$top" ] || return 1
-  status=$(git -C "$top" -c core.quotePath=false status --porcelain=v1 --untracked-files=all 2>/dev/null) || return 1
+  # At most 2000 lines: a huge untracked tree must not push the envelope past the socket's 8 MB.
+  status=$(git -C "$top" -c core.quotePath=false status --porcelain=v1 --untracked-files=all 2>/dev/null | head -n 2000) || return 1
   head_sha=$(git -C "$top" rev-parse -q --verify HEAD 2>/dev/null)
   cap=262144
   diff=$(tree_diff | head -c $((cap + 1)))

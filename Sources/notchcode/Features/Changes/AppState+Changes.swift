@@ -194,6 +194,20 @@ extension AppState {
         shellFiles[sid, default: [:]][turnId] = list
     }
 
+    /// The open question's options, from the transcript's last `AskUserQuestion` call (the
+    /// one asking the same thing when the texts match, else the latest). The transcript may
+    /// lag the Notification; `applyTurns` tries again.
+    func fillQuestionOptions(_ sid: String) {
+        guard var current = question, current.sessionId == sid, current.options.isEmpty,
+              let path = session(id: sid)?.transcriptPath,
+              let asked = TranscriptReader.lastQuestion(transcriptPath: path), !asked.options.isEmpty else { return }
+        if asked.question == current.question || current.question.contains(asked.question) {
+            current.question = asked.question
+        }
+        current.options = asked.options
+        question = current
+    }
+
     func reloadTurns(for sid: String) {
         guard readsLocalFiles, let path = session(id: sid)?.transcriptPath else { return }
         Task.detached(priority: .utility) { [weak self] in
@@ -209,6 +223,7 @@ extension AppState {
             shellFiles[sid]?[Self.pendingTurnKey] = nil
             attachShellFiles(held, sessionId: sid, turnId: turnId)
         }
+        if question?.sessionId == sid, question?.options.isEmpty == true { fillQuestionOptions(sid) }
         if turnsBySession[sid] != turns {
             turnsBySession[sid] = turns
             // New edits: the open preview's text and tints may have moved.
