@@ -412,7 +412,7 @@ private struct PreviewLines: View {
                                 text: lines[index],
                                 added: marks.added.contains(number),
                                 removedHere: marks.removedAt.contains(number),
-                                minWidth: geo.size.width
+                                minWidth: contentWidth
                             )
                             .id(number)
                         }

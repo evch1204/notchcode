@@ -236,7 +236,7 @@ private struct GitDiffBody: View {
                 ScrollView([.vertical, .horizontal], showsIndicators: false) {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         ForEach(lines.indices, id: \.self) { index in
-                            WideDiffLineRow(line: lines[index], words: words[index] ?? [], minWidth: rowWidth)
+                            WideDiffLineRow(line: lines[index], words: words[index] ?? [], minWidth: contentWidth)
                                 .id(index)
                         }
                         if file.patchTruncated {
