@@ -135,7 +135,7 @@ While the card is open the notch takes the keyboard; the moment it closes, focus
 
 ## Settings
 
-A page inside the card, never a separate window: the gear, or `⌘,` while the card is open. It holds what shows when idle (the resting row, or a pure notch), how "needs you" looks (two rows, or wings only), whether finished turns and agents peek and for how long, whether every file edit peeks too, click or hover to open, the `⌥ space` hotkey, agents in the wings, an optional macOS notification for blocking requests, and Connect / Disconnect with live status. Quit lives here too, or `⌘Q` while the card is open; `esc` only closes the card.
+A page inside the card, never a separate window: the gear, or `⌘,` while the card is open. It holds what shows when idle (the resting row, or a pure notch), how "needs you" looks (two rows, or wings only), whether finished turns and agents peek and for how long, whether every file edit peeks too, click or hover to open, the `⌥ space` hotkey, agents in the wings, whether keys show beside buttons in the card, an optional macOS notification for blocking requests, and Connect / Disconnect with live status. Quit lives here too, or `⌘Q` while the card is open; `esc` only closes the card.
 
 ## Uninstall
 

@@ -27,13 +27,13 @@ struct SettingsPage: View {
                     }
                 }
                 .buttonStyle(SmallPillStyle())
-                Keycap(Theme.Keys.escape)
+                InlineKeycap(Theme.Keys.escape)
                 Spacer(minLength: Theme.Size.spaceM)
                 Text("Settings")
                     .font(Theme.Fonts.bodySemibold)
                     .foregroundStyle(Theme.Colors.ink)
                 Spacer(minLength: Theme.Size.spaceM)
-                Keycap(Theme.Keys.settings)
+                InlineKeycap(Theme.Keys.settings)
             }
 
             ScrollView(.vertical, showsIndicators: false) {
@@ -88,8 +88,14 @@ struct SettingsPage: View {
                                 (.hover, "Hover"),
                             ])
                         }
+                    }
+
+                    SettingsGroup(title: "Keys") {
                         SettingsRow(label: "\(Theme.Keys.option) space opens the notch from anywhere") {
                             SmallSwitch(isOn: $state.prefs.hotkeyEnabled)
+                        }
+                        SettingsRow(label: "Show keys beside buttons in the card") {
+                            SmallSwitch(isOn: $state.extraPrefs.keycapsBesideButtons)
                         }
                     }
 

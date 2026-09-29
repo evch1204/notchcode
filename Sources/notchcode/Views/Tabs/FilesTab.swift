@@ -75,7 +75,7 @@ struct FilesTab: View {
             .foregroundStyle(Theme.Colors.ink)
             .focused($filterFocused)
             if state.fileFilter.isEmpty && !filterFocused {
-                Keycap(Theme.Keys.slash)
+                InlineKeycap(Theme.Keys.slash)
             }
         }
         .padding(.horizontal, Theme.Size.filterHPadding)
@@ -310,7 +310,7 @@ struct TreeTogglePill: View {
             }
             .buttonStyle(SmallPillStyle())
             .help(collapsed ? "Show the " + subject : "Hide the " + subject)
-            Keycap(Theme.Keys.toggleTree)
+            InlineKeycap(Theme.Keys.toggleTree)
         }
         .disabled(!enabled)
         .opacity(enabled ? 1 : Theme.Opacity.disabled)
@@ -336,7 +336,7 @@ private struct PreviewHeader: View {
                         (false, "Preview"),
                         (true, "Code"),
                     ])
-                    Keycap(Theme.Keys.markdownMode)
+                    InlineKeycap(Theme.Keys.markdownMode)
                 }
                 .fixedSize()
             }

@@ -51,7 +51,7 @@ private struct ShowChangesRow: View {
                         .lineLimit(1)
                 }
                 Spacer(minLength: Theme.Size.spaceM)
-                Keycap(Theme.Keys.diff)
+                InlineKeycap(Theme.Keys.diff)
             }
             .padding(.horizontal, Theme.Size.rowHPadding)
             .padding(.vertical, Theme.Size.rowVPadding)
@@ -208,7 +208,7 @@ struct CommitCard: View {
                         Text(openPath == nil ? "Show changes" : "Hide changes")
                             .font(Theme.Fonts.caption)
                             .foregroundStyle(Theme.Colors.inkTertiary)
-                        Keycap(Theme.Keys.diff)
+                        InlineKeycap(Theme.Keys.diff)
                     }
                 }
                 ToolChip(tool: request.tool)

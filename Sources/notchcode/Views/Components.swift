@@ -32,6 +32,37 @@ struct Keycap: View {
     }
 }
 
+/// A keycap beside a button inside the card; hidden by the Settings switch. The footer and
+/// the attention row use Keycap directly.
+struct InlineKeycap: View {
+    let label: String
+    var onLight = false
+    @Environment(\.inlineKeycaps) private var shows
+
+    init(_ label: String, onLight: Bool = false) {
+        self.label = label
+        self.onLight = onLight
+    }
+
+    var body: some View {
+        if shows {
+            Keycap(label, onLight: onLight)
+        }
+    }
+}
+
+private struct InlineKeycapsKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
+extension EnvironmentValues {
+    /// Whether `InlineKeycap`s show; set once on the card's well from Settings.
+    var inlineKeycaps: Bool {
+        get { self[InlineKeycapsKey.self] }
+        set { self[InlineKeycapsKey.self] = newValue }
+    }
+}
+
 // MARK: - Motion helpers
 
 private struct PaneOffsetKey: EnvironmentKey {

@@ -12,6 +12,9 @@ struct ExtraPreferences: Equatable, Codable {
     var peekEdits: Bool = PreferencesStore.defaultPeekEdits
     /// The Files tool's tree is collapsed so the preview takes the whole well (⌘B).
     var filesTreeHidden: Bool = false
+    /// The small keycaps beside buttons and pills inside the card. The footer's key row and
+    /// the attention row keep theirs either way; the shortcuts work either way.
+    var keycapsBesideButtons: Bool = true
 
     init() {}
 
@@ -19,6 +22,7 @@ struct ExtraPreferences: Equatable, Codable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         peekEdits = try c.decodeIfPresent(Bool.self, forKey: .peekEdits) ?? PreferencesStore.defaultPeekEdits
         filesTreeHidden = try c.decodeIfPresent(Bool.self, forKey: .filesTreeHidden) ?? false
+        keycapsBesideButtons = try c.decodeIfPresent(Bool.self, forKey: .keycapsBesideButtons) ?? true
     }
 }
 

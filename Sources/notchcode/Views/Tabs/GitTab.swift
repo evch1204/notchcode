@@ -434,7 +434,7 @@ private struct GitHeader: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             pill(phase)
             if phase == .confirming {
-                Button { state.cancelGitConfirm() } label: { Keycap(Theme.Keys.escape) }
+                Button { state.cancelGitConfirm() } label: { InlineKeycap(Theme.Keys.escape) }
                     .buttonStyle(.plain)
                     .help("Cancel")
             }
@@ -517,7 +517,7 @@ private struct GitTargetPill: View {
                         .font(Theme.Fonts.tiny)
                         .foregroundStyle(Theme.Colors.gitTargetRepo)
                 }
-                Keycap(Theme.Keys.worktree)
+                InlineKeycap(Theme.Keys.worktree)
             }
             .padding(.horizontal, Theme.Size.actionHPadding)
             .frame(height: Theme.Size.actionHeight)
@@ -628,13 +628,13 @@ private struct GitBranchPicker: View {
                     .font(Theme.Fonts.caption)
                     .foregroundStyle(Theme.Colors.filterPlaceholder)
                     .fixedSize()
-                Keycap(Theme.Keys.escape)
+                InlineKeycap(Theme.Keys.escape)
                 Text("clears")
                     .font(Theme.Fonts.caption)
                     .foregroundStyle(Theme.Colors.filterPlaceholder)
                     .fixedSize()
             } else if !filterFocused {
-                Keycap(Theme.Keys.slash)
+                InlineKeycap(Theme.Keys.slash)
             }
         }
         .padding(.horizontal, Theme.Size.filterHPadding)
@@ -724,7 +724,7 @@ private struct GitRepoPill: View {
                 Text(Theme.Glyphs.pickerChevron)
                     .font(Theme.Fonts.tiny)
                     .foregroundStyle(Theme.Colors.gitTargetRepo)
-                Keycap(Theme.Keys.repository)
+                InlineKeycap(Theme.Keys.repository)
             }
         }
         .padding(.horizontal, Theme.Size.actionHPadding)

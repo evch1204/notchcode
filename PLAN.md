@@ -71,6 +71,8 @@ Commit means letting Claude's own `git commit` through. Push is the Git tool's o
 
 A Settings page inside the card (gear, or ⌘, while the card is open). Never a separate macOS window: one surface, one set of keys. Idle style (agents in the notch, or pure notch), attention style (two-row, or wings only), peeks on/off and their length, open on click or hover, the ⌥ space hotkey, agents in the wings, and an optional macOS notification for blocking events. Stored as one JSON blob in UserDefaults. Settings also holds Connect / Disconnect.
 
+- Keys group (owner, 2026-09-28): a switch, on by default, hides the keycaps beside buttons inside the card because they crowd it; the footer keys and the attention row keep theirs; shortcuts work either way. ⌥ space moved into this group.
+
 **Rule exception, decided 2026-09-27:** the app may edit `~/.claude/settings.json`, and only that file, and only to add or remove its own hook entries, after a backup. Everything else stays hook-only.
 
 ## Data: session files first, hooks on top
