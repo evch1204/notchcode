@@ -174,6 +174,7 @@ struct CardView: View {
             return [
                 KeyHint(Theme.Keys.enter, "open"),
                 KeyHint(Theme.Keys.slash, "filter"),
+                KeyHint(Theme.Keys.toggleTree, "tree"),
                 KeyHint(Theme.Keys.copy, "copy path:line"),
                 KeyHint(Theme.Keys.optionEnter, "terminal"),
             ]

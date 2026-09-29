@@ -179,6 +179,15 @@ enum Theme {
         static let previewAddedBackground = green.opacity(0.12)
         static let previewRemovedMark = red
         static let previewAddedNumber = green
+        // Markdown preview in the Files tool.
+        static let markdownText = inkSecondary
+        static let markdownHeading = ink
+        static let markdownMarker = inkTertiary
+        static let markdownLink = blue
+        static let markdownCodeFill = inset
+        static let markdownQuoteRule = track
+        static let markdownRule = hairline
+        static let markdownTableHeader = inset
 
         // Sessions tab group header. It sticks over the well, so it carries the well's
         // colour flattened onto the black (the well's white opacity as a grey).
@@ -497,6 +506,18 @@ enum Theme {
         static let previewHPadding: CGFloat = 6
         static let previewVPadding: CGFloat = 4
         static let removedMarkWidth: CGFloat = 2
+        // Markdown preview: padding inside the box, space between blocks, list and quote indents.
+        static let markdownPadding: CGFloat = 10
+        static let markdownBlockSpacing: CGFloat = 8
+        static let markdownLineSpacing: CGFloat = 2
+        static let markdownMarkerGap: CGFloat = 6
+        static let markdownListIndent: CGFloat = 12
+        static let markdownQuoteRule: CGFloat = 2
+        static let markdownQuoteGap: CGFloat = 8
+        static let markdownCodePadding: CGFloat = 8
+        static let markdownCellHPadding: CGFloat = 6
+        static let markdownCellVPadding: CGFloat = 3
+        static let markdownHeadingTopSpacing: CGFloat = 4
 
         static let breatheRadius: CGFloat = 6
         static let shadowRadius: CGFloat = 18
@@ -714,6 +735,8 @@ enum Theme {
         /// Rows leaving and joining as the filter changes.
         @MainActor static var filterRows: Animation { reduceMotion ? reduced : .easeOut(duration: disclosureDuration) }
         static let chevronOpenDegrees: Double = 90
+        /// ⌘B: the tree folds away or comes back with the same spring as a same-state resize.
+        @MainActor static var treeCollapse: Animation { panelRetarget }
         static let ringStartDegrees: Double = -90
 
 
@@ -849,6 +872,8 @@ enum Theme {
         static let back = "chevron.left"
         static let filter = "line.3.horizontal.decrease"
         static let folder = "folder"
+        /// The Files tool's collapse-the-tree pill.
+        static let sidebar = "sidebar.left"
 
         // The tools in the strip.
         static let sessions = "rectangle.stack"
@@ -888,6 +913,10 @@ enum Theme {
         static let right = "→"
         static let slash = "/"
         static let plus = "+"
+        /// Files: collapse or bring back the tree.
+        static let toggleTree = "⌘B"
+        /// Files: a Markdown file's Preview · Code switch.
+        static let markdownMode = "P"
     }
 
     // MARK: - Glyph characters used in text
@@ -904,6 +933,8 @@ enum Theme {
         /// "~$1.42": an estimated cost.
         static let estimate = "~"
         static let emDash = "\u{2014}"
+        /// A Markdown bullet list item's marker.
+        static let bullet = "\u{2022}"
         /// After a Changes file row's name when a Bash command changed the file.
         static let shellTag = "shell"
     }

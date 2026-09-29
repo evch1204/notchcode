@@ -10,12 +10,15 @@ import Foundation
 struct ExtraPreferences: Equatable, Codable {
     /// Peek every file edit, not only completed turns and subagents.
     var peekEdits: Bool = PreferencesStore.defaultPeekEdits
+    /// The Files tool's tree is collapsed so the preview takes the whole well (⌘B).
+    var filesTreeHidden: Bool = false
 
     init() {}
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         peekEdits = try c.decodeIfPresent(Bool.self, forKey: .peekEdits) ?? PreferencesStore.defaultPeekEdits
+        filesTreeHidden = try c.decodeIfPresent(Bool.self, forKey: .filesTreeHidden) ?? false
     }
 }
 

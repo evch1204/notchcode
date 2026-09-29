@@ -6,6 +6,8 @@
 //
 // Keys: ↑↓ move, → opens a folder, ← closes it, ⏎ opens the file, / filters (esc clears),
 // y copies path:line of the first changed line, ⌥⏎ teleports. All in AppState.handleFilesKey.
+// ⌘B collapses the tree so the preview takes the whole well; P flips a Markdown file between
+// its rendered Preview and its Code. Both through handleFilesKey.
 
 import SwiftUI
 
@@ -17,16 +19,24 @@ struct FilesTab: View {
     var body: some View {
         GeometryReader { geo in
             let treeWidth = (geo.size.width * Theme.Size.fileTreeShare).rounded(.down)
-            HStack(alignment: .top, spacing: Theme.Size.filesColumnGap) {
+            let collapsed = state.filesTreeCollapsed
+            HStack(alignment: .top, spacing: 0) {
+                // The tree keeps its width and slides out to the left behind a clip.
                 VStack(alignment: .leading, spacing: Theme.Size.spaceM) {
                     filterField
                     tree
                 }
                 .frame(width: treeWidth)
+                .padding(.trailing, Theme.Size.filesColumnGap)
+                .frame(width: collapsed ? 0 : treeWidth + Theme.Size.filesColumnGap, alignment: .trailing)
+                .clipped()
+                .opacity(collapsed ? 0 : 1)
+                .allowsHitTesting(!collapsed)
 
                 Rectangle()
                     .fill(Theme.Colors.paneDivider)
-                    .frame(width: Theme.Size.hairline)
+                    .frame(width: collapsed ? 0 : Theme.Size.hairline)
+                    .padding(.trailing, collapsed ? 0 : Theme.Size.filesColumnGap)
 
                 PreviewPane(state: state)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -34,7 +44,9 @@ struct FilesTab: View {
             }
             .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
         }
-        .onAppear { state.loadRepoTree() }
+        .onAppear {
+            state.loadRepoTree()
+        }
         .onChange(of: filterFocused) { _, focused in
             if state.fileFilterFocused != focused { state.fileFilterFocused = focused }
         }
@@ -211,36 +223,65 @@ private struct ChangeBadge: View {
 
 // MARK: - Preview
 
-/// The right column. Crossfades 0.2 s from one file to the next.
+/// The right column: a header row (the collapse pill, then the file's name, the Markdown
+/// switch and its ±counts), and below it the file. Both crossfade 0.2 s from file to file.
 @MainActor
 private struct PreviewPane: View {
     @ObservedObject var state: AppState
 
     var body: some View {
         let path = state.openedFilePath
-        ZStack {
-            if let path {
-                if let loaded = state.openedPreview {
-                    PreviewBody(
-                        path: path,
-                        loaded: loaded,
-                        count: state.sessionChangeCounts[path],
-                        marks: state.changeMarks(forPath: path)
-                    )
-                    .id(path)
-                    .transition(.opacity)
+        VStack(alignment: .leading, spacing: Theme.Size.spaceS) {
+            HStack(spacing: Theme.Size.spaceM) {
+                TreeTogglePill(collapsed: state.filesTreeCollapsed, enabled: path != nil) {
+                    state.toggleFilesTree()
+                }
+                ZStack(alignment: .leading) {
+                    if let path {
+                        PreviewHeader(
+                            path: path,
+                            count: state.sessionChangeCounts[path],
+                            showsCode: markdownBinding
+                        )
+                        .id(path)
+                        .transition(.opacity)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, Theme.Size.previewHPadding)
+
+            ZStack {
+                if let path {
+                    if let loaded = state.openedPreview {
+                        PreviewBody(
+                            loaded: loaded,
+                            marks: state.changeMarks(forPath: path),
+                            rendersMarkdown: AppState.isMarkdown(path) && !state.markdownShowsCode
+                        )
+                        .id(path)
+                        .transition(.opacity)
+                    } else {
+                        centred(Theme.Glyphs.ellipsis)
+                            .id("loading|" + path)
+                            .transition(.opacity)
+                    }
                 } else {
-                    centred(Theme.Glyphs.ellipsis)
-                        .id("loading|" + path)
+                    centred("Select a file")
                         .transition(.opacity)
                 }
-            } else {
-                centred("Select a file")
-                    .transition(.opacity)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .animation(Theme.Motion.previewFade, value: path)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var markdownBinding: Binding<Bool> {
+        Binding(
+            get: { state.markdownShowsCode },
+            set: { state.markdownShowsCode = $0 }
+        )
     }
 
     private func centred(_ text: String) -> some View {
@@ -251,37 +292,80 @@ private struct PreviewPane: View {
     }
 }
 
+/// The sidebar pill and its ⌘B keycap. Disabled (dimmed) with no file open. The Git tool
+/// hides its file list with it.
 @MainActor
-private struct PreviewBody: View {
-    let path: String
-    let loaded: LoadedPreview
-    let count: FileChangeCount?
-    let marks: ChangeMarks
+struct TreeTogglePill: View {
+    let collapsed: Bool
+    let enabled: Bool
+    /// What the pill hides: "file tree" (Files), "file list" (Git).
+    var subject = "file tree"
+    let action: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Size.spaceS) {
-            header
-            if loaded.preview.isBinary {
-                message("Binary file")
-            } else if loaded.preview.lines.isEmpty {
-                message(loaded.preview.truncated ? "Too large to preview" : "Empty file")
-            } else {
-                PreviewLines(lines: loaded.preview.lines, marks: marks, footer: footer)
+        HStack(spacing: Theme.Size.spaceS) {
+            Button(action: action) {
+                Image(systemName: Theme.Symbols.sidebar)
+                    .font(Theme.Fonts.symbol(Theme.Fonts.tinySize))
             }
+            .buttonStyle(SmallPillStyle())
+            .help(collapsed ? "Show the " + subject : "Hide the " + subject)
+            Keycap(Theme.Keys.toggleTree)
         }
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : Theme.Opacity.disabled)
+        .fixedSize()
     }
+}
 
-    /// "FilesTab.swift · Views/Tabs   +12 −3".
-    private var header: some View {
+/// "FilesTab.swift   Preview · Code  P   +12 −3". The switch shows only for Markdown files.
+@MainActor
+private struct PreviewHeader: View {
+    let path: String
+    let count: FileChangeCount?
+    @Binding var showsCode: Bool
+
+    var body: some View {
         HStack(spacing: Theme.Size.spaceM) {
             PathLabel(path: path)
                 .layoutPriority(1)
             Spacer(minLength: Theme.Size.spaceM)
+            if AppState.isMarkdown(path) {
+                HStack(spacing: Theme.Size.spaceS) {
+                    SegmentedPills(selection: $showsCode, options: [
+                        (false, "Preview"),
+                        (true, "Code"),
+                    ])
+                    Keycap(Theme.Keys.markdownMode)
+                }
+                .fixedSize()
+            }
             if let count {
                 DiffCounts(added: count.added, removed: count.removed)
             }
         }
-        .padding(.horizontal, Theme.Size.previewHPadding)
+    }
+}
+
+@MainActor
+private struct PreviewBody: View {
+    let loaded: LoadedPreview
+    let marks: ChangeMarks
+    /// A Markdown file on Preview: rendered blocks instead of numbered lines.
+    let rendersMarkdown: Bool
+
+    var body: some View {
+        if loaded.preview.isBinary {
+            message("Binary file")
+        } else if loaded.preview.lines.isEmpty {
+            message(loaded.preview.truncated ? "Too large to preview" : "Empty file")
+        } else if rendersMarkdown {
+            MarkdownView(lines: loaded.preview.lines, footer: footer)
+                .transition(.opacity)
+        } else {
+            PreviewLines(lines: loaded.preview.lines, marks: marks, footer: footer)
+                .transition(.opacity)
+        }
     }
 
     /// "… 212 more lines" when RepoFiles capped the file.

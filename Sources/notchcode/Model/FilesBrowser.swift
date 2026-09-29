@@ -1,7 +1,9 @@
 // FilesBrowser.swift
 // The Files tab's model: the repository tree from RepoFiles, which folders are open,
 // the name filter, the keyboard cursor, the previewed file (remembered per session),
-// and which lines of that file this session changed.
+// and which lines of that file this session changed. Also the two view switches: the tree
+// collapsed (⌘B, saved with the preferences) and a Markdown file's Preview · Code (P, per
+// session, in memory).
 //
 // Reading only. RepoFiles reads the disk off the main thread; nothing here writes a file.
 
@@ -130,7 +132,19 @@ extension AppState {
     /// The Files tab's keys. Nil: not a Files key, let the card handle it.
     func handleFilesKey(_ key: NotchKey) -> Bool? {
         guard let sid = focusedSession?.id else { return nil }
+        // The tree's own keys bring a collapsed tree back first, then act.
         switch key {
+        case .filter, .up, .down, .left, .right:
+            if filesTreeCollapsed { setFilesTreeHidden(false) }
+        default:
+            break
+        }
+        switch key {
+        case .toggleTree:
+            toggleFilesTree()
+            return true
+        case .markdownMode:
+            return toggleMarkdownMode()
         case .filter:
             fileFilterFocused = true
             return true
@@ -221,6 +235,51 @@ extension AppState {
         }
         guard let path else { return false }
         copyLocation(path: path, line: changeMarks(forPath: path).firstLine ?? 1)
+        return true
+    }
+
+    // MARK: View switches
+
+    /// The owner collapsed the tree. It only takes effect while a file is open: with nothing
+    /// to preview, the tree shows (and the collapse pill is disabled).
+    var filesTreeCollapsed: Bool {
+        extraPrefs.filesTreeHidden && openedFilePath != nil
+    }
+
+    func setFilesTreeHidden(_ hidden: Bool) {
+        guard extraPrefs.filesTreeHidden != hidden else { return }
+        if hidden { fileFilterFocused = false }
+        withAnimation(Theme.Motion.treeCollapse) { extraPrefs.filesTreeHidden = hidden }
+    }
+
+    /// ⌘B or the pill. Does nothing with no file open.
+    func toggleFilesTree() {
+        guard openedFilePath != nil else { return }
+        setFilesTreeHidden(!filesTreeCollapsed)
+    }
+
+    /// Session id -> a Markdown file shows its source instead of the rendered preview.
+    /// In memory only: every run starts on Preview.
+    private static var markdownSource: [String: Bool] = [:]
+
+    static func isMarkdown(_ path: String) -> Bool {
+        ["md", "markdown", "mdx"].contains((path as NSString).pathExtension.lowercased())
+    }
+
+    /// The focused session shows Markdown as source (Code) rather than rendered (Preview).
+    var markdownShowsCode: Bool {
+        get { focusedSession.flatMap { Self.markdownSource[$0.id] } ?? false }
+        set {
+            guard let sid = focusedSession?.id, markdownShowsCode != newValue else { return }
+            objectWillChange.send()
+            Self.markdownSource[sid] = newValue
+        }
+    }
+
+    /// P: flips Preview · Code when the opened file is Markdown.
+    func toggleMarkdownMode() -> Bool {
+        guard let path = openedFilePath, Self.isMarkdown(path) else { return false }
+        withAnimation(Theme.Motion.previewFade) { markdownShowsCode.toggle() }
         return true
     }
 
@@ -357,3 +416,4 @@ extension AppState {
         return n + delta
     }
 }
+

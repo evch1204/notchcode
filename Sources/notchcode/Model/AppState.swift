@@ -46,6 +46,10 @@ enum NotchKey: Equatable {
     case diff
     /// "/": focus the Files tab's filter field.
     case filter
+    /// ⌘B: hide or show the Files tool's tree.
+    case toggleTree
+    /// "P": Preview or Code for a Markdown file in the Files tool.
+    case markdownMode
     case number(Int)
 }
 

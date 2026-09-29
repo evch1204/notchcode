@@ -18,8 +18,8 @@ It is the sibling of [sidecar-pane](https://github.com/evch1204/sidecar-pane), w
 |---|---|
 | Sessions | every live session grouped by repository, one row per worktree, with branch, model, state, the current prompt, and a lane per running subagent. `⏎` opens its Changes, the chevron jumps to its terminal. |
 | Changes | each turn you sent, the files it changed, including edits made by subagents, and the full diff under any file. |
-| Files | the repository tree like an IDE side panel, changed files badged, and a scrollable preview of any file with its changed lines tinted. |
 | Usage | the 5-hour and weekly limits with reset times, context used against the model's window, tokens for the session and today, and an estimated cost. One page, no scrolling. |
+| Files | the repository tree, changed files badged, and a preview with changed lines tinted; `⌘B` folds the tree away for a full-width preview, and Markdown files render with a Preview · Code switch. |
 
 **Teleport.** Every session knows which terminal started it. One key lands you in that window. With several worktrees of one repository open at once, this is the reason to keep the app.
 

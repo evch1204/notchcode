@@ -36,6 +36,7 @@ final class KeyboardController {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         if flags.contains(.command) && Int(event.keyCode) == kVK_ANSI_Comma { return .settings }
         if flags.contains(.command) && Int(event.keyCode) == kVK_ANSI_Q { return .quit }
+        if flags.contains(.command) && Int(event.keyCode) == kVK_ANSI_B { return .toggleTree }
         if flags.contains(.command) || flags.contains(.control) { return nil }
         let option = flags.contains(.option)
         let shift = flags.contains(.shift)
@@ -75,6 +76,7 @@ final class KeyboardController {
         case "y": return .copy
         case "d": return .diff
         case "/": return .filter
+        case "p": return .markdownMode
         default: return nil
         }
     }
