@@ -122,6 +122,8 @@ struct CardView: View {
             FilesTab(state: state)
         case .usage:
             UsageTab(state: state)
+        case .git:
+            GitTab(state: state)
         case .sessions:
             SessionsTab(state: state)
         case .changes, .settings:
@@ -146,9 +148,17 @@ struct CardView: View {
             }
             Spacer(minLength: Theme.Size.spaceM)
             footerMeter
-            KeyHints(hints: [KeyHint(Theme.Keys.escape, isSettings(content) ? "back" : "close")])
+            KeyHints(hints: [KeyHint(Theme.Keys.escape, escapeLabel(content))])
         }
         .frame(height: Theme.Size.cardFooterHeight)
+    }
+
+    /// What esc does: "back" out of Settings, the Git tool's dropdown, filter and picker
+    /// layers, else "close".
+    private func escapeLabel(_ content: CardContent) -> String {
+        if isSettings(content) { return "back" }
+        if case .tool(.git) = content, let label = state.gitEscapeLabel { return label }
+        return "close"
     }
 
     private func isSettings(_ content: CardContent) -> Bool {
@@ -182,6 +192,24 @@ struct CardView: View {
             return [
                 KeyHint(Theme.Keys.enter, "changes"),
                 KeyHint(Theme.Keys.optionEnter, "terminal"),
+                KeyHint(Theme.Keys.tab, "next tool"),
+            ]
+        case .tool(.git):
+            if state.gitPanel.pickerOpen {
+                if state.gitPanel.repoMenuOpen {
+                    return [KeyHint(Theme.Keys.up + Theme.Keys.down, "repository"), KeyHint(Theme.Keys.enter, "choose")]
+                }
+                var hints = [KeyHint(Theme.Keys.up + Theme.Keys.down, "branch"), KeyHint(Theme.Keys.enter, "show this branch")]
+                if state.gitPanel.repos.count > 1 { hints.append(KeyHint(Theme.Keys.repository, "repository")) }
+                if state.gitPickerShowsFilter && !state.gitPanel.filterFocused { hints.append(KeyHint(Theme.Keys.slash, "filter")) }
+                return hints
+            }
+            return [
+                KeyHint(Theme.Keys.up + Theme.Keys.down, "file"),
+                KeyHint(Theme.Keys.hunkUp + Theme.Keys.hunkDown, "hunk"),
+                KeyHint(Theme.Keys.worktree, "branch"),
+                KeyHint(Theme.Keys.toggleTree, "list"),
+                KeyHint(Theme.Keys.push, state.gitPushVerb.lowercased()),
                 KeyHint(Theme.Keys.tab, "next tool"),
             ]
         case .question, .tool(.usage), .tool(.settings):

@@ -62,15 +62,15 @@ struct NotchLayout: Equatable {
             // Ears sit inside the notch width so the closed shape never leaves the hardware notch.
             return CGSize(width: max(0, notchWidth - 2 * Theme.Radius.closedTop), height: notchHeight)
         case .resting:
-            return CGSize(width: widened(Theme.Size.restingWidth), height: notchHeight)
+            return CGSize(width: widened(Theme.Size.restingWidth, wing: hoverWing), height: notchHeight)
         case .wings:
-            return CGSize(width: widened(Theme.Size.wingsWidth), height: notchHeight)
+            return CGSize(width: widened(Theme.Size.wingsWidth, wing: hoverWing), height: notchHeight)
         case .peek:
             return CGSize(width: widened(Theme.Size.peekWidth), height: notchHeight)
         case .attention:
-            return CGSize(width: widened(Theme.Size.attentionWidth, wing: stripWing), height: notchHeight + Theme.Size.attentionExtraHeight)
+            return CGSize(width: widened(Theme.Size.attentionWidth, wing: cardWing), height: notchHeight + Theme.Size.attentionExtraHeight)
         case .card:
-            return CGSize(width: widened(Theme.Size.cardWidth, wing: stripWing), height: notchHeight + cardHeight)
+            return CGSize(width: widened(Theme.Size.cardWidth, wing: cardWing), height: notchHeight + cardHeight)
         }
     }
 
@@ -112,11 +112,28 @@ struct NotchLayout: Equatable {
         max(0, (bodyWidth - notchWidth) / 2 - Theme.Size.sidePadding - Theme.Size.wingInnerGap)
     }
 
-    /// One side of the open card and the attention row: the strip's tools, rule and gear,
-    /// plus the wing's paddings. A wider notch (a scaled display) widens the card so the
-    /// tools are never clipped.
+    /// One side of the open card and the attention row (they share the width): the wider of
+    /// the right wing's tools and the left wing's status. The card is symmetric, so a wider
+    /// notch (a scaled display) or one more tool widens both wings and nothing is clipped.
+    private var cardWing: CGFloat { max(stripWing, statusWing) }
+
+    /// The strip's tools, rule and gear, the slack that keeps the first tool's focus ring
+    /// inside the clip, and the wing's paddings.
     private var stripWing: CGFloat {
-        Theme.Size.stripToolsWidth + Theme.Size.sidePadding + Theme.Size.wingInnerGap + Theme.Size.wingEdgeInset
+        Theme.Size.stripToolsWidth + Theme.Size.stripToolsSlack + Theme.Size.wingEdgeInset
+            + Theme.Size.sidePadding + Theme.Size.wingInnerGap
+    }
+
+    /// The status segment's minimum wing plus the wing's paddings (`wingWidth` subtracts them).
+    private var statusWing: CGFloat {
+        Theme.Size.statusMinWidth + Theme.Size.sidePadding + Theme.Size.wingInnerGap
+    }
+
+    /// The collapsed strip's right wing on hover: the compact tools at full width, the outer
+    /// inset and the paddings. Never below `minWing`.
+    private var hoverWing: CGFloat {
+        max(Theme.Size.minWing, Theme.Size.compactToolsWidth + Theme.Size.wingEdgeInset
+            + Theme.Size.sidePadding + Theme.Size.wingInnerGap)
     }
 
     /// Keeps wings usable when the notch is wider than the design assumed.

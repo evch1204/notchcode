@@ -13,16 +13,17 @@ enum NotchMode: Hashable {
 
 /// The strip's tools, plus Settings behind the gear.
 enum CardTab: Hashable {
-    case changes, files, usage, sessions, settings
+    case changes, files, usage, git, sessions, settings
 
-    /// The tabs the owner can move between with 1-4 and tab, left to right.
-    static let browsable: [CardTab] = [.sessions, .changes, .files, .usage]
+    /// The tabs the owner can move between with 1-5 and tab, left to right.
+    static let browsable: [CardTab] = [.sessions, .changes, .files, .usage, .git]
 
     var label: String {
         switch self {
         case .changes: return "Changes"
         case .files: return "Files"
         case .usage: return "Usage"
+        case .git: return "Git"
         case .sessions: return "Sessions"
         case .settings: return "Settings"
         }
@@ -48,8 +49,14 @@ enum NotchKey: Equatable {
     case filter
     /// ⌘B: hide or show the Files tool's tree.
     case toggleTree
-    /// "P": Preview or Code for a Markdown file in the Files tool.
+    /// "P": Preview or Code for a Markdown file in the Files tool; Push in the Git tool.
     case markdownMode
+    /// "W": the Git tool's branch picker.
+    case worktree
+    /// "R": the branch picker's repository dropdown.
+    case repository
+    /// ⌥↑ ⌥↓: the previous or next hunk in the Git tool's diff.
+    case hunkUp, hunkDown
     case number(Int)
 }
 
@@ -230,6 +237,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
             fileFilter = ""
             recomputeUsage()
             if selectedTab == .files { loadRepoTree() }
+            if selectedTab == .git { gitFocusChanged() }
         }
     }
     @Published var sessionCursor = 0
@@ -537,6 +545,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         case .tool(.changes): return Theme.Size.changesCardHeight
         case .tool(.files): return Theme.Size.filesCardHeight
         case .tool(.usage): return Theme.Size.usageCardHeight
+        case .tool(.git): return Theme.Size.gitCardHeight
         }
     }
 
@@ -667,6 +676,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
 
     /// The key of the row under the keyboard cursor in the Changes tab.
     var cursorRowKey: String? {
+        if selectedTab == .git { return gitCursorRowKey }
         guard selectedTab == .changes else { return nil }
         let rows = changesRows
         return rows.indices.contains(rowCursor) ? rows[rowCursor].id : nil
@@ -690,6 +700,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
 
     /// Moves the keyboard cursor to a row the owner clicked.
     func setRowCursor(key: String) {
+        if selectedTab == .git { setGitRowCursor(key: key); return }
         if let index = changesRows.firstIndex(where: { $0.id == key }) {
             rowCursor = index
         }
@@ -801,6 +812,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
             handlePostTool(payload, sessionId: sid)
             if payload["tool_name"]?.stringValue == "Bash" {
                 handleShellTree(envelope.tree, sessionId: sid, cwd: envelope.resolvedCWD)
+                gitTreeReported(cwd: envelope.resolvedCWD)
             }
             // Turns include subagent edits; the transcript may be the only record of them.
             reloadTurns(for: sid)
@@ -928,6 +940,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         }
         if selectedTab == .files { loadRepoTree() }
         isCardOpen = true
+        gitCardOpened()
         skipFocusReturn = false
         clearToolLabel()
         recomputeUsage()
@@ -943,6 +956,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         if !CardTab.browsable.contains(selectedTab) { selectedTab = .sessions }
         fileFilterFocused = false
         requestDiff = nil
+        gitCardClosed()
         refresh()
     }
 
@@ -1054,6 +1068,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         selectedTab = tab
         if tab != .files { fileFilterFocused = false }
         if tab == .files { loadRepoTree() }
+        if tab == .git { gitToolShown() }
         refresh()
     }
 
@@ -1133,6 +1148,17 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
             }
         }
 
+        let gitShown = isCardOpen && isShowingTool(.git)
+        if gitShown, gitPanel.pickerOpen, gitPanel.filterFocused, !gitPanel.repoMenuOpen {
+            // Typing goes to the branch filter; only the picker's keys stay with the card.
+            switch key {
+            case .up, .down, .primary, .escape: break
+            default: return false
+            }
+        }
+        // Esc in the Git tool closes the repository dropdown, then clears the branch filter,
+        // then leaves the picker, then cancels the push confirm, before it closes the card.
+        if key == .escape, gitShown, gitEscape() { return true }
         if key == .escape {
             guard isCardOpen else { return false }
             if let req = currentPending, requestDiffPath(for: req) != nil {
@@ -1238,6 +1264,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         }
 
         if selectedTab == .files, let used = handleFilesKey(key) { return used }
+        if selectedTab == .git, let used = handleGitKey(key) { return used }
 
         let rows = selectedTab == .changes ? changesRows : []
 

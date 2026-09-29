@@ -51,9 +51,9 @@ final class KeyboardController {
         case kVK_Tab:
             return shift ? .previousTab : .nextTab
         case kVK_UpArrow:
-            return .up
+            return option ? .hunkUp : .up
         case kVK_DownArrow:
-            return .down
+            return option ? .hunkDown : .down
         case kVK_LeftArrow:
             return .left
         case kVK_RightArrow:
@@ -66,6 +66,8 @@ final class KeyboardController {
             return .number(3)
         case kVK_ANSI_4:
             return .number(4)
+        case kVK_ANSI_5:
+            return .number(5)
         default:
             break
         }
@@ -77,6 +79,8 @@ final class KeyboardController {
         case "d": return .diff
         case "/": return .filter
         case "p": return .markdownMode
+        case "w": return .worktree
+        case "r": return .repository
         default: return nil
         }
     }

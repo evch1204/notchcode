@@ -6,6 +6,10 @@
 // vertically inside a capped height, with "… 9 more lines · scroll" at the bottom of the
 // box while more is below. Also the expandable file row that owns it, shared by the
 // Changes tool and the commit card.
+//
+// The pieces the Git tool's reviewer diff adds, generic over [DiffLine]: a row that never
+// clips (for a pane that scrolls sideways), word highlights inside paired −/+ lines, and
+// the minimap of where the changes sit in the whole file.
 
 import SwiftUI
 
@@ -149,6 +153,317 @@ extension DiffLine {
         case .removed: return Theme.Colors.diffRemovedBackground
         case .context, .hunk: return Color.clear
         }
+    }
+
+    var wordBackground: Color {
+        kind == .added ? Theme.Colors.diffAddedWord : Theme.Colors.diffRemovedWord
+    }
+}
+
+/// One diff line for a pane that scrolls both ways: the two numbers, then the whole line,
+/// never wrapped and never clipped; at least `minWidth` wide so its tint spans the pane.
+/// The words in `words` (character offsets into the text) carry the stronger word tint.
+@MainActor
+struct WideDiffLineRow: View {
+    let line: DiffLine
+    var words: [Range<Int>] = []
+    let minWidth: CGFloat
+
+    var body: some View {
+        HStack(spacing: Theme.Size.previewGutterSpacing) {
+            number(line.oldNumber)
+            number(line.newNumber)
+            Text(text)
+                .foregroundStyle(line.textColor)
+                .fixedSize(horizontal: true, vertical: false)
+        }
+        .font(Theme.Fonts.monoSmall)
+        .lineLimit(1)
+        .padding(.horizontal, Theme.Size.previewHPadding)
+        .frame(height: Theme.Size.diffLineHeight)
+        .frame(minWidth: minWidth, alignment: .leading)
+        .background(line.background)
+    }
+
+    private var text: AttributedString {
+        var out = AttributedString(line.prefix)
+        guard !words.isEmpty else {
+            out += AttributedString(line.text)
+            return out
+        }
+        let chars = Array(line.text)
+        var cursor = 0
+        for range in words where range.lowerBound >= cursor && range.upperBound <= chars.count {
+            if range.lowerBound > cursor { out += AttributedString(String(chars[cursor..<range.lowerBound])) }
+            var word = AttributedString(String(chars[range]))
+            word.backgroundColor = line.wordBackground
+            out += word
+            cursor = range.upperBound
+        }
+        if cursor < chars.count { out += AttributedString(String(chars[cursor...])) }
+        return out
+    }
+
+    private func number(_ value: Int?) -> some View {
+        Text(value.map(String.init) ?? "")
+            .foregroundStyle(Theme.Colors.diffLineNumber)
+            .frame(width: Theme.Size.diffLineNumberWidth, alignment: .trailing)
+    }
+}
+
+// MARK: - Word highlights
+
+/// The words that differ between a removed line and the added line that replaced it.
+/// Inside each hunk, a run of removed lines followed by a run of added lines is paired
+/// line by line (the first removed with the first added, and so on); a line with no
+/// partner stays as it is. Each pair is split into whitespace-separated words, and the
+/// words outside their longest common subsequence are marked. A pair with no word in
+/// common, or longer than `wordDiffMaxTokens`, is left with the line tint alone.
+enum WordDiff {
+    /// Line index -> character ranges to tint, merged across the spaces between them.
+    static func marks(_ lines: [DiffLine]) -> [Int: [Range<Int>]] {
+        var result: [Int: [Range<Int>]] = [:]
+        var index = 0
+        while index < lines.count {
+            guard lines[index].kind == .removed else { index += 1; continue }
+            var removedEnd = index
+            while removedEnd < lines.count, lines[removedEnd].kind == .removed { removedEnd += 1 }
+            var addedEnd = removedEnd
+            while addedEnd < lines.count, lines[addedEnd].kind == .added { addedEnd += 1 }
+            let pairs = min(removedEnd - index, addedEnd - removedEnd)
+            for offset in 0..<pairs {
+                let old = index + offset
+                let new = removedEnd + offset
+                if let (a, b) = compare(lines[old].text, lines[new].text) {
+                    if !a.isEmpty { result[old] = a }
+                    if !b.isEmpty { result[new] = b }
+                }
+            }
+            index = max(addedEnd, index + 1)
+        }
+        return result
+    }
+
+    /// A word or a run of spaces, with its character offsets.
+    private struct Token {
+        var text: Substring
+        var range: Range<Int>
+        var isSpace: Bool
+    }
+
+    private static func tokens(_ line: String) -> [Token] {
+        var out: [Token] = []
+        var start = line.startIndex
+        var offset = 0
+        while start < line.endIndex {
+            let space = line[start].isWhitespace
+            var end = start
+            var length = 0
+            while end < line.endIndex, line[end].isWhitespace == space {
+                end = line.index(after: end)
+                length += 1
+            }
+            out.append(Token(text: line[start..<end], range: offset..<(offset + length), isSpace: space))
+            start = end
+            offset += length
+        }
+        return out
+    }
+
+    /// The differing words of each side, or nil when the pair shares no word (or is too long).
+    private static func compare(_ old: String, _ new: String) -> ([Range<Int>], [Range<Int>])? {
+        let a = tokens(old)
+        let b = tokens(new)
+        let wa = a.indices.filter { !a[$0].isSpace }
+        let wb = b.indices.filter { !b[$0].isSpace }
+        guard !wa.isEmpty, !wb.isEmpty,
+              wa.count <= Theme.Limits.wordDiffMaxTokens, wb.count <= Theme.Limits.wordDiffMaxTokens else { return nil }
+        // Longest common subsequence over the words.
+        let n = wa.count, m = wb.count
+        var table = Array(repeating: Array(repeating: 0, count: m + 1), count: n + 1)
+        for i in stride(from: n - 1, through: 0, by: -1) {
+            for j in stride(from: m - 1, through: 0, by: -1) {
+                table[i][j] = a[wa[i]].text == b[wb[j]].text
+                    ? table[i + 1][j + 1] + 1
+                    : max(table[i + 1][j], table[i][j + 1])
+            }
+        }
+        guard table[0][0] > 0 else { return nil }
+        var keepA = Set<Int>(), keepB = Set<Int>()
+        var i = 0, j = 0
+        while i < n, j < m {
+            if a[wa[i]].text == b[wb[j]].text {
+                keepA.insert(wa[i]); keepB.insert(wb[j]); i += 1; j += 1
+            } else if table[i + 1][j] >= table[i][j + 1] {
+                i += 1
+            } else {
+                j += 1
+            }
+        }
+        return (ranges(a, keep: keepA), ranges(b, keep: keepB))
+    }
+
+    /// The changed words' ranges; two changed words with only spaces between them become one.
+    private static func ranges(_ tokens: [Token], keep: Set<Int>) -> [Range<Int>] {
+        var out: [Range<Int>] = []
+        var pendingSpace: Range<Int>?
+        for (index, token) in tokens.enumerated() {
+            if token.isSpace {
+                pendingSpace = token.range
+                continue
+            }
+            if keep.contains(index) {
+                pendingSpace = nil
+                continue
+            }
+            if let last = out.last, let space = pendingSpace, last.upperBound == space.lowerBound {
+                out[out.count - 1] = last.lowerBound..<token.range.upperBound
+            } else {
+                out.append(token.range)
+            }
+            pendingSpace = nil
+        }
+        return out
+    }
+}
+
+// MARK: - Minimap
+
+/// Where a diff's changes sit in the whole file, as fractions of its length, and which rows
+/// of the diff sit where. Lines are placed by their new-file number (a removed line where
+/// it used to be, just before the next new line); a deleted file by its old numbers.
+struct DiffMinimapModel: Equatable {
+    struct Mark: Equatable {
+        var start: Double
+        var length: Double
+        var added: Bool
+    }
+
+    /// Each diff row's line in the file (1-based).
+    var anchors: [Int]
+    /// Lines in the whole file.
+    var total: Int
+    var marks: [Mark]
+
+    init(lines: [DiffLine], fileLines: Int?) {
+        let usesOld = !lines.contains { $0.kind == .added || $0.kind == .context }
+        var anchors: [Int] = []
+        var next = 1
+        for line in lines {
+            let anchor: Int
+            if line.kind == .hunk {
+                // "@@ -187,8 +196,37 @@": the hunk starts at its new (or old) start line.
+                let start = Self.hunkStart(line.text, old: usesOld) ?? next
+                anchor = start
+                next = start
+            } else if usesOld {
+                anchor = line.oldLine ?? next
+            } else {
+                switch line.kind {
+                case .added, .context:
+                    anchor = line.newLine ?? next
+                    next = anchor + 1
+                case .removed, .hunk:
+                    anchor = next
+                }
+            }
+            anchors.append(max(1, anchor))
+        }
+        self.anchors = anchors
+        let total = max(1, fileLines ?? 0, anchors.max() ?? 1)
+        self.total = total
+
+        var marks: [Mark] = []
+        var index = 0
+        while index < lines.count {
+            let kind = lines[index].kind
+            guard kind == .added || kind == .removed else { index += 1; continue }
+            var end = index
+            while end < lines.count, lines[end].kind == kind { end += 1 }
+            let first = anchors[index]
+            let span = usesOld || kind == .added ? max(1, anchors[end - 1] - first + 1) : end - index
+            marks.append(Mark(start: Double(first - 1) / Double(total),
+                              length: Double(span) / Double(total),
+                              added: kind == .added))
+            index = end
+        }
+        self.marks = marks
+    }
+
+    /// The start line after "-" (old) or "+" (new) in a hunk header.
+    private static func hunkStart(_ text: String, old: Bool) -> Int? {
+        let marker: Character = old ? "-" : "+"
+        guard let range = text.firstIndex(of: marker) else { return nil }
+        let digits = text[text.index(after: range)...].prefix { $0.isNumber }
+        return Int(digits)
+    }
+
+    /// The fraction of the file where a row sits.
+    func fraction(row: Int) -> Double {
+        guard anchors.indices.contains(row) else { return row <= 0 ? 0 : 1 }
+        return Double(anchors[row] - 1) / Double(total)
+    }
+
+    /// The first row at or after a point in the file (the last row past the end).
+    func row(at fraction: Double) -> Int {
+        let line = Int((fraction * Double(total)).rounded(.down)) + 1
+        return anchors.firstIndex { $0 >= line } ?? max(0, anchors.count - 1)
+    }
+}
+
+/// The minimap: a slim track, green and red marks where lines were added and removed,
+/// and a ringed box over what the pane shows. A click jumps there; a drag scrubs.
+@MainActor
+struct DiffMinimap: View {
+    let model: DiffMinimapModel
+    /// The rows at the top and bottom of the pane.
+    let visibleRows: ClosedRange<Int>
+    let onJump: (Int) -> Void
+
+    var body: some View {
+        GeometryReader { geo in
+            let height = geo.size.height
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: Theme.Radius.diffMinimap, style: .continuous)
+                    .fill(Theme.Colors.diffMinimapTrack)
+                ForEach(Array(model.marks.enumerated()), id: \.offset) { item in
+                    let mark = item.element
+                    RoundedRectangle(cornerRadius: Theme.Radius.diffMinimap / 2, style: .continuous)
+                        .fill(mark.added ? Theme.Colors.green : Theme.Colors.red)
+                        .frame(height: max(Theme.Size.diffMinimapMinMark, mark.length * height))
+                        .offset(y: min(height - Theme.Size.diffMinimapMinMark, mark.start * height))
+                }
+                viewport(height: height)
+            }
+            .frame(width: geo.size.width, height: height, alignment: .topLeading)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        let fraction = max(0, min(1, value.location.y / max(1, height)))
+                        onJump(model.row(at: fraction))
+                    }
+            )
+        }
+        .frame(width: Theme.Size.diffMinimapWidth)
+        .help("Where the changes are in the file")
+    }
+
+    private func viewport(height: CGFloat) -> some View {
+        let top = model.fraction(row: visibleRows.lowerBound) * height
+        let bottom = (model.fraction(row: visibleRows.upperBound) + 1 / Double(model.total)) * height
+        let boxHeight = max(Theme.Size.diffMinimapMinViewport, bottom - top)
+        let y = min(max(0, height - boxHeight), top)
+        return RoundedRectangle(cornerRadius: Theme.Radius.diffMinimapViewport, style: .continuous)
+            .fill(Theme.Colors.diffMinimapViewport)
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.Radius.diffMinimapViewport, style: .continuous)
+                    .strokeBorder(Theme.Colors.diffMinimapRing, lineWidth: Theme.Size.diffMinimapRingLine)
+            )
+            .frame(height: boxHeight)
+            .padding(.horizontal, -Theme.Size.diffMinimapViewportOutset)
+            .offset(y: y)
+            .allowsHitTesting(false)
     }
 }
 

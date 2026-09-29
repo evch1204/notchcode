@@ -12,7 +12,7 @@ It is the sibling of [sidecar-pane](https://github.com/evch1204/sidecar-pane), w
 
 **Doorbell.** When Claude asks to run a command, edit a file, or commit, the notch grows to two rows, names the request, and waits. `⏎` allows, `⌫` denies, `A` allows always. When the request is a code change, `D` opens the real diff inside the card, built from the exact text Claude wants to write, so you approve what you have read and not a pair of counts. If you answer in the terminal instead, the card notices and folds away. If you answer nowhere, the terminal prompt takes over after a minute. notchcode never denies anything on your behalf.
 
-**Companion.** The open card has four tabs.
+**Companion.** Press the notch at any time and a card opens with five tabs.
 
 | Tab | Shows |
 |---|---|
@@ -20,6 +20,7 @@ It is the sibling of [sidecar-pane](https://github.com/evch1204/sidecar-pane), w
 | Usage | the 5-hour and weekly limits with reset times, context used against the model's window, tokens for the session and today, and an estimated cost. One page, no scrolling. |
 | Sessions | every live session by repository, one row per worktree: branch, model, permission mode (`bypass` in clay, `plan` in blue; nothing for default), state, current prompt, a lane per subagent. `⏎` opens its Changes. |
 | Files | the repository tree, changed files badged, and a preview with changed lines tinted; `⌘B` folds the tree away for a full-width preview, and Markdown files render with a Preview · Code switch. |
+| Git | the focused session's worktree, or any local branch of a repository a session runs in (the picker, `W`: one row per branch saying where it lives, "worktree seadevil", "main checkout" or "not checked out", with its uncommitted count or how far it is ahead). Branch, commits to push, and two panes like Files: the uncommitted files (each with its ± cells and counts) and the last five commits (unpushed ones tagged) on the left, the selected file's diff on the right, with line numbers, changed words lit, sideways scrolling and a minimap of the whole file. A branch checked out nowhere shows its changes and commits against main, read-only. A Push (or Publish) button that asks before it pushes. |
 
 **Teleport.** Every session knows which terminal started it. One key lands you in that window. With several worktrees of one repository open at once, this is the reason to keep the app.
 
@@ -127,11 +128,16 @@ While the card is open the notch takes the keyboard; the moment it closes, focus
 | `A` | allow always |
 | `E` | edit a proposed commit: Claude asks you for a new message |
 | `D` | show the diff behind a permission or commit request |
-| `1` – `4` | pick a tool |
+| `1` – `5` | pick a tool |
 | `⇥` `⇧⇥` | next and previous tool |
-| `↑` `↓` `←` `→` | move in a list or the file tree |
+| `↑` `↓` `←` `→` | move in a list or the file tree (in Git, `↑` `↓` select a file and show its diff) |
 | `y` | copy `path:line` of the first changed line |
-| `/` | filter the Files tree |
+| `/` | filter the Files tree, or the Git branch picker past eight branches |
+| `⌘B` | hide or show the Files tree, or the Git file list (one switch for both) |
+| `P` | switch a Markdown file between Preview and Code (Files); push or publish the branch, after a `⏎` confirm (Git) |
+| `W` | the Git branch picker: every local branch of a repository (`↑` `↓`, `⏎` shows that branch, `esc` goes back) |
+| `R` | in the Git branch picker, the repository dropdown (`↑` `↓`, `⏎` picks, `esc` closes) |
+| `⌥↑` `⌥↓` | previous and next hunk in the Git diff |
 | `⌥⏎` | jump to the session's terminal |
 | `⌘,` | Settings |
 | `⌘Q` | quit notchcode (while the card is open) |

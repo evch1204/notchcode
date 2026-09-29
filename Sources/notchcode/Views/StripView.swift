@@ -1,8 +1,8 @@
 // StripView.swift
 // The toolbar pieces. In the open card the strip stays on top: the status segment
-// left of the camera, the four tools, a rule and the gear right of it (or, while a
+// left of the camera, the tools, a rule and the gear right of it (or, while a
 // request waits, the action segments). In the collapsed strip, hover swaps the
-// right wing for the four tools. The two-row attention state carries the action
+// right wing for the tools. The two-row attention state carries the action
 // segments on its second row. Segments lift on hover, depress on press, and
 // unfold from behind the camera.
 
@@ -154,8 +154,8 @@ struct ToolAnchorsKey: PreferenceKey {
 }
 
 /// The right wing's tools. `selected` is nil in the collapsed strip. With `settings`
-/// (the open card), a rule and the gear follow the four tools. `compact` narrows the
-/// tools so the four fit a collapsed wing of `available` points.
+/// (the open card), a rule and the gear follow the tools. `compact` narrows the
+/// tools so all of them fit a collapsed wing of `available` points.
 @MainActor
 struct ToolStrip: View {
     @ObservedObject var state: AppState
@@ -221,7 +221,7 @@ struct ToolRule: View {
 }
 
 /// A collapsed strip's right wing. For click-to-open owners, after the rim's hover dwell
-/// the wing crossfades from its usual content to the four tools, which unfold from behind
+/// the wing crossfades from its usual content to the tools, which unfold from behind
 /// the camera; a press opens the card on that tool. Leaving crossfades back. The shape
 /// never changes size.
 @MainActor

@@ -111,7 +111,14 @@ enum Theme {
 
         static let diffAddedBackground = green.opacity(0.10)
         static let diffRemovedBackground = red.opacity(0.10)
+        /// The words that differ inside a paired removed and added line.
+        static let diffAddedWord = green.opacity(0.34)
+        static let diffRemovedWord = red.opacity(0.34)
         static let diffHunk = blue
+        /// The diff's minimap: its track, the change marks (green, red), the visible range.
+        static let diffMinimapTrack = ink.opacity(0.05)
+        static let diffMinimapViewport = ink.opacity(0.10)
+        static let diffMinimapRing = toolFocusRing
 
         /// Only the card and attention states carry a shadow.
         static let shadow = Color.black.opacity(0.45)
@@ -195,6 +202,42 @@ enum Theme {
         static let groupHeaderName = inkSecondary
         static let groupHeaderCount = inkTertiary
 
+        // Git tool.
+        static let gitBranch = ink
+        static let gitStatus = inkSecondary
+        static let gitSha = inkTertiary
+        static let gitSubject = inkSecondary
+        static let gitTime = inkTertiary
+        static let gitTagFill = badgeFill
+        static let gitTagText = inkSecondary
+        static let gitPushed = green
+        static let gitError = red
+        static let gitSection = groupHeaderName
+        /// The target pill ("notchcode › seadevil ▾"): the repository dim, the place in ink.
+        static let gitTargetRepo = inkTertiary
+        static let gitTargetPlace = ink
+        static let gitTargetNote = inkTertiary
+        /// The file kind badge (M, A, D) and "hunk 2 of 5" in the diff pane's header.
+        static let gitKindText = inkSecondary
+        static let gitKindFill = badgeFill
+        static let gitHunkText = inkTertiary
+        /// The branch picker: the repository pill's folder, the rows, the filter's lit match.
+        static let gitPickerPath = inkTertiary
+        static let gitPickerBranch = ink
+        static let gitPickerPlace = inkSecondary
+        static let gitPickerNowhere = inkTertiary
+        static let gitPickerCount = inkSecondary
+        static let gitPickerClean = inkTertiary
+        static let gitPickerCursorStroke = hairline
+        static let gitFilterMatch = ink.opacity(0.14)
+        /// The repository dropdown over the rows: the well's colour flattened (as the
+        /// Sessions group header), the inset on top, a hairline edge.
+        static let gitRepoMenuBase = groupHeaderBackground
+        static let gitRepoMenuFill = inset
+        static let gitRepoMenuStroke = hairline
+        static let gitRepoMenuName = ink
+        static let gitRepoMenuOther = inkSecondary
+
         /// A session's permission mode, as a word in its Sessions row and the open card's status
         /// line: bypass in clay (the dangerous one), plan in blue, the rest tertiary.
         static func permissionMode(_ raw: String?) -> Color {
@@ -261,6 +304,8 @@ enum Theme {
         static let keycap: CGFloat = 4
         static let chip: CGFloat = 6
         static let diffCell: CGFloat = 1
+        static let diffMinimap: CGFloat = 2
+        static let diffMinimapViewport: CGFloat = 3
         static let agentSquare: CGFloat = 1.5
         static let snippet: CGFloat = 8
 
@@ -307,6 +352,26 @@ enum Theme {
         static let changesCardHeight: CGFloat = 424
         static let filesCardHeight: CGFloat = 440
         static let usageCardHeight: CGFloat = 380
+        static let gitCardHeight: CGFloat = 424
+        /// The Git tool: the header row (branch, status, the Push pill) and the short-sha column.
+        static let gitHeaderHeight: CGFloat = 26
+        static let gitShaWidth: CGFloat = 60
+        static let gitSectionTopPadding: CGFloat = 8
+        static let gitPushingGlyph: CGFloat = 10
+        /// The target pill never takes more than this; the place truncates in the middle.
+        static let gitTargetMaxWidth: CGFloat = 220
+        /// The file kind badge (M, A, D) in the diff pane's header.
+        static let gitKindWidth: CGFloat = 14
+        /// The branch picker: two-line rows, the worktree glyph before "worktree seadevil",
+        /// the repository dropdown.
+        static let gitBranchRowHeight: CGFloat = 40
+        static let gitBranchRowHPadding: CGFloat = 10
+        static let gitBranchLineGap: CGFloat = 1
+        static let gitPlaceGlyph: CGFloat = 9
+        static let gitRepoMenuWidth: CGFloat = 300
+        static let gitRepoMenuRowHeight: CGFloat = 26
+        static let gitRepoMenuPadding: CGFloat = 4
+        static let gitPickerPathMaxWidth: CGFloat = 260
         static let cardFooterHeight: CGFloat = 20
         static let requestCardHeight: CGFloat = 310
         /// A permission or commit card with its diff open. Keeps the panel clear of the notch row plus shadow.
@@ -367,9 +432,15 @@ enum Theme {
         static let toolHeight: CGFloat = 22
         static let toolGap: CGFloat = 2
         static let toolIcon: CGFloat = 11
-        /// The collapsed strip's tools on hover: narrower, so four fit the resting wing.
+        /// The collapsed strip's tools on hover: narrower, so all five fit the resting wing.
         static let compactToolWidth: CGFloat = 20
         static let compactToolGap: CGFloat = 1
+        /// The collapsed strip's five tools side by side. The resting and wings shapes widen
+        /// past `restingWidth` / `wingsWidth` to keep this whole (NotchLayout).
+        static var compactToolsWidth: CGFloat {
+            let tools = CGFloat(CardTab.browsable.count)
+            return tools * compactToolWidth + (tools - 1) * compactToolGap
+        }
         static let toolGroupGap: CGFloat = 6
         static let toolGroupRuleHeight: CGFloat = 12
         static let toolRuleWidth: CGFloat = 1
@@ -378,13 +449,16 @@ enum Theme {
         static let toolFocusLine: CGFloat = 1
         static let bridgeWidth: CGFloat = 14
         static let bridgeHeight: CGFloat = 2
-        /// The open strip's right wing: four tools, the rule with its padding, the gear,
+        /// The open strip's right wing: the tools, the rule with its padding, the gear,
         /// and the gaps between them. The card widens past `cardWidth` to keep this whole.
         static var stripToolsWidth: CGFloat {
             let tools = CGFloat(CardTab.browsable.count)
             let rule = toolRuleWidth + 2 * toolGroupGap
             return tools * toolWidth + (tools + 1) * toolGap + rule + gearWidth
         }
+        /// Room left free on the camera side of the tools, so the first tool's focus ring
+        /// (outset plus its line) is never cut by the wing's clip.
+        static let stripToolsSlack: CGFloat = toolFocusOutset + toolFocusLine
         static let toolBadgeHeight: CGFloat = 11
         static let toolBadgeHPadding: CGFloat = 3
         static let toolBadgeOffset: CGFloat = 4
@@ -403,6 +477,9 @@ enum Theme {
         static let countdownBarInset: CGFloat = 5
         /// The open card's status segment (left wing).
         static let statusSpacing: CGFloat = 8
+        /// The narrowest left wing the status segment gets: what the four-tool card gave it
+        /// on a 179 pt notch ((640 − 179) / 2 − 26). The card widens to keep it.
+        static let statusMinWidth: CGFloat = 204
 
         // Usage tab: one fixed page, never scrolls. Heights derive from `usageCardHeight`.
         static let usageRowSpacing: CGFloat = 10
@@ -490,6 +567,15 @@ enum Theme {
         static let diffMaxHeight: CGFloat = 220
         /// One line-number column, wide enough for four digits at the mono size.
         static let diffLineNumberWidth: CGFloat = 30
+        /// The minimap down a diff pane's right edge: its width, its gap from the edge, the
+        /// room the lines leave for it, the smallest mark and visible-range box.
+        static let diffMinimapWidth: CGFloat = 6
+        static let diffMinimapInset: CGFloat = 3
+        static let diffMinimapReserve: CGFloat = 12
+        static let diffMinimapMinMark: CGFloat = 2
+        static let diffMinimapMinViewport: CGFloat = 8
+        static let diffMinimapViewportOutset: CGFloat = 2
+        static let diffMinimapRingLine: CGFloat = 1
         static let groupHeaderTopPadding: CGFloat = 6
         /// Inside a request card the diff takes what is left above the footer, up to this.
         static let requestDiffMaxHeight: CGFloat = 260
@@ -804,6 +890,13 @@ enum Theme {
         static let hoverCloseDelay: Double = 0.40
         /// Clocks and countdowns (and every Reduce Motion countdown) step this often.
         static let clockTick: Double = 1
+        /// The Git tool re-reads the worktree this often while it shows.
+        static let gitRefreshInterval: Double = 5
+        /// "Pushed 3 commits" stays this long, then the tool re-reads.
+        static let gitPushedHold: Double = 3
+        /// A read command (status, diff, log) or a push is stopped after this long.
+        static let gitReadTimeout: Double = 10
+        static let gitPushTimeout: Double = 90
     }
 
     // MARK: - Limits (counts)
@@ -822,6 +915,18 @@ enum Theme {
         /// Children beyond this index rise in together, so a big folder never trickles in.
         static let maxStaggeredChildren: Int = 12
         static let maxStatusAgents: Int = 3
+        /// The Git tool: commits under "Recent commits", untracked files diffed, bytes read per command.
+        static let gitRecentCommits: Int = 5
+        static let gitUntrackedDiffs: Int = 20
+        static let gitOutputBytes: Int = 2_000_000
+        /// The branch picker lists this many local branches, newest commit first (and every
+        /// checked-out one besides); its filter field appears past this many rows.
+        static let gitPickerBranches: Int = 30
+        static let gitPickerFilterMin: Int = 8
+        /// Files whose length is counted for the minimap, per read.
+        static let gitLineCountFiles: Int = 60
+        /// Word highlights skip a line pair with more tokens than this on either side.
+        static let wordDiffMaxTokens: Int = 200
     }
 
     // MARK: - Fonts (SF Pro and SF Mono through .system, tabular numerals)
@@ -890,6 +995,9 @@ enum Theme {
         static let sessions = "rectangle.stack"
         static let changes = "plusminus.circle"
         static let usage = "gauge.with.needle"
+        static let git = "arrow.triangle.branch"
+        /// Before "worktree seadevil" on a branch picker row.
+        static let gitWorktree = "macwindow"
 
         static func tool(_ tab: CardTab) -> String {
             switch tab {
@@ -897,6 +1005,7 @@ enum Theme {
             case .changes: return changes
             case .files: return folder
             case .usage: return usage
+            case .git: return git
             case .settings: return settings
             }
         }
@@ -928,6 +1037,15 @@ enum Theme {
         static let toggleTree = "⌘B"
         /// Files: a Markdown file's Preview · Code switch.
         static let markdownMode = "P"
+        /// Git: push the branch (or publish it), after a confirm.
+        static let push = "P"
+        /// Git: the branch picker.
+        static let worktree = "W"
+        /// Git: the picker's repository dropdown.
+        static let repository = "R"
+        /// Git: the previous and next hunk in the diff pane.
+        static let hunkUp = "⌥↑"
+        static let hunkDown = "⌥↓"
     }
 
     // MARK: - Glyph characters used in text
@@ -937,6 +1055,12 @@ enum Theme {
         static let separator = " · "
         static let approx = "\u{2248} "
         static let ellipsis = "\u{2026}"
+        /// After the Git tool's pills: "notchcode › seadevil ▾".
+        static let pickerChevron = "\u{25BE}"
+        /// Between the repository and the place in the Git target pill.
+        static let pathChevron = "\u{203A}"
+        /// "↑3", "↑2 of main": commits ahead.
+        static let ahead = "\u{2191}"
         // A diff line's prefix.
         static let diffAdded = "+"
         static let diffRemoved = minus
