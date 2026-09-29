@@ -357,6 +357,8 @@ enum Theme {
         static let gitShaWidth: CGFloat = 60
         static let gitSectionTopPadding: CGFloat = 8
         static let gitPushingGlyph: CGFloat = 10
+        /// The green check before "Nothing to commit · up to date" in the empty diff pane.
+        static let gitCleanCircle: CGFloat = 22
         /// The target pill never takes more than this; the place truncates in the middle.
         static let gitTargetMaxWidth: CGFloat = 220
         /// The file kind badge (M, A, D) in the diff pane's header.

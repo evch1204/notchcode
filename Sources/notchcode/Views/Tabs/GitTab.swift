@@ -14,6 +14,8 @@
 // tree's switch). The diff keeps both line-number columns, scrolls both ways (lines never
 // wrap), tints the words that changed inside paired −/+ lines, and has a 6 pt minimap of
 // the whole file pinned to its right edge. Its header stays on top: name, M/A/D, counts.
+// With nothing to commit the split stays: the list keeps its headers and recent commits,
+// and the right pane shows a green check with "Nothing to commit · up to date".
 //
 // W (or the pill) replaces the content with the branch picker: the repository pill
 // ("notchcode ▾", R opens the dropdown of repositories), its folder, then one row per local
@@ -49,15 +51,12 @@ struct GitTab: View {
     private func content(_ snap: GitSnapshot) -> some View {
         VStack(alignment: .leading, spacing: Theme.Size.spaceS) {
             GitHeader(state: state, snap: snap)
-            if snap.files.isEmpty && snap.unpushed == 0 {
-                EmptyNote(text: emptyText(snap))
-            } else {
-                panes(snap)
-            }
+            panes(snap)
         }
     }
 
-    private func emptyText(_ snap: GitSnapshot) -> String {
+    /// The right pane's line when there is no file to show, after the green check.
+    static func emptyText(_ snap: GitSnapshot) -> String {
         if !snap.checkedOut {
             return snap.base.map { "Nothing ahead of " + $0 } ?? "Nothing to compare"
         }
@@ -107,7 +106,7 @@ struct GitTab: View {
                         count: rows.isEmpty ? nil : Format.files(rows.count)
                     )
                     if rows.isEmpty {
-                        Text(snap.checkedOut ? "Nothing to commit" : "No changes")
+                        Text(snap.checkedOut ? "No changed files" : "No changes")
                             .font(Theme.Fonts.caption)
                             .foregroundStyle(Theme.Colors.inkTertiary)
                             .padding(.horizontal, Theme.Size.rowHPadding)
@@ -202,7 +201,7 @@ private struct GitDiffPane: View {
                         )
                     }
                 } else {
-                    centred(snap.checkedOut ? "Nothing to commit" : "No changes")
+                    GitCleanNote(text: GitTab.emptyText(snap))
                 }
             }
             .id(file?.path ?? "")
@@ -241,6 +240,23 @@ private struct GitDiffPane: View {
             .font(Theme.Fonts.body)
             .foregroundStyle(Theme.Colors.inkTertiary)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// The diff pane with nothing to show: a green check, then "Nothing to commit · up to date".
+@MainActor
+private struct GitCleanNote: View {
+    let text: String
+
+    var body: some View {
+        HStack(spacing: Theme.Size.spaceM) {
+            DoneCheckGlyph(size: Theme.Size.gitCleanCircle)
+            Text(text)
+                .font(Theme.Fonts.body)
+                .foregroundStyle(Theme.Colors.inkSecondary)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
