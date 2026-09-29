@@ -1,49 +1,56 @@
 # notchcode
 
-A macOS app that turns the MacBook notch into a companion for Claude Code. See what every session is doing from any app, and allow or deny a permission request with one key without leaving your work.
+The MacBook notch as a companion for Claude Code. See what every session is doing from any app, and allow or deny a permission request with one key without leaving your work.
 
-The design lives on a canvas with every state, the directions explored, and looping motion studies: [notchcode design](https://claude.ai/artifact/AChgFMt8kby2qukkVNxwrn).
-The first-run flow is sketched in the onboarding mockup: https://claude.ai/artifact/V2HFkMgJTpagrsjzd36v9n.
+<p align="center"><img src="docs/readme/hero.svg" width="720" alt="The notch grown to two rows: Needs you, a countdown at 0:53, and Allow Bash? npm test -- --watch=false, with the keys Allow, Deny and Always under it"></p>
 
-## What you get
+Design: the [canvas](https://claude.ai/artifact/AChgFMt8kby2qukkVNxwrn) with every state, the directions explored and looping motion studies, and the [onboarding mockup](https://claude.ai/artifact/V2HFkMgJTpagrsjzd36v9n) for the first run.
 
-**Doorbell.** When Claude asks to run a command, edit a file, or commit, the notch grows to two rows, names the request, and waits. `⏎` allows, `⌫` denies, `A` allows always. For a code change, `D` opens the real diff inside the card, built from the exact text Claude wants to write, so you approve what you have read and not a pair of counts. Answer in the terminal instead and the card folds away. Answer nowhere and the terminal prompt takes over after a minute. notchcode never denies anything on your behalf.
+## What it does
 
-**Traffic light.** From any app or space you can see whether Claude is working, blocked on you, or done, across every session on the machine.
+### Doorbell
 
-**Companion.** Press the notch at any time and a card opens with five tabs.
+When Claude asks to run a command, edit a file, or commit, the notch grows to two rows, names the request, and waits. `⏎` allows, `⌫` denies, `A` allows always. For a code change, `D` opens the real diff inside the card, built from the exact text Claude wants to write, so you approve what you have read and not a pair of counts.
 
-| Tab | Shows |
-|---|---|
-| Sessions | every live session by repository, one row per worktree: branch, model, permission mode (`bypass` in clay, `plan` in blue; nothing for default), state, current prompt, a lane per subagent. `⏎` opens its Changes. |
-| Changes | each turn you sent, the files it changed (subagent edits too), and the full diff under any file. |
-| Files | the repository tree, changed files badged, and a preview with changed lines tinted; `⌘B` folds the tree away for a full-width preview, and Markdown files render with a Preview · Code switch. |
-| Usage | 5-hour and weekly limits with reset times, context used, tokens for the session and today, an estimated cost. |
-| Git | the focused session's worktree, or any local branch of a repository a session runs in (the picker, `W`: one row per branch saying where it lives, "worktree seadevil", "main checkout" or "not checked out", with its uncommitted count or how far it is ahead). Branch, commits to push, and two panes like Files: the uncommitted files (each with its ± cells and counts) and the last five commits (unpushed ones tagged) on the left, the selected file's diff on the right, with line numbers, changed words lit, sideways scrolling and a minimap of the whole file. A branch checked out nowhere shows its changes and commits against main, read-only. A Push (or Publish) button that asks before it pushes. |
+<p align="center"><img src="docs/readme/diff-request.svg" width="720" alt="A request to edit Cart.tsx with its six-line diff open under the notch"></p>
 
-**Teleport.** Every session knows which terminal started it. One key lands you in that window. With several worktrees of one repository open at once, this is the reason to keep the app.
+Answer in the terminal instead and the card folds away. Answer nowhere and the terminal prompt takes over after a minute. notchcode never denies anything on your behalf.
+
+### Traffic light
+
+From any app or space you can see whether Claude is working, blocked on you, or done, across every session on the machine.
+
+<p align="center"><img src="docs/readme/states.svg" width="720" alt="Four menu bars: the bare notch closed; working with two agents; done with 3 files +87 −12; resting with one more session"></p>
 
 Closed, the notch looks exactly like the hardware. Nothing is drawn over the camera; every state is a left wing, the camera gap, and a right wing, with the card below.
 
-```
-closed     ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
-                  ┃                     ┃              the notch itself, pixel-identical
+### Companion
 
-wings      ▁▁▁▁▁▁┓                       ┏▁▁▁▁▁▁▁▁▁
-            ✻ notchcode · ponyfish       1 agent      Claude is working
-                  ┗━━━━━━━━━━━━━━━━━━━━━━━┛
+Press the notch at any time and a card opens with five tools. `1`–`5` or `⇥` moves between them, `esc` closes.
 
-resting     ● notchcode · ponyfish     +1 session     nothing moving, still yours to open
+<p align="center"><img src="docs/readme/card-sessions.svg" width="720" alt="The open card on Sessions: two worktrees of one repository, one working in bypass mode with a subagent, one waiting for you"></p>
 
-attention   ▲ Needs you                     0:53 ◔
-            Allow Bash?  npm test -- --watch=false    two rows, a countdown, one key answers
+| Tool | Shows |
+|---|---|
+| Sessions | every live session by repository, one row per worktree: branch, model, permission mode (`bypass` in clay, `plan` in blue; nothing for default), state, current prompt, a lane per subagent. `⏎` opens its Changes. |
+| Changes | each turn you sent, the files it changed (subagent edits too), and the full diff under any file. |
+| Files | the repository tree, changed files badged, and a preview with changed lines tinted; `⌘B` folds the tree away, and Markdown renders with a Preview · Code switch. |
+| Git | the focused session's worktree, or any local branch of a repository a session runs in (`W` opens the picker: each branch with where it lives, "worktree harbor", "main checkout" or "not checked out"). Uncommitted files and the last five commits on the left, the selected file's diff on the right with line numbers, changed words lit and a minimap. A branch checked out nowhere shows its changes against main, read-only. Push (or Publish) asks before it pushes. |
+| Usage | 5-hour and weekly limits with reset times, context used, tokens for the session and today, an estimated cost. |
 
-peek        ✓ Done · notchcode · ponyfish   3 files  +87 −12    four seconds, then resting
+### Git without leaving the notch
 
-card        ┌ Sessions · Changes · Files · Usage ┐
-            │ …                                  │    the companion, ⇥ between tabs, esc closes
-            └────────────────────────────────────┘
-```
+The Git tool shows what is uncommitted in the worktree you are looking at, and the diff of each file. `P` pushes the branch, after a `⏎` confirm. It never commits; that stays with Claude and the commit request.
+
+<p align="center"><img src="docs/readme/card-git.svg" width="720" alt="The Git tool: two uncommitted files and three recent commits on the left, the diff of Cart.tsx with line numbers and a minimap on the right, a Push button in the header"></p>
+
+With nothing to commit, the two panes stay and the right one says so.
+
+<p align="center"><img src="docs/readme/card-git-clean.svg" width="720" alt="The Git tool with nothing to commit: a green check and Nothing to commit · up to date"></p>
+
+### Teleport
+
+Every session knows which terminal started it. One key lands you in that window; with several worktrees of one repository open at once, this is the reason to keep the app.
 
 ## Install
 
@@ -86,30 +93,21 @@ Not available yet:
 - Open at login, and a first-run Welcome card in the notch.
 - The Claude Code plugin on a marketplace.
 
-## How it works
-
-1. **Session files.** Claude Code writes every session to `~/.claude/projects/<folder>/<session>.jsonl`, and notchcode polls that folder every two seconds. That alone gives sessions, prompts, files, diffs, subagents, tokens, and cost, with no setup.
-2. **Hooks.** One shell script, called by Claude Code's hooks, sends one JSON line over a Unix socket in `~/Library/Application Support/notchcode/`. For a permission request or a `git commit` it waits for your answer; if the app is not running it prints nothing and exits at once.
-3. **Status line.** Claude Code hands its status line command the 5-hour and weekly limits. notchcode's status line script forwards them to the app, then runs whatever status line you had before.
-
-It is the sibling of [sidecar-pane](https://github.com/evch1204/sidecar-pane), which shows the same stream in a terminal split. They share a data contract, not code.
-
-| Claude Code event | Matcher | Blocks Claude? |
-|---|---|---|
-| `PermissionRequest` | all tools | until you answer, or 58 s pass |
-| `PreToolUse` | `Bash`, only `git commit …` | the same |
-| `PostToolUse` | `Edit`, `Write`, `MultiEdit`, `Bash` | no |
-| `Notification`, `Stop`, `UserPromptSubmit` | | no |
-| `SessionStart`, `SessionEnd`, `SubagentStart`, `SubagentStop` | | no |
-| `statusLine` | | no; chained in front of your existing one |
-
-### What it touches
-
-The app never edits your project and makes no network requests of its own. The one command it runs is `git`, for the Git tool: read-only commands to show the worktree, and `git push` only when you press Push and confirm. The only file it writes outside its own folder is `~/.claude/settings.json`. It adds or removes only its own entries there, after a backup named `settings.json.notchcode-backup-<time>`, and only when you press Connect or Disconnect.
-
 ## Keys
 
 While the card is open the notch takes the keyboard; the moment it closes, focus goes back to your terminal.
+
+| Key | Does |
+|---|---|
+| `⌥ space` | open or close the card from anywhere |
+| `⏎` | allow, or the primary action |
+| `⌫` | deny |
+| `A` | allow always |
+| `D` | show the diff behind a request |
+| `1` – `5` | Sessions, Changes, Files, Git, Usage |
+
+<details>
+<summary>Every key</summary>
 
 | Key | Does |
 |---|---|
@@ -119,7 +117,7 @@ While the card is open the notch takes the keyboard; the moment it closes, focus
 | `A` | allow always |
 | `E` | edit a proposed commit: Claude asks you for a new message |
 | `D` | show the diff behind a permission or commit request |
-| `1` – `5` | pick a tool |
+| `1` – `5` | pick a tool: Sessions, Changes, Files, Git, Usage |
 | `⇥` `⇧⇥` | next and previous tool |
 | `↑` `↓` `←` `→` | move in a list or the file tree (in Git, `↑` `↓` select a file and show its diff) |
 | `y` | copy `path:line` of the first changed line |
@@ -133,6 +131,34 @@ While the card is open the notch takes the keyboard; the moment it closes, focus
 | `⌘Q` | quit notchcode (while the card is open) |
 | `esc` | back, or close |
 
+</details>
+
+## How it works
+
+1. **Session files.** Claude Code writes every session to `~/.claude/projects/<folder>/<session>.jsonl`, and notchcode polls that folder every two seconds. That alone gives sessions, prompts, files, diffs, subagents, tokens, and cost, with no setup.
+2. **Hooks.** One shell script, called by Claude Code's hooks, sends one JSON line over a Unix socket in `~/Library/Application Support/notchcode/`. For a permission request or a `git commit` it waits for your answer; if the app is not running it prints nothing and exits at once.
+3. **Status line.** Claude Code hands its status line command the 5-hour and weekly limits. notchcode's status line script forwards them to the app, then runs whatever status line you had before.
+
+It is the sibling of [sidecar-pane](https://github.com/evch1204/sidecar-pane), which shows the same stream in a terminal split. They share a data contract, not code.
+
+<details>
+<summary>The hooks it adds</summary>
+
+| Claude Code event | Matcher | Blocks Claude? |
+|---|---|---|
+| `PermissionRequest` | all tools | until you answer, or 58 s pass |
+| `PreToolUse` | `Bash`, only `git commit …` | the same |
+| `PostToolUse` | `Edit`, `Write`, `MultiEdit`, `Bash` | no |
+| `Notification`, `Stop`, `UserPromptSubmit` | | no |
+| `SessionStart`, `SessionEnd`, `SubagentStart`, `SubagentStop` | | no |
+| `statusLine` | | no; chained in front of your existing one |
+
+</details>
+
+### What it touches
+
+The app never edits your project and makes no network requests of its own. The one command it runs is `git`, for the Git tool: read-only commands to show the worktree, and `git push` only when you press Push and confirm. The only file it writes outside its own folder is `~/.claude/settings.json`. It adds or removes only its own entries there, after a backup named `settings.json.notchcode-backup-<time>`, and only when you press Connect or Disconnect.
+
 ## Settings
 
 A page inside the card, never a separate window: the gear, or `⌘,` while the card is open. It holds what shows when idle (the resting row, or a pure notch), how "needs you" looks (two rows, or wings only), whether finished turns and agents peek and for how long, whether every file edit peeks too, click or hover to open, the `⌥ space` hotkey, agents in the wings, whether keys show beside buttons in the card, an optional macOS notification for blocking requests, and Connect / Disconnect with live status. Quit lives here too, or `⌘Q` while the card is open; `esc` only closes the card.
@@ -145,20 +171,6 @@ A page inside the card, never a separate window: the gear, or `⌘,` while the c
 
 ## Development
 
-```
-Sources/notchcode/
-  Model/Contract.swift     the one contract every part talks through
-  Transport/               the Unix socket server
-  Sessions/                session files, diffs, subagents, usage, the file tree, the installer
-  Notch/                   the panel over the notch, the geometry, the shape
-  Views/                   every state and tab
-  Theme.swift              every colour, size, font, radius, spring, and glyph
-hooks/                     the two shell scripts Claude Code calls
-scripts/                   connect, disconnect, test events, dev build, plugin sync
-plugin/                    the Claude Code plugin
-PLAN.md                    the spec: states, events, decisions, motion table
-```
-
 Useful commands:
 
 ```sh
@@ -170,6 +182,30 @@ scripts/sync-plugin.sh --check              # plugin in step with hooks/
 
 Rules the code follows: Swift and SwiftUI only; the app acts on your behalf only through hooks; hook scripts print nothing, have no dependencies, and exit 0 when the app is absent; every visual constant lives in `Theme.swift`; the closed state is pixel-identical to the notch.
 
+The plugin adds the hooks without touching `settings.json` and opens the app when a session starts, but cannot carry usage limits. Load it for one session; use it or Connect, not both, or every event arrives twice. See [plugin/README.md](plugin/README.md).
+
+```sh
+claude --plugin-dir ./plugin
+```
+
+<details>
+<summary>Layout and scripts</summary>
+
+```
+Sources/notchcode/
+  Model/Contract.swift     the one contract every part talks through
+  Transport/               the Unix socket server
+  Sessions/                session files, diffs, subagents, usage, the file tree, the installer
+  Notch/                   the panel over the notch, the geometry, the shape
+  Views/                   every state and tab
+  Theme.swift              every colour, size, font, radius, spring, and glyph
+hooks/                     the two shell scripts Claude Code calls
+scripts/                   connect, disconnect, test events, dev build, plugin sync
+plugin/                    the Claude Code plugin
+docs/readme/               the drawings on this page
+PLAN.md                    the spec: states, events, decisions, motion table
+```
+
 Connect without the app, with Node 20. Both take `--settings <path>` and `--dry-run`, follow the same rules as Connect, and are safe to run twice:
 
 ```sh
@@ -177,11 +213,7 @@ node scripts/connect.mjs      # add the hooks and chain the status line
 node scripts/disconnect.mjs   # remove only ours, restore the status line
 ```
 
-The plugin adds the hooks without touching `settings.json` and opens the app when a session starts, but cannot carry usage limits. Load it for one session; use it or Connect, not both, or every event arrives twice. See [plugin/README.md](plugin/README.md).
-
-```sh
-claude --plugin-dir ./plugin
-```
+</details>
 
 ## Status
 
