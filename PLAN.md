@@ -134,11 +134,43 @@ Teleport: the hook forwards `TERM_PROGRAM` and the session's process id. iTerm2 
 
 ## Install
 
+Superseded by "Distribution and first run" below (2026-09-28): one primary path, the app's Connect.
+
 Three ways in, shortest first: the Claude Code plugin (`plugin/`, one `claude plugin install`), the Settings → Connect button, or `node scripts/connect.mjs`. Two pieces either way.
 
 - The app: a signed, notarised `.app` from GitHub Releases, also as a Homebrew cask.
 - Usage limits: Connect (Settings or `connect.mjs`) also makes `hooks/notchcode-statusline.sh` the `statusLine`. It forwards the status line JSON as kind `statusline` (at most every 5 s per session) and runs the previous status line, saved in `~/Library/Application Support/notchcode/statusline-chain.json` as `{"previous": …}`, with the same stdin. Disconnect restores it. Plugins cannot set `statusLine`, so plugin users also run Connect for limits.
 - The hooks: a Claude Code plugin (`hooks/hooks.json`) installed with `claude plugin install notchcode@<marketplace>`. Plugin hooks merge alongside the owner's existing hooks; nothing in `settings.json` is overwritten. A `SessionStart` hook launches the app if it is not running.
+
+## Distribution and first run (proposed 2026-09-28, owner to decide)
+
+The question: how does a user open notchcode, and do they ever type a terminal command? Once, at most. After install the app opens itself. Mockup of every board below: https://claude.ai/artifact/V2HFkMgJTpagrsjzd36v9n.
+
+**How the app gets opened.** Three layers; a user never launches it by hand.
+
+1. Open at login. A switch in Settings (Opening group), on by default, `SMAppService.mainApp.register()`. No Dock icon, no menu bar item, so at login it is a black notch until a session exists.
+2. Woken by Claude Code. The `SessionStart` hook group gets a second command, `pgrep -xq notchcode || open -g -b com.evch.notchcode`. The plugin has it already (`LAUNCH_APP` in settings.mjs); Connect adds the same line to settings.json. Launch Services knows the bundle id once the app has been opened once from /Applications.
+3. By hand: Spotlight, or `⌥ space` while it runs. The Quit row says "opens again at login, or with your next Claude Code session".
+
+**First run.** Not connected → the card opens by itself on a Welcome page: "Connect to Claude Code" (`⏎`, white), "Open at login" (on), one caption saying what Connect touches and that Disconnect puts it back, `esc` for later. One press does hooks, status line and login item together; the page turns into "Connected · start a Claude Code session" and closes. Seen once; Settings keeps the same controls. On a display without a notch nothing draws today; v0.1 says so in the README, the floating pill stays "later".
+
+**Stable hook paths.** Connect writes the path of the script inside the app bundle, so moving or rebuilding the app breaks every hook without a word, and `status()` still says Connected because it only looks for the marker. Fix: on every launch the app copies both scripts to `~/Library/Application Support/notchcode/bin/` (only when the bytes differ) and Connect points hooks and the status line there. Updates never break hooks. `status()` gains `.stale` (our entries point at a file that is not there, or not at the bin folder); Settings shows an amber "Reconnect".
+
+**One way in.** The README presents one path: open the app, press Connect. `connect.mjs` moves to Development. The plugin stays in the repo for the marketplace later; it cannot set the status line and cannot install the app, so it is never the first step.
+
+**Getting the app.**
+
+- v0.1.0 on GitHub Releases as `notchcode.zip`, built by `scripts/release.sh`: xcodegen, Release config, `codesign` with a Developer ID, `notarytool submit --wait`, `stapler`. Needs an Apple Developer account ($99 a year). Without it, macOS 15 shows "Apple could not verify" and the user goes to Privacy & Security → Open Anyway; the README keeps "build it once" until then.
+- Homebrew cask in a personal tap once a release exists; `brew upgrade` is the update path. No Sparkle in v0.1. An About group in Settings shows the version with a pill that opens the Releases page.
+- The repo stays private for now, so the Release and the tap wait for it to go public.
+
+**Build order, when the owner says go.**
+
+1. Login item switch; the launch line in Connect's SessionStart group. Small.
+2. Scripts copied to Application Support, `.stale`, Reconnect.
+3. Welcome page, opened by itself while not connected.
+4. `scripts/release.sh`, signing, notarisation, the first Release.
+5. The cask.
 
 ## Build plan
 
