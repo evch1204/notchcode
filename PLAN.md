@@ -258,6 +258,7 @@ What exists today: width/height springs (open 0.45/0.72 and 0.55/0.78, close 0.3
 | Teleport | card content scales to 92%, blurs 6 pt and fades in 0.2 s; shape height collapses 0.28 s ease-in; width settles to wings with a small bounce 0.3 s; the terminal is activated at the 0.15 s mark so it rises behind | 0 | no | crossfade, activate at once |
 | Tab switch | pill glides 0.32 s with 20% overshoot; outgoing pane slides 70 pt and fades 0.2 s; incoming slides in 0.32 s ease-out; inner groups move at 40% speed; bars fill 0.5 s after landing | 0 | yes | crossfade |
 | Hover rim (click-to-open owners; 2026-09-28) | static 2 pt line at 50% white on the bottom edge and bottom corners, outside the black, fading up each corner; 0.18 s ease-out in, 0.25 s ease-in out; glow 4 pt wide, 2 pt drop, 6 pt blur (12 px CSS) at 12% | after 250 ms at rest | yes | same, no glow |
+| Git branch picker (2026-09-28) | the target pill morphs into the repository pill in place (spring 0.32 s, damping 0.86); branch, status and Push slide 12 pt right and fade 0.08 s; panes drop 6 pt and fade; picker header rises 10 pt at 120 ms; rows rise 10 pt one by one, 40 ms apart, capped at 8; closing: rows fade 0.08 s, header slides back from the right, panes rise back | 0 | yes | crossfade 0.2 s |
 | Button press | scale 0.97, 0.12 s ease-out, back on release | 0 | yes | none |
 
 Mechanisms, SwiftUI on macOS 14:

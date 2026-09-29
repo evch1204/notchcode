@@ -103,17 +103,24 @@ struct ParallaxGroup: ViewModifier {
 }
 
 /// A card row that fades in and rises 10 pt, 120 ms + 40 ms per row after it appears.
-/// Reduce Motion: opacity only.
+/// Reduce Motion: one 0.2 s crossfade, no rise, no stagger.
 struct RiseIn: ViewModifier {
     let index: Int
+    /// Rows past this index share its delay (the Git picker passes `rowStaggerCap`).
+    var cap: Int = .max
     @State private var shown = false
 
     func body(content: Content) -> some View {
+        let reduce = Theme.Motion.reduceMotion
         content
             .opacity(shown ? 1 : 0)
-            .offset(y: shown || Theme.Motion.reduceMotion ? 0 : Theme.Motion.contentRise)
+            .offset(y: shown || reduce ? 0 : Theme.Motion.contentRise)
             .onAppear {
-                withAnimation(Theme.Motion.rowIn(index)) { shown = true }
+                // Reduce Motion: one crossfade for every row, no stagger.
+                let animation = reduce
+                    ? Theme.Motion.reduced.delay(Theme.Motion.contentFadeDelay)
+                    : Theme.Motion.rowIn(min(index, cap))
+                withAnimation(animation) { shown = true }
             }
     }
 }
@@ -138,7 +145,7 @@ struct Unfold: ViewModifier {
 }
 
 extension View {
-    func riseIn(_ index: Int) -> some View { modifier(RiseIn(index: index)) }
+    func riseIn(_ index: Int, cap: Int = .max) -> some View { modifier(RiseIn(index: index, cap: cap)) }
     func parallaxGroup() -> some View { modifier(ParallaxGroup()) }
     /// Left wing: segments counted from the camera outward, sliding out to the left.
     func unfoldLeft(_ index: Int) -> some View { modifier(Unfold(index: index, towardCamera: 1)) }

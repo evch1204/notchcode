@@ -679,6 +679,8 @@ enum Theme {
         static let contentRise: CGFloat = 10
         /// Card rows follow each other by this much.
         static let rowStagger: Double = 0.04
+        /// Rows past this index share its delay, so a long list lands within half a second.
+        static let rowStaggerCap = 8
         static var contentIn: Animation { .easeOut(duration: contentFadeDuration).delay(contentFadeDelay) }
         static var contentOut: Animation { .easeIn(duration: contentOutDuration) }
         static func rowIn(_ index: Int) -> Animation {
@@ -694,6 +696,13 @@ enum Theme {
                 insertion: insertion.animation(inAnimation),
                 removal: AnyTransition.opacity.animation(outAnimation)
             )
+        }
+        /// Opacity plus a slide of `dx` on both sides, in and out (opacity only for `dx == 0` or
+        /// under Reduce Motion). `rise`'s sibling on the x axis.
+        @MainActor static func slide(dx: CGFloat, in inAnimation: Animation, out outAnimation: Animation) -> AnyTransition {
+            guard dx != 0 && !reduceMotion else { return rise(dy: 0, in: inAnimation, out: outAnimation) }
+            let moved = AnyTransition.opacity.combined(with: .offset(x: dx))
+            return .asymmetric(insertion: moved.animation(inAnimation), removal: moved.animation(outAnimation))
         }
         /// Content in: opacity plus the rise. `rise: false` for content whose rows rise on
         /// their own (the card).
@@ -811,6 +820,43 @@ enum Theme {
         /// Opacity plus the content rise; Reduce Motion crossfades.
         @MainActor static var requestDiffTransition: AnyTransition {
             rise(dy: contentRise, in: .easeOut(duration: requestDiffRevealDuration), out: contentOut)
+        }
+
+        // Git branch picker: the target pill morphs into the repository pill in place, the
+        // rest of the header slides right, the panes drop away, the picker's header rises and
+        // its rows rise one by one (`RiseIn`, capped). Closing is a plain fade and the reverse.
+        static let pickerPillResponse: Double = 0.32
+        static let pickerPillDamping: Double = 0.86
+        /// The pill's frame and crossfade.
+        @MainActor static var pickerPill: Animation {
+            reduceMotion ? reduced : .spring(response: pickerPillResponse, dampingFraction: pickerPillDamping)
+        }
+        /// The picker and the content trading places.
+        @MainActor static var pickerSwap: Animation { pickerPill }
+        /// The branch, status and Push slide this far right on the way out and back from there.
+        static let pickerHeaderShift: CGFloat = 12
+        /// The list and diff drop this far as they fade.
+        static let pickerPaneDrop: CGFloat = 6
+        @MainActor static var pickerHeaderTransition: AnyTransition {
+            reduceMotion
+                ? rise(dy: 0, in: reduced, out: reduced)
+                : slide(dx: pickerHeaderShift, in: contentIn, out: contentOut)
+        }
+        /// The panes: out with a drop, back with the content rise.
+        @MainActor static var pickerPanesTransition: AnyTransition {
+            if reduceMotion { return rise(dy: 0, in: reduced, out: reduced) }
+            return .asymmetric(
+                insertion: AnyTransition.opacity.combined(with: .offset(y: contentRise)).animation(contentIn),
+                removal: AnyTransition.opacity.combined(with: .offset(y: pickerPaneDrop)).animation(contentOut)
+            )
+        }
+        /// The picker's header and filter: the content rise in, a fade out.
+        @MainActor static var pickerHeadTransition: AnyTransition {
+            reduceMotion ? rise(dy: 0, in: reduced, out: reduced) : contentTransition(rise: true)
+        }
+        /// The rows' block: nothing coming in (each row rises on its own), a fade going out.
+        @MainActor static var pickerRowsTransition: AnyTransition {
+            .asymmetric(insertion: .identity, removal: AnyTransition.opacity.animation(reduceMotion ? reduced : contentOut))
         }
 
         // Files tab.

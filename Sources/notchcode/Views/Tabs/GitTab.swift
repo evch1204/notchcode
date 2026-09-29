@@ -22,36 +22,57 @@
 // branch, newest commit first: the branch in mono, where it lives under it, "session" and
 // "current" tags, the counts on the right. Past eight branches a filter field shows (/).
 // A branch checked out nowhere opens a read-only page: "not checked out · 4 commits ahead
-// of main", "Changes vs main", the commits main..branch, and Push.
+// of main", "Changes vs main", the commits main..branch, and Push. The target pill stays put
+// and morphs into the repository pill, the branch, status and Push slide right and fade, the
+// panes drop away, and the rows unfold top down; closing is a plain fade and the reverse.
 
 import SwiftUI
 
 @MainActor
 struct GitTab: View {
     @ObservedObject var state: AppState
+    /// The target pill and the repository pill share one frame across the swap.
+    @Namespace private var pillSpace
+    static let pillID = "gitPill"
 
+    /// The content and the picker both stay in the tree; only their parts come and go, so
+    /// each part's transition fires (a child's transition does not when its parent is inserted).
     var body: some View {
         if !state.readsLocalFiles {
             EmptyNote(text: "Git reads the real worktree" + Theme.Glyphs.separator + "off in the demo")
-        } else if state.gitPanel.pickerOpen {
-            GitBranchPicker(state: state)
-        } else if state.gitCwd == nil {
-            EmptyNote(text: "No session")
-        } else if let snap = state.focusedGit {
-            if snap.isRepo {
-                content(snap)
-            } else {
-                EmptyNote(text: "Not a git repository")
-            }
         } else {
-            EmptyNote(text: "Reading git" + Theme.Glyphs.ellipsis)
+            let open = state.gitPanel.pickerOpen
+            ZStack(alignment: .topLeading) {
+                closedSide(open: open)
+                GitBranchPicker(state: state, open: open, pillSpace: pillSpace)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .animation(Theme.Motion.pickerSwap, value: open)
         }
     }
 
-    private func content(_ snap: GitSnapshot) -> some View {
+    @ViewBuilder
+    private func closedSide(open: Bool) -> some View {
+        if state.gitCwd == nil {
+            if !open {
+                EmptyNote(text: "No session")
+                    .transition(Theme.Motion.pickerHeadTransition)
+            }
+        } else if let snap = state.focusedGit, snap.isRepo {
+            content(snap, open: open)
+        } else if !open {
+            EmptyNote(text: state.focusedGit == nil ? "Reading git" + Theme.Glyphs.ellipsis : "Not a git repository")
+                .transition(Theme.Motion.pickerHeadTransition)
+        }
+    }
+
+    private func content(_ snap: GitSnapshot, open: Bool) -> some View {
         VStack(alignment: .leading, spacing: Theme.Size.spaceS) {
-            GitHeader(state: state, snap: snap)
-            panes(snap)
+            GitHeader(state: state, snap: snap, open: open, pillSpace: pillSpace)
+            if !open {
+                panes(snap)
+                    .transition(Theme.Motion.pickerPanesTransition)
+            }
         }
     }
 
@@ -408,11 +429,32 @@ private struct GitDiffBody: View {
 private struct GitHeader: View {
     @ObservedObject var state: AppState
     let snap: GitSnapshot
+    /// The picker is open: the pill has become the picker's repository pill and the rest has
+    /// slid out to the right. The row keeps its height.
+    let open: Bool
+    let pillSpace: Namespace.ID
 
     var body: some View {
-        let phase = state.gitPhase
         HStack(spacing: Theme.Size.spaceM) {
-            GitTargetPill(parts: state.gitTargetParts) { state.toggleGitPicker() }
+            if !open {
+                GitTargetPill(parts: state.gitTargetParts) { state.toggleGitPicker() }
+                    .matchedGeometryEffect(id: GitTab.pillID, in: pillSpace, anchor: .leading)
+                    .transition(.opacity)
+                    .layoutPriority(2)
+            }
+            if !open {
+                rest
+                    .transition(Theme.Motion.pickerHeaderTransition)
+            }
+        }
+        .padding(.horizontal, Theme.Size.rowHPadding)
+        .frame(height: Theme.Size.gitHeaderHeight)
+    }
+
+    /// The branch, the status and the Push pill.
+    private var rest: some View {
+        let phase = state.gitPhase
+        return HStack(spacing: Theme.Size.spaceM) {
             if snap.checkedOut {
                 Text(snap.branch ?? "detached HEAD")
                     .font(Theme.Fonts.mono)
@@ -439,8 +481,6 @@ private struct GitHeader: View {
                     .help("Cancel")
             }
         }
-        .padding(.horizontal, Theme.Size.rowHPadding)
-        .frame(height: Theme.Size.gitHeaderHeight)
     }
 
     @ViewBuilder
@@ -538,35 +578,43 @@ private struct GitTargetPill: View {
 @MainActor
 private struct GitBranchPicker: View {
     @ObservedObject var state: AppState
+    /// Closed, the picker stays in the tree with nothing in it, so its parts can transition.
+    let open: Bool
+    let pillSpace: Namespace.ID
     @FocusState private var filterFocused: Bool
 
     var body: some View {
-        Group {
-            if let group = state.gitPickerGroup {
-                VStack(alignment: .leading, spacing: Theme.Size.spaceM) {
-                    header(group)
-                    if state.gitPickerShowsFilter {
-                        filterField(group)
-                    }
+        let group = state.gitPickerGroup
+        ZStack(alignment: .topLeading) {
+            VStack(alignment: .leading, spacing: Theme.Size.spaceM) {
+                header(group)
+                if open, let group, state.gitPickerShowsFilter {
+                    filterField(group)
+                        .transition(Theme.Motion.pickerHeadTransition)
+                }
+                if open, let group {
                     rows(group)
+                        .transition(Theme.Motion.pickerRowsTransition)
                 }
-                .overlay(alignment: .topLeading) {
-                    if state.gitPanel.repoMenuOpen {
-                        ZStack(alignment: .topLeading) {
-                            Color.clear
-                                .contentShape(Rectangle())
-                                .onTapGesture { state.closeGitRepoMenu() }
-                            GitRepoMenu(state: state, current: group.id)
-                                .padding(.top, Theme.Size.gitHeaderHeight + Theme.Size.spaceS)
-                        }
-                        .transition(.opacity)
-                    }
-                }
-                .animation(Theme.Motion.tap, value: state.gitPanel.repoMenuOpen)
-            } else {
+            }
+            if open && group == nil {
                 EmptyNote(text: state.gitPanel.listing ? "Reading branches" + Theme.Glyphs.ellipsis : "No git repository in any session")
+                    .transition(Theme.Motion.pickerHeadTransition)
             }
         }
+        .overlay(alignment: .topLeading) {
+            if open, state.gitPanel.repoMenuOpen, let group {
+                ZStack(alignment: .topLeading) {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture { state.closeGitRepoMenu() }
+                    GitRepoMenu(state: state, current: group.id)
+                        .padding(.top, Theme.Size.gitHeaderHeight + Theme.Size.spaceS)
+                }
+                .transition(.opacity)
+            }
+        }
+        .animation(Theme.Motion.tap, value: state.gitPanel.repoMenuOpen)
         .onChange(of: filterFocused) { _, focused in
             if state.gitPanel.filterFocused != focused { state.setGitFilterFocused(focused) }
         }
@@ -575,13 +623,30 @@ private struct GitBranchPicker: View {
         }
     }
 
-    /// "notchcode ▾ R   ~/Desktop/notchcode                    8 branches".
-    private func header(_ group: GitRepoGroup) -> some View {
+    /// "notchcode ▾ R   ~/Desktop/notchcode                    8 branches". The pill takes
+    /// the target pill's frame as it arrives; the rest rises in after it.
+    private func header(_ group: GitRepoGroup?) -> some View {
         let multiple = state.gitPanel.repos.count > 1
         return HStack(spacing: Theme.Size.spaceM) {
-            GitRepoPill(name: group.name, multiple: multiple, open: state.gitPanel.repoMenuOpen) {
-                state.openGitRepoMenu()
+            if open, let group {
+                GitRepoPill(name: group.name, multiple: multiple, open: state.gitPanel.repoMenuOpen) {
+                    state.openGitRepoMenu()
+                }
+                .matchedGeometryEffect(id: GitTab.pillID, in: pillSpace, anchor: .leading)
+                .transition(.opacity)
             }
+            if open, let group {
+                headerRest(group)
+                    .transition(Theme.Motion.pickerHeadTransition)
+            }
+        }
+        .padding(.horizontal, Theme.Size.rowHPadding)
+        .frame(height: Theme.Size.gitHeaderHeight)
+    }
+
+    /// The folder and the branch count.
+    private func headerRest(_ group: GitRepoGroup) -> some View {
+        HStack(spacing: Theme.Size.spaceM) {
             Text(GitBranchPicker.abbreviated(group.id))
                 .font(Theme.Fonts.monoSmall)
                 .foregroundStyle(Theme.Colors.gitPickerPath)
@@ -596,8 +661,6 @@ private struct GitBranchPicker: View {
                 .lineLimit(1)
                 .fixedSize()
         }
-        .padding(.horizontal, Theme.Size.rowHPadding)
-        .frame(height: Theme.Size.gitHeaderHeight)
     }
 
     static func abbreviated(_ path: String) -> String {
@@ -653,8 +716,9 @@ private struct GitBranchPicker: View {
         let hidden = group.branches.count - rows.count
         return ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: false) {
-                LazyVStack(alignment: .leading, spacing: Theme.Size.spaceXS) {
-                    ForEach(rows) { branch in
+                // Not lazy: every row appears (and rises) with the picker, not later as it scrolls in.
+                VStack(alignment: .leading, spacing: Theme.Size.spaceXS) {
+                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, branch in
                         Button { state.pickGitBranch(branch) } label: {
                             GitBranchRow(
                                 branch: branch,
@@ -667,6 +731,7 @@ private struct GitBranchPicker: View {
                         }
                         .buttonStyle(.plain)
                         .id(branch.name)
+                        .riseIn(index, cap: Theme.Motion.rowStaggerCap)
                     }
                     if !filter.isEmpty && hidden > 0 {
                         Text(rows.isEmpty
