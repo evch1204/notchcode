@@ -206,7 +206,6 @@ struct CardView: View {
             }
             return [
                 KeyHint(Theme.Keys.up + Theme.Keys.down, "file"),
-                KeyHint(Theme.Keys.hunkUp + Theme.Keys.hunkDown, "hunk"),
                 KeyHint(Theme.Keys.worktree, "branch"),
                 KeyHint(Theme.Keys.toggleTree, "list"),
                 KeyHint(Theme.Keys.push, state.gitPushVerb.lowercased()),

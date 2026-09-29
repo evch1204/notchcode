@@ -124,12 +124,6 @@ struct GitRepoGroup: Identifiable, Equatable {
     var branches: [GitBranch]
 }
 
-/// A ⌥↑ or ⌥↓ for the diff pane, which knows where it is scrolled.
-struct GitHunkJump: Equatable {
-    var seq = 0
-    var delta = 0
-}
-
 struct GitPanelState: Equatable {
     /// Target key -> its last read.
     var snapshots: [String: GitSnapshot] = [:]
@@ -157,7 +151,6 @@ struct GitPanelState: Equatable {
     var rootByCwd: [String: String] = [:]
     /// A listing is running.
     var listing = false
-    var hunkJump = GitHunkJump()
 }
 
 extension AppState {
@@ -499,7 +492,7 @@ extension AppState {
             case .filter:           // /
                 if gitPickerShowsFilter { setGitFilterFocused(true) }
                 return true
-            case .markdownMode, .left, .right, .copy, .diff, .toggleTree, .hunkUp, .hunkDown:
+            case .markdownMode, .left, .right, .copy, .diff, .toggleTree:
                 return true     // the picker has the keys; nothing under it reacts
             default:
                 return nil
@@ -519,9 +512,6 @@ extension AppState {
         case .toggleTree:       // ⌘B
             toggleGitList()
             return true
-        case .hunkUp, .hunkDown:  // ⌥↑ ⌥↓
-            jumpGitHunk(by: key == .hunkUp ? -1 : 1)
-            return true
         case .up, .down:
             // Selecting shows that file's diff at once. The list comes back first, as the
             // Files tree does.
@@ -533,13 +523,6 @@ extension AppState {
         default:
             return nil
         }
-    }
-
-    /// ⌥↑ ⌥↓ or the header's keycaps: the diff pane, which knows where it is scrolled,
-    /// moves to the previous or next hunk.
-    func jumpGitHunk(by delta: Int) {
-        guard gitSelectedFile != nil else { return }
-        updateGit { $0.hunkJump = GitHunkJump(seq: $0.hunkJump.seq + 1, delta: delta) }
     }
 
     // MARK: Branch picker

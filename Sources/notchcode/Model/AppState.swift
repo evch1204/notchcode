@@ -55,8 +55,6 @@ enum NotchKey: Equatable {
     case worktree
     /// "R": the branch picker's repository dropdown.
     case repository
-    /// ⌥↑ ⌥↓: the previous or next hunk in the Git tool's diff.
-    case hunkUp, hunkDown
     case number(Int)
 }
 

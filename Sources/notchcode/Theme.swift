@@ -217,10 +217,9 @@ enum Theme {
         static let gitTargetRepo = inkTertiary
         static let gitTargetPlace = ink
         static let gitTargetNote = inkTertiary
-        /// The file kind badge (M, A, D) and "hunk 2 of 5" in the diff pane's header.
+        /// The file kind badge (M, A, D) in the diff pane's header.
         static let gitKindText = inkSecondary
         static let gitKindFill = badgeFill
-        static let gitHunkText = inkTertiary
         /// The branch picker: the repository pill's folder, the rows, the filter's lit match.
         static let gitPickerPath = inkTertiary
         static let gitPickerBranch = ink
@@ -1043,9 +1042,6 @@ enum Theme {
         static let worktree = "W"
         /// Git: the picker's repository dropdown.
         static let repository = "R"
-        /// Git: the previous and next hunk in the diff pane.
-        static let hunkUp = "⌥↑"
-        static let hunkDown = "⌥↓"
     }
 
     // MARK: - Glyph characters used in text

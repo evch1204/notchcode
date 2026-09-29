@@ -13,8 +13,7 @@
 // and shows the diff at once, the first file by default; ⌘B hides the list (the Files
 // tree's switch). The diff keeps both line-number columns, scrolls both ways (lines never
 // wrap), tints the words that changed inside paired −/+ lines, and has a 6 pt minimap of
-// the whole file pinned to its right edge. Its header stays on top: name, M/A/D, counts,
-// "hunk 2 of 5" with ⌥↑ ⌥↓.
+// the whole file pinned to its right edge. Its header stays on top: name, M/A/D, counts.
 //
 // W (or the pill) replaces the content with the branch picker: the repository pill
 // ("notchcode ▾", R opens the dropdown of repositories), its folder, then one row per local
@@ -171,9 +170,9 @@ private struct GitFileRow: View {
 
 // MARK: - The reviewer diff
 
-/// The right pane: a header that stays on top (the ⌘B pill, the name, M/A/D, the counts,
-/// "hunk 2 of 5" with ⌥↑ ⌥↓), then the selected file's diff, which scrolls both ways under
-/// it with the minimap pinned to its right edge.
+/// The right pane: a header that stays on top (the ⌘B pill, the name, M/A/D, the counts),
+/// then the selected file's diff, which scrolls both ways under it with the minimap pinned
+/// to its right edge.
 @MainActor
 private struct GitDiffPane: View {
     @ObservedObject var state: AppState
@@ -185,9 +184,8 @@ private struct GitDiffPane: View {
     var body: some View {
         let file = state.gitSelectedFile
         let lines = file.map(AppState.diffLines) ?? []
-        let hunkRows = lines.indices.filter { lines[$0].kind == .hunk }
         VStack(alignment: .leading, spacing: Theme.Size.spaceS) {
-            header(file: file, hunkRows: hunkRows)
+            header(file: file)
                 .padding(.horizontal, Theme.Size.previewHPadding)
 
             ZStack(alignment: .top) {
@@ -199,8 +197,6 @@ private struct GitDiffPane: View {
                             file: file,
                             lines: lines,
                             fileLines: snap.lineCounts[file.path],
-                            hunkRows: hunkRows,
-                            jump: state.gitPanel.hunkJump,
                             topRow: $topRow,
                             visibleCount: $visibleCount
                         )
@@ -218,7 +214,7 @@ private struct GitDiffPane: View {
         .onChange(of: file?.path) { _, _ in topRow = 0 }
     }
 
-    private func header(file: FileChange?, hunkRows: [Int]) -> some View {
+    private func header(file: FileChange?) -> some View {
         HStack(spacing: Theme.Size.spaceM) {
             TreeTogglePill(collapsed: state.gitListCollapsed, enabled: file != nil, subject: "file list") {
                 state.toggleGitList()
@@ -231,34 +227,12 @@ private struct GitDiffPane: View {
                         GitKindBadge(kind: file.kind)
                         DiffCounts(added: file.added, removed: file.removed)
                             .fixedSize()
-                        Spacer(minLength: Theme.Size.spaceM)
-                        if !hunkRows.isEmpty {
-                            hunkPosition(hunkRows)
-                        }
                     }
                     .id(file.path)
                     .transition(.opacity)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
-    /// "hunk 2 of 5  ⌥↑ ⌥↓": the last hunk header at or above the pane's top row.
-    private func hunkPosition(_ hunkRows: [Int]) -> some View {
-        let current = (hunkRows.lastIndex { $0 <= topRow } ?? 0) + 1
-        return HStack(spacing: Theme.Size.spaceS) {
-            Text("hunk \(current) of \(hunkRows.count)")
-                .font(Theme.Fonts.caption)
-                .foregroundStyle(Theme.Colors.gitHunkText)
-                .lineLimit(1)
-                .fixedSize()
-            Button { state.jumpGitHunk(by: -1) } label: { Keycap(Theme.Keys.hunkUp) }
-                .buttonStyle(.plain)
-                .help("Previous hunk")
-            Button { state.jumpGitHunk(by: 1) } label: { Keycap(Theme.Keys.hunkDown) }
-                .buttonStyle(.plain)
-                .help("Next hunk")
         }
     }
 
@@ -309,15 +283,13 @@ private struct GitKindBadge: View {
 
 /// The diff itself: every line whole (the pane scrolls sideways as the Files preview
 /// does), both line numbers, the changed words tinted, the minimap on the right edge
-/// outside the scrolling content. Reports the top row so the header can say which hunk
-/// shows; a hunk jump or a minimap press scrolls it.
+/// outside the scrolling content. Tracks the top row for the minimap's visible range; a
+/// minimap press scrolls it.
 @MainActor
 private struct GitDiffBody: View {
     let file: FileChange
     let lines: [DiffLine]
     let fileLines: Int?
-    let hunkRows: [Int]
-    let jump: GitHunkJump
     @Binding var topRow: Int
     @Binding var visibleCount: Int
     /// Worked out once per diff, not on every scroll step (the header re-renders with it).
@@ -369,13 +341,6 @@ private struct GitDiffBody: View {
                         .padding(.vertical, Theme.Size.diffMinimapInset)
                         .padding(.trailing, Theme.Size.diffMinimapInset)
                     }
-                }
-                .onChange(of: jump) { _, jump in
-                    let target = jump.delta > 0
-                        ? hunkRows.first { $0 > topRow }
-                        : hunkRows.last { $0 < topRow }
-                    guard let target else { return }
-                    withAnimation(Theme.Motion.tap) { proxy.scrollTo(target, anchor: .topLeading) }
                 }
             }
             .onAppear { visibleCount = Int(geo.size.height / Theme.Size.diffLineHeight) }

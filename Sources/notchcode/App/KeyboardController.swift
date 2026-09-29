@@ -51,9 +51,9 @@ final class KeyboardController {
         case kVK_Tab:
             return shift ? .previousTab : .nextTab
         case kVK_UpArrow:
-            return option ? .hunkUp : .up
+            return .up
         case kVK_DownArrow:
-            return option ? .hunkDown : .down
+            return .down
         case kVK_LeftArrow:
             return .left
         case kVK_RightArrow:

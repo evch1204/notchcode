@@ -128,7 +128,6 @@ While the card is open the notch takes the keyboard; the moment it closes, focus
 | `P` | switch a Markdown file between Preview and Code (Files); push or publish the branch, after a `⏎` confirm (Git) |
 | `W` | the Git branch picker: every local branch of a repository (`↑` `↓`, `⏎` shows that branch, `esc` goes back) |
 | `R` | in the Git branch picker, the repository dropdown (`↑` `↓`, `⏎` picks, `esc` closes) |
-| `⌥↑` `⌥↓` | previous and next hunk in the Git diff |
 | `⌥⏎` | jump to the session's terminal |
 | `⌘,` | Settings |
 | `⌘Q` | quit notchcode (while the card is open) |
