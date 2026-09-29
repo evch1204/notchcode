@@ -199,4 +199,11 @@ final class IncrementalCache<Builder, Value> {
     func forget(_ path: String) {
         lock.lock(); entries[path] = nil; lock.unlock()
     }
+
+    /// Drops every entry whose path starts with `prefix` (a directory ending in "/").
+    func forget(under prefix: String) {
+        lock.lock()
+        entries = entries.filter { !$0.key.hasPrefix(prefix) }
+        lock.unlock()
+    }
 }

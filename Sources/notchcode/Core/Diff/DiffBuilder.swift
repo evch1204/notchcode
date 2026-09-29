@@ -32,8 +32,8 @@ enum DiffBuilder {
     }
 
     static func forEdit(cwd: String, filePath: String, oldString: String, newString: String, replaceAll: Bool, readsDisk: Bool) -> FileChange {
-        let path = relative(filePath, cwd: cwd)
-        let original = readsDisk ? read(absolute(filePath, cwd: cwd)) : nil
+        let path = Paths.relative(filePath, cwd: cwd)
+        let original = readsDisk ? read(Paths.absolute(filePath, cwd: cwd)) : nil
         if let original {
             if let updated = apply(old: oldString, new: newString, replaceAll: replaceAll, to: original) {
                 return change(path: path, kind: "edit", diff: diff(old: original, new: updated))
@@ -51,8 +51,8 @@ enum DiffBuilder {
     }
 
     static func forWrite(cwd: String, filePath: String, content: String, readsDisk: Bool) -> FileChange {
-        let path = relative(filePath, cwd: cwd)
-        if readsDisk, let original = read(absolute(filePath, cwd: cwd)) {
+        let path = Paths.relative(filePath, cwd: cwd)
+        if readsDisk, let original = read(Paths.absolute(filePath, cwd: cwd)) {
             return change(path: path, kind: "write", diff: diff(old: original, new: content))
         }
         return change(path: path, kind: "new", diff: diff(old: "", new: content))
@@ -63,8 +63,8 @@ enum DiffBuilder {
     }
 
     static func forMultiEdit(cwd: String, filePath: String, edits: [(old: String, new: String, replaceAll: Bool)], readsDisk: Bool) -> FileChange {
-        let path = relative(filePath, cwd: cwd)
-        let original = readsDisk ? read(absolute(filePath, cwd: cwd)) : nil
+        let path = Paths.relative(filePath, cwd: cwd)
+        let original = readsDisk ? read(Paths.absolute(filePath, cwd: cwd)) : nil
         // Each edit applies to the result of the one before, as Claude Code does.
         if let original {
             var text = original
@@ -138,14 +138,9 @@ enum DiffBuilder {
         return hunks(ops: ops, a: a, b: b, context: context, cap: cap)
     }
 
-    /// Lines of a text: "" is none, a trailing newline does not add an empty line, "\r" is dropped.
+    /// Lines of a text: "" is none, a trailing line break does not add an empty line; CRLF counts as one break.
     private static func splitLines(_ text: String) -> [String] {
-        guard !text.isEmpty else { return [] }
-        var body = Substring(text)
-        if body.hasSuffix("\n") { body = body.dropLast() }
-        return body.split(separator: "\n", omittingEmptySubsequences: false).map {
-            $0.hasSuffix("\r") ? String($0.dropLast()) : String($0)
-        }
+        text.fileLines.map(String.init)
     }
 
     /// Myers' O(ND) diff on the part between the common prefix and suffix.
@@ -360,27 +355,14 @@ enum DiffBuilder {
         return text.replacingCharacters(in: range, with: new)
     }
 
-    /// The file's text, or nil when missing, a directory, too large, or binary.
+    /// The file's text, or nil when missing, not a regular file, too large, or binary.
+    /// Runs on the main thread for a permission request, so a FIFO or device (which would
+    /// block the read forever) is refused, and the size cap applies to what a symlink points at.
     private static func read(_ path: String) -> String? {
-        var isDirectory: ObjCBool = false
-        guard !path.isEmpty,
-              FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), !isDirectory.boolValue,
-              let attributes = try? FileManager.default.attributesOfItem(atPath: path),
-              let size = (attributes[.size] as? NSNumber)?.intValue, size <= maxFileBytes,
-              let data = FileManager.default.contents(atPath: path)
-        else { return nil }
+        guard !path.isEmpty, let handle = RegularFile.open(path, maxBytes: maxFileBytes) else { return nil }
+        defer { try? handle.close() }
+        guard let data = try? handle.read(upToCount: maxFileBytes) ?? Data() else { return nil }
         if data.prefix(8192).contains(0) { return nil }
         return String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1)
-    }
-
-    private static func absolute(_ path: String, cwd: String) -> String {
-        if path.hasPrefix("/") || cwd.isEmpty { return path }
-        return URL(fileURLWithPath: cwd).appendingPathComponent(path).standardizedFileURL.path
-    }
-
-    private static func relative(_ path: String, cwd: String) -> String {
-        guard !cwd.isEmpty else { return path }
-        let base = cwd.hasSuffix("/") ? cwd : cwd + "/"
-        return path.hasPrefix(base) ? String(path.dropFirst(base.count)) : path
     }
 }

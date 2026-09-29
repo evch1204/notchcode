@@ -2,7 +2,8 @@
 // Adds and removes notchcode's hooks in ~/.claude/settings.json, so the Settings window
 // can connect and disconnect without Node. Same rules as scripts/lib/settings.mjs:
 //
-//   - back up to settings.json.notchcode-backup-<timestamp> before any write
+//   - back up to settings.json.notchcode-backup-<timestamp> before any write; keep the newest 5
+//   - a symlinked settings.json stays a link: the file it points at is rewritten
 //   - add or replace only hook entries whose command contains "notchcode-hook.sh"
 //   - never touch any other entry; an event key is removed only when it ends up empty
 //   - 2-space pretty print, top-level and nested key order kept exactly
@@ -391,10 +392,17 @@ enum HooksInstaller {
         return SettingsFile(root: root, existed: true, trailingNewline: text.hasSuffix("\n"))
     }
 
+    /// Backups kept next to settings.json; older ones we made are deleted. Same in settings.mjs.
+    static let keptBackups = 5
+
     /// Backs up (when the file exists), then writes atomically, keeping the file mode.
+    /// A symlinked settings.json (a dotfiles repo) stays a link: the write, the mode and the
+    /// backup's content come from the file it points at, and the temp file sits in that
+    /// file's folder so the rename replaces the file, not the link.
     private static func writeSettings(_ path: String, _ file: SettingsFile) throws {
         let fm = FileManager.default
         try fm.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+        let target = realPath(path) ?? path
         var mode: Int = 0o600
         if file.existed {
             let f = ISO8601DateFormatter()
@@ -402,21 +410,45 @@ enum HooksInstaller {
             let stamp = f.string(from: Date())
                 .replacingOccurrences(of: ":", with: "-")
                 .replacingOccurrences(of: ".", with: "-")
-            try fm.copyItem(atPath: path, toPath: "\(path).notchcode-backup-\(stamp)")
-            if let m = (try? fm.attributesOfItem(atPath: path))?[.posixPermissions] as? NSNumber {
+            // copyItem copies a symlink as a link; the backup must hold the content.
+            try fm.copyItem(atPath: target, toPath: "\(path).notchcode-backup-\(stamp)")
+            if let m = (try? fm.attributesOfItem(atPath: target))?[.posixPermissions] as? NSNumber {
                 mode = m.intValue & 0o777
             }
+            pruneBackups(path)
         }
         var text = file.root.pretty(indent: 0)
         if file.trailingNewline { text += "\n" }
-        let tmp = "\(path).notchcode-tmp-\(getpid())"
+        let tmp = "\(target).notchcode-tmp-\(getpid())"
         guard fm.createFile(atPath: tmp, contents: Data(text.utf8), attributes: [.posixPermissions: mode]) else {
             throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: tmp])
         }
-        if rename(tmp, path) != 0 {
+        if rename(tmp, target) != 0 {
             let err = errno
             try? fm.removeItem(atPath: tmp)
             throw POSIXError(POSIXErrorCode(rawValue: err) ?? .EIO)
+        }
+    }
+}
+
+extension HooksInstaller {
+    /// The path with every symlink resolved, or nil when it does not exist.
+    fileprivate static func realPath(_ path: String) -> String? {
+        guard let resolved = realpath(path, nil) else { return nil }
+        defer { free(resolved) }
+        return String(cString: resolved)
+    }
+
+    /// Keeps the newest `keptBackups` `<settings>.notchcode-backup-*` (the timestamps sort by
+    /// name); only files with exactly that prefix, which only we make, are deleted.
+    fileprivate static func pruneBackups(_ path: String) {
+        let fm = FileManager.default
+        let dir = (path as NSString).deletingLastPathComponent
+        let prefix = (path as NSString).lastPathComponent + ".notchcode-backup-"
+        guard let names = try? fm.contentsOfDirectory(atPath: dir) else { return }
+        let ours = names.filter { $0.hasPrefix(prefix) }.sorted()
+        for name in ours.dropLast(keptBackups) {
+            try? fm.removeItem(atPath: (dir as NSString).appendingPathComponent(name))
         }
     }
 }

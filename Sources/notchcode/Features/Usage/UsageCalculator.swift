@@ -66,13 +66,13 @@ enum UsageCalculator {
     /// Tokens currently in the context window, approximated as the input side (input + cache
     /// read + cache write) of the session's last assistant message.
     ///
-    /// For turns that `TranscriptReader` parsed, that exact per-message value is looked up by
-    /// the last turn's id. Otherwise it falls back to the last turn's summed input-side
+    /// For turns that `TranscriptReader` parsed, that exact per-message value is on the
+    /// turn (`contextTokens`). Otherwise it falls back to the last turn's summed input-side
     /// tokens, which overstates context when that turn made several API calls.
     /// Nil when there are no turns or the last one has no input-side tokens.
     static func lastContextTokens(turns: [TranscriptTurn]) -> Int? {
         guard let last = turns.last(where: { $0.tokens.total > 0 }) ?? turns.last else { return nil }
-        if let exact = TranscriptReader.lastMessageContextTokens(turnId: last.id) { return exact }
+        if let exact = last.contextTokens { return exact }
         let approx = last.tokens.input + last.tokens.cacheRead + last.tokens.cacheWrite
         return approx > 0 ? approx : nil
     }

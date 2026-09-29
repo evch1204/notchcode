@@ -156,7 +156,7 @@ extension AppState {
         var files = turnFiles[sid] ?? []
         var counts = turnShellCounts[sid] ?? [:]
         for file in changed {
-            let absolute = file.path.hasPrefix("/") ? file.path : UnifiedDiff.absolute(file.path, root: cwd)
+            let absolute = Paths.absolute(file.path, cwd: cwd)
             if !files.contains(absolute) {
                 files.append(absolute)
                 counts[absolute] = (file.added, file.removed)

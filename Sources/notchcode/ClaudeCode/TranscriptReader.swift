@@ -71,12 +71,16 @@ enum TranscriptReader {
         return turns
     }
 
-    /// Exact context size for a turn: input + cache read + cache write of the LAST assistant
-    /// message in that turn, as recorded when the turn was parsed. Nil for turns this reader
-    /// has not parsed.
-    static func lastMessageContextTokens(turnId: String) -> Int? {
-        lastMessageLock.lock(); defer { lastMessageLock.unlock() }
-        return lastMessageContext[turnId]
+    /// Drops everything cached for this transcript and its subagent files, so a session that
+    /// left the list does not keep its parsed turns in memory for the life of the app.
+    static func forget(transcriptPath: String) {
+        let dir = subagentsDirectory(forTranscript: transcriptPath)
+        turnCache.forget(transcriptPath)
+        agentCache.forget(transcriptPath)
+        subagentCache.forget(under: dir + "/")
+        mergedLock.lock(); merged[transcriptPath] = nil; mergedLock.unlock()
+        metaLock.lock(); metaCache[dir] = nil; metaLock.unlock()
+        questionLock.lock(); lastQuestions[transcriptPath] = nil; questionLock.unlock()
     }
 
     /// Sets `endedAt` on every agent still running. The UI calls it when a session ends.
@@ -94,11 +98,7 @@ enum TranscriptReader {
         consume: { $0.consume($1) },
         finish: { builder in
             var copy = builder
-            let turns = copy.finish()
-            var contexts: [String: Int] = [:]
-            for t in turns { if let c = t.lastContext { contexts[t.id] = c } }
-            recordLastMessageContext(contexts)
-            return turns
+            return copy.finish()
         })
 
     private static let subagentCache = IncrementalCache<SubagentBuilder, EditLog>(
@@ -154,9 +154,6 @@ enum TranscriptReader {
             return copy.finish()
         })
 
-    private static let lastMessageLock = NSLock()
-    private static var lastMessageContext: [String: Int] = [:]
-
     private static let questionLock = NSLock()
     private static var lastQuestions: [String: AskedQuestion] = [:]
 
@@ -170,11 +167,6 @@ enum TranscriptReader {
     private static func recordQuestion(_ question: AskedQuestion?, for path: String) {
         questionLock.lock(); defer { questionLock.unlock() }
         lastQuestions[path] = question
-    }
-
-    private static func recordLastMessageContext(_ values: [String: Int]) {
-        lastMessageLock.lock(); defer { lastMessageLock.unlock() }
-        lastMessageContext.merge(values) { _, new in new }
     }
 
     // MARK: Agents
@@ -657,7 +649,7 @@ fileprivate struct EditLog {
         for log in logs {
             for toolId in log.editOrder {
                 guard let e = log.edits[toolId] else { continue }
-                let path = relative(e.path, cwd: raw.cwd)
+                let path = Paths.relative(e.path, cwd: raw.cwd)
                 if var m = merged[path] {
                     m.change.added += e.added
                     m.change.removed += e.removed
@@ -700,14 +692,9 @@ fileprivate struct EditLog {
             assistantSummary: raw.summary,
             files: files,
             tokens: tokens,
-            model: raw.model
+            model: raw.model,
+            contextTokens: raw.lastContext
         )
-    }
-
-    private static func relative(_ path: String, cwd: String?) -> String {
-        guard let cwd, !cwd.isEmpty else { return path }
-        let base = cwd.hasSuffix("/") ? cwd : cwd + "/"
-        return path.hasPrefix(base) ? String(path.dropFirst(base.count)) : path
     }
 
     // MARK: Diff lines
@@ -764,16 +751,14 @@ fileprivate struct EditLog {
     /// A new file as one all-added hunk: `@@ -0,0 +1,N @@`.
     private static func diffLines(newFileContent content: String) -> Diff {
         var diff = Diff()
-        var body = Substring(content)
-        if body.hasSuffix("\n") { body = body.dropLast() }
-        let count = content.isEmpty ? 0 : body.split(separator: "\n", omittingEmptySubsequences: false).count
+        let lines = content.fileLines
+        let count = lines.count
         guard count > 0 else { return diff }
         diff.append(DiffLine(kind: .hunk, text: "@@ -0,0 +1,\(count) @@", oldLine: nil, newLine: nil))
         var n = 1
-        for raw in body.split(separator: "\n", omittingEmptySubsequences: false) {
+        for raw in lines {
             if diff.lines.count > patchLimit { diff.truncated = true; break }
-            let text = raw.hasSuffix("\r") ? String(raw.dropLast()) : String(raw)
-            diff.append(DiffLine(kind: .added, text: text, oldLine: nil, newLine: n))
+            diff.append(DiffLine(kind: .added, text: String(raw), oldLine: nil, newLine: n))
             n += 1
         }
         diff.added = count
@@ -799,12 +784,8 @@ fileprivate struct EditLog {
         return 0
     }
 
-    /// Lines in a string: "" is 0, "a" is 1, "a\nb" is 2, "a\n" is 1.
+    /// Lines in a string: "" is 0, "a" is 1, "a\nb" is 2, "a\n" is 1; CRLF is one break.
     private static func lineCount(_ s: String?) -> Int {
-        guard let s, !s.isEmpty else { return 0 }
-        var n = 1
-        for scalar in s.unicodeScalars where scalar == "\n" { n += 1 }
-        if s.hasSuffix("\n") { n -= 1 }
-        return n
+        s?.fileLines.count ?? 0
     }
 }

@@ -952,6 +952,8 @@ enum Theme {
         /// A read command (status, diff, log) or a push is stopped after this long.
         static let gitReadTimeout: Double = 10
         static let gitPushTimeout: Double = 90
+        /// After a timed-out git is sent SIGTERM, this long before SIGKILL.
+        static let gitKillGrace: Double = 2
     }
 
     // MARK: - Limits (counts)

@@ -55,6 +55,9 @@ struct GitSnapshot: Equatable {
     var upstream: String?
     /// The remote a push goes to: the upstream's, else origin, else the first. Nil: no remote.
     var remote: String?
+    /// The branch on `remote` the upstream tracks ("seadevil" for refs/heads/seadevil). Nil
+    /// without an upstream, or when git's config did not name one.
+    var upstreamBranch: String?
     var ahead = 0
     var behind = 0
     /// Commits a push would send: `ahead`, or for an unpublished branch the commits on no remote.
@@ -303,11 +306,12 @@ extension AppState {
         return "up to date with " + remote
     }
 
-    /// "Push 3 commits to origin/seadevil?" or "Publish seadevil to origin?".
+    /// "Push 3 commits to origin/seadevil?" or "Publish seadevil to origin?". Names exactly
+    /// the remote and branch `runGitPush` passes to git.
     var gitConfirmText: String {
         guard let snap = focusedGit, let branch = snap.branch, let remote = snap.remote else { return "" }
-        if let upstream = snap.upstream {
-            return "Push " + Self.commits(snap.ahead) + " to " + upstream + "?"
+        if snap.upstream != nil {
+            return "Push " + Self.commits(snap.ahead) + " to " + Self.pushDestination(snap) + "?"
         }
         return "Publish " + branch + " to " + remote + "?"
     }
@@ -315,7 +319,13 @@ extension AppState {
     /// Where a running push goes, for "Pushing to origin/seadevil…".
     var gitPushTarget: String {
         guard let snap = focusedGit else { return "" }
-        return snap.upstream ?? snap.remote ?? ""
+        return snap.upstream != nil ? Self.pushDestination(snap) : snap.remote ?? ""
+    }
+
+    /// "origin/seadevil": the remote and its branch a push to the upstream updates.
+    nonisolated static func pushDestination(_ snap: GitSnapshot) -> String {
+        guard let remote = snap.remote, let branch = snap.upstreamBranch ?? snap.branch else { return snap.upstream ?? "" }
+        return remote + "/" + branch
     }
 
     nonisolated static func commits(_ count: Int) -> String {
@@ -400,8 +410,8 @@ extension AppState {
         Task.detached(priority: .userInitiated) { [weak self] in
             let snapshot: GitSnapshot
             switch target {
-            case .folder(let cwd): snapshot = GitRunner.read(cwd: cwd)
-            case .branch(let repo, let name): snapshot = GitRunner.readBranch(repo: repo, name: name, key: key)
+            case .folder(let cwd): snapshot = await GitRunner.read(cwd: cwd)
+            case .branch(let repo, let name): snapshot = await GitRunner.readBranch(repo: repo, name: name, key: key)
             }
             await self?.applyGit(snapshot)
         }
@@ -693,7 +703,7 @@ extension AppState {
         }
         updateGit { $0.listing = true }
         Task.detached(priority: .userInitiated) { [weak self] in
-            let listing = GitRunner.listBranches(cwds: cwds)
+            let listing = await GitRunner.listBranches(cwds: cwds)
             await self?.applyGitWorktrees(listing.repos, rootByCwd: listing.rootByCwd)
         }
     }
@@ -761,23 +771,27 @@ extension AppState {
         return true
     }
 
-    /// ⏎ on the confirm: `git push`, or `git push -u <remote> <branch>` for an unpublished
-    /// branch. A branch checked out nowhere names itself: `git push <remote> <branch>`.
+    /// ⏎ on the confirm: `git push -- <remote> <src>:refs/heads/<upstream branch>`, or
+    /// `git push -u -- <remote> refs/heads/<b>:refs/heads/<b>` for an unpublished branch.
+    /// Full refs on both sides: a plain `git push` follows push.default and pushRemote (it can
+    /// go elsewhere, or push several branches), and a bare name is ambiguous with a tag.
     func runGitPush() {
         guard gitPhase == .confirming, gitCanPush, let cwd = gitCwd, let snap = focusedGit,
               let branch = snap.branch, let remote = snap.remote else { return }
         let publishing = snap.upstream == nil
+        let local = "refs/heads/" + branch
         let args: [String]
         if publishing {
-            args = ["push", "-u", remote, branch]
+            args = ["push", "-u", "--", remote, local + ":" + local]
         } else {
-            args = snap.checkedOut ? ["push"] : ["push", remote, branch]
+            let source = snap.checkedOut ? "HEAD" : local
+            args = ["push", "--", remote, source + ":refs/heads/" + (snap.upstreamBranch ?? branch)]
         }
         let count = snap.unpushed
         updateGit { $0.phase = .pushing }
         debugLog("git push in \(snap.root): \(args.joined(separator: " "))")
         Task.detached(priority: .userInitiated) { [weak self] in
-            let result = GitRunner.run(args, cwd: snap.root, timeout: Theme.Timing.gitPushTimeout)
+            let result = await GitRunner.run(args, cwd: snap.root, timeout: Theme.Timing.gitPushTimeout)
             let message: String
             if result.status == 0 {
                 message = publishing

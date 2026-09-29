@@ -202,9 +202,8 @@ enum RepoFiles {
         let empty = FilePreview(path: relativePath, lines: [], truncated: false, isBinary: false)
         let root = normalized(cwd)
         let absolute = URL(fileURLWithPath: root).appendingPathComponent(relativePath).standardizedFileURL.path
-        guard absolute.hasPrefix(root + "/"), !isRealDirectory(absolute),
-              let handle = FileHandle(forReadingAtPath: absolute)
-        else { return empty }
+        // Regular files only: a FIFO or device in the tree would block the read forever.
+        guard absolute.hasPrefix(root + "/"), let handle = RegularFile.open(absolute) else { return empty }
         defer { try? handle.close() }
         guard var data = try? handle.read(upToCount: maxPreviewBytes + 1) else { return empty }
 
@@ -221,13 +220,9 @@ enum RepoFiles {
         let text = decode(data)
         var lines: [String] = []
         lines.reserveCapacity(min(maxLines, 1024))
-        var body = Substring(text)
-        if body.hasSuffix("\n") { body = body.dropLast() }
-        if !body.isEmpty {
-            for raw in body.split(separator: "\n", omittingEmptySubsequences: false) {
-                if lines.count >= maxLines { truncated = true; break }
-                lines.append(raw.hasSuffix("\r") ? String(raw.dropLast()) : String(raw))
-            }
+        for raw in text.fileLines {
+            if lines.count >= maxLines { truncated = true; break }
+            lines.append(String(raw))
         }
         return FilePreview(path: relativePath, lines: lines, truncated: truncated, isBinary: false)
     }
@@ -241,6 +236,18 @@ enum RepoFiles {
     }
 
     // MARK: Helpers
+
+    /// Drops the tree and .gitignore cached for this folder, when no session uses it any more.
+    static func forget(root cwd: String) {
+        let root = normalized(cwd)
+        treeLock.lock(); treeCache[root] = nil; treeLock.unlock()
+        rulesLock.lock(); rulesCache[root] = nil; rulesLock.unlock()
+    }
+
+    /// True when both folders key the same cache entry.
+    static func sameRoot(_ a: String, _ b: String) -> Bool {
+        normalized(a) == normalized(b)
+    }
 
     private static func normalized(_ cwd: String) -> String {
         var p = URL(fileURLWithPath: cwd).standardizedFileURL.path

@@ -72,7 +72,8 @@ enum UnifiedDiff {
             current!.lines.append(line)
         }
 
-        for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+        // Git's lines end at "\n"; a CRLF file's "\r" is part of the break, not the text.
+        for line in text.splitLines(breaksOnLoneCR: false) {
             if line.hasPrefix("diff --git ") {
                 finish()
                 current = FileDiff(path: headerPath(line.dropFirst("diff --git ".count)),
@@ -180,28 +181,24 @@ enum UnifiedDiff {
         for path in new.order {
             guard let now = new.files[path] else { continue }
             if let was = old.files[path], was.sameContent(as: now) { continue }
-            out.append(change(path: absolute(path, root: new.root), cwd: cwd,
+            out.append(change(path: Paths.absolute(path, cwd: new.root), cwd: cwd,
                               added: now.added, removed: now.removed, lines: now.lines, truncated: now.truncated))
         }
         guard old.root == new.root, old.head == new.head else { return out }
         for path in old.order where new.files[path] == nil {
             guard let was = old.files[path] else { continue }
             // Back to HEAD: the reverse of the diff it had.
-            out.append(change(path: absolute(path, root: new.root), cwd: cwd,
+            out.append(change(path: Paths.absolute(path, cwd: new.root), cwd: cwd,
                               added: was.removed, removed: was.added, lines: was.lines.map(reversed), truncated: was.truncated))
         }
         return out
-    }
-
-    static func absolute(_ path: String, root: String) -> String {
-        path.hasPrefix("/") || root.isEmpty ? path : (root.hasSuffix("/") ? root : root + "/") + path
     }
 
     // MARK: - Internals
 
     private static func change(path: String, cwd: String, added: Int, removed: Int,
                                lines: [DiffLine], truncated: Bool) -> FileChange {
-        var file = FileChange(path: relative(path, cwd: cwd), added: added, removed: removed, kind: "shell")
+        var file = FileChange(path: Paths.relative(path, cwd: cwd), added: added, removed: removed, kind: "shell")
         file.patch = lines
         file.patchTruncated = truncated
         file.snippet = Array(lines.prefix(DiffBuilder.snippetLimit))
@@ -218,12 +215,6 @@ enum UnifiedDiff {
             return DiffLine(kind: .hunk, text: "@@ -\(h.newStart),\(h.newCount) +\(h.oldStart),\(h.oldCount) @@",
                             oldLine: nil, newLine: nil)
         }
-    }
-
-    private static func relative(_ path: String, cwd: String) -> String {
-        guard !cwd.isEmpty else { return path }
-        let base = cwd.hasSuffix("/") ? cwd : cwd + "/"
-        return path.hasPrefix(base) ? String(path.dropFirst(base.count)) : path
     }
 
     /// "@@ -a,b +c,d @@ context" -> the four numbers; a missing count is 1.

@@ -5,7 +5,7 @@
 
 import Foundation
 
-/// `/usr/bin/git -C <dir>`, synchronously; call it off the main thread. Output goes to
+/// `/usr/bin/git -C <dir>`, awaited without holding a thread. Output goes to
 /// temporary files rather than pipes, so a large diff never fills a pipe and an ssh helper
 /// that outlives git (ControlPersist) never holds the read open.
 enum GitRunner {
@@ -16,7 +16,7 @@ enum GitRunner {
         var timedOut = false
     }
 
-    static func run(_ args: [String], cwd: String, timeout: Double = Theme.Timing.gitReadTimeout) -> Result {
+    static func run(_ args: [String], cwd: String, timeout: Double = Theme.Timing.gitReadTimeout) async -> Result {
         let fm = FileManager.default
         let base = fm.temporaryDirectory.appendingPathComponent("notchcode-git-" + UUID().uuidString)
         let outURL = base.appendingPathExtension("out")
@@ -45,23 +45,33 @@ enum GitRunner {
         process.standardOutput = outHandle
         process.standardError = errHandle
 
-        let done = DispatchSemaphore(value: 0)
-        process.terminationHandler = { _ in done.signal() }
-        do {
-            try process.run()
-        } catch {
-            try? outHandle.close()
-            try? errHandle.close()
-            return Result(status: -1, out: "", err: "could not run git")
-        }
-        var timedOut = false
-        if done.wait(timeout: .now() + timeout) == .timedOut {
-            timedOut = true
-            process.terminate()
-            _ = done.wait(timeout: .now() + 1)
+        // Awaits the exit instead of blocking a thread: a semaphore wait here would hold one
+        // of Swift's few cooperative threads for up to the whole timeout.
+        let timedOut = TimeoutFlag()
+        let started: Bool = await withCheckedContinuation { continuation in
+            let once = ResumeOnce(continuation)
+            process.terminationHandler = { _ in once.resume(true) }
+            do {
+                try process.run()
+            } catch {
+                once.resume(false)
+                return
+            }
+            // Past the timeout: SIGTERM, then SIGKILL after a grace, so an ssh or credential
+            // helper that ignores SIGTERM cannot keep git (and this call) alive.
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout) {
+                guard process.isRunning else { return }
+                timedOut.set()
+                process.terminate()
+                DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + Theme.Timing.gitKillGrace) {
+                    if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+                    once.resume(true)
+                }
+            }
         }
         try? outHandle.close()
         try? errHandle.close()
+        guard started else { return Result(status: -1, out: "", err: "could not run git") }
 
         func text(_ url: URL) -> String {
             guard let handle = try? FileHandle(forReadingFrom: url) else { return "" }
@@ -70,7 +80,29 @@ enum GitRunner {
             return data.map { String(decoding: $0, as: UTF8.self) } ?? ""
         }
         let status = process.isRunning ? -1 : process.terminationStatus
-        return Result(status: timedOut ? -1 : status, out: text(outURL), err: text(errURL), timedOut: timedOut)
+        let wasTimedOut = timedOut.isSet
+        return Result(status: wasTimedOut ? -1 : status, out: text(outURL), err: text(errURL), timedOut: wasTimedOut)
+    }
+
+    /// Resumes a continuation once, whichever of exit or timeout comes first.
+    private final class ResumeOnce: @unchecked Sendable {
+        private let lock = NSLock()
+        private var continuation: CheckedContinuation<Bool, Never>?
+        init(_ continuation: CheckedContinuation<Bool, Never>) { self.continuation = continuation }
+        func resume(_ value: Bool) {
+            lock.lock()
+            let c = continuation
+            continuation = nil
+            lock.unlock()
+            c?.resume(returning: value)
+        }
+    }
+
+    private final class TimeoutFlag: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value = false
+        func set() { lock.lock(); value = true; lock.unlock() }
+        var isSet: Bool { lock.lock(); defer { lock.unlock() }; return value }
     }
 
     private static func trimmed(_ text: String) -> String {
@@ -82,26 +114,26 @@ enum GitRunner {
     }
 
     /// Everything the tool shows about `cwd`'s worktree.
-    static func read(cwd: String) -> GitSnapshot {
-        let top = run(["rev-parse", "--show-toplevel"], cwd: cwd)
+    static func read(cwd: String) async -> GitSnapshot {
+        let top = await run(["rev-parse", "--show-toplevel"], cwd: cwd)
         let root = trimmed(top.out)
         guard top.status == 0, !root.isEmpty else { return GitSnapshot(cwd: cwd, isRepo: false) }
         var snap = GitSnapshot(cwd: cwd, isRepo: true, root: root)
-        let common = run(["rev-parse", "--path-format=absolute", "--git-common-dir"], cwd: root)
+        let common = await run(["rev-parse", "--path-format=absolute", "--git-common-dir"], cwd: root)
         if common.status == 0 { snap.repoName = GitDir.repoName(commonDir: trimmed(common.out)) }
 
-        let head = run(["rev-parse", "--abbrev-ref", "HEAD"], cwd: root)
+        let head = await run(["rev-parse", "--abbrev-ref", "HEAD"], cwd: root)
         if head.status == 0 {
             let name = trimmed(head.out)
             snap.branch = name == "HEAD" || name.isEmpty ? nil : name
         } else {
             // No commit yet: the branch still has a name.
-            let unborn = run(["symbolic-ref", "--short", "HEAD"], cwd: root)
+            let unborn = await run(["symbolic-ref", "--short", "HEAD"], cwd: root)
             if unborn.status == 0, !trimmed(unborn.out).isEmpty { snap.branch = trimmed(unborn.out) }
         }
 
-        let remotes = lines(run(["remote"], cwd: root).out)
-        let upstream = run(["rev-parse", "--abbrev-ref", "@{u}"], cwd: root)
+        let remotes = lines(await run(["remote"], cwd: root).out)
+        let upstream = await run(["rev-parse", "--abbrev-ref", "@{u}"], cwd: root)
         if upstream.status == 0, !trimmed(upstream.out).isEmpty {
             snap.upstream = trimmed(upstream.out)
         }
@@ -110,10 +142,11 @@ enum GitRunner {
         } else {
             snap.remote = remotes.contains("origin") ? "origin" : remotes.first
         }
+        if snap.upstream != nil, let branch = snap.branch { await resolvePushTarget(&snap, branch: branch, root: root) }
 
         if snap.upstream != nil {
             // "<behind>\t<ahead>": left is the upstream, right is HEAD.
-            let counts = trimmed(run(["rev-list", "--left-right", "--count", "@{u}...HEAD"], cwd: root).out)
+            let counts = trimmed(await run(["rev-list", "--left-right", "--count", "@{u}...HEAD"], cwd: root).out)
                 .split(whereSeparator: { $0 == "\t" || $0 == " " })
             if counts.count == 2 {
                 snap.behind = Int(counts[0]) ?? 0
@@ -124,17 +157,17 @@ enum GitRunner {
             let args = remotes.isEmpty
                 ? ["rev-list", "--count", "HEAD"]
                 : ["rev-list", "--count", "HEAD", "--not", "--remotes"]
-            snap.unpushed = Int(trimmed(run(args, cwd: root).out)) ?? 0
+            snap.unpushed = Int(trimmed(await run(args, cwd: root).out)) ?? 0
         }
 
         // Uncommitted files: the same commands the hook's tree report runs.
-        let status = run(["status", "--porcelain=v1", "--untracked-files=all"], cwd: root)
+        let status = await run(["status", "--porcelain=v1", "--untracked-files=all"], cwd: root)
         let entries = UnifiedDiff.status(status.out.split(separator: "\n").map(String.init))
-        var diffText = run(["diff", "HEAD", "--no-color", "--no-ext-diff", "--no-renames",
+        var diffText = await run(["diff", "HEAD", "--no-color", "--no-ext-diff", "--no-renames",
                             "--src-prefix=a/", "--dst-prefix=b/"], cwd: root).out
         for entry in entries.filter({ $0.code == "??" }).prefix(Theme.Limits.gitUntrackedDiffs) {
             // Exit 1 means "they differ", which is the point.
-            let new = run(["diff", "--no-index", "--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/",
+            let new = await run(["diff", "--no-index", "--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/",
                            "--", "/dev/null", entry.path], cwd: root)
             if !diffText.isEmpty, !diffText.hasSuffix("\n") { diffText += "\n" }
             diffText += new.out
@@ -153,14 +186,14 @@ enum GitRunner {
             snap.files.append(file)
         }
         for file in snap.files.prefix(Theme.Limits.gitLineCountFiles) where file.kind != "deleted" {
-            let url = URL(fileURLWithPath: root).appendingPathComponent(file.path)
-            guard let handle = try? FileHandle(forReadingFrom: url) else { continue }
+            // Regular files only: an untracked FIFO would block the read forever.
+            guard let handle = RegularFile.open(root + "/" + file.path) else { continue }
             let data = (try? handle.read(upToCount: Theme.Limits.gitOutputBytes)) ?? nil
             try? handle.close()
             if let data { snap.lineCounts[file.path] = lineCount(data) }
         }
 
-        let log = run(["log", "-\(Theme.Limits.gitRecentCommits)", "--format=%h%x1f%s%x1f%ct"], cwd: root)
+        let log = await run(["log", "-\(Theme.Limits.gitRecentCommits)", "--format=%h%x1f%s%x1f%ct"], cwd: root)
         if log.status == 0 {
             for (index, line) in lines(log.out).enumerated() {
                 let parts = line.split(separator: "\u{1f}", omittingEmptySubsequences: false).map(String.init)
@@ -174,6 +207,18 @@ enum GitRunner {
             }
         }
         return snap
+    }
+
+    /// The upstream as git's config names it (`branch.<b>.remote` and `.merge`), so the push
+    /// can name the exact remote and branch the confirm shows: `upstream` alone is the
+    /// remote-tracking ref, which a custom fetch refspec can name differently.
+    private static func resolvePushTarget(_ snap: inout GitSnapshot, branch: String, root: String) async {
+        let ref = await run(["for-each-ref", "--format=%(upstream:remotename)%1f%(upstream:remoteref)",
+                             "refs/heads/" + branch], cwd: root)
+        let parts = trimmed(ref.out).split(separator: "\u{1f}", omittingEmptySubsequences: false).map(String.init)
+        guard ref.status == 0, parts.count == 2, !parts[0].isEmpty, parts[1].hasPrefix("refs/heads/") else { return }
+        snap.remote = parts[0]
+        snap.upstreamBranch = String(parts[1].dropFirst("refs/heads/".count))
     }
 
     /// "new" for an untracked or added file, "deleted", else "edit"; the diff pane's badge
@@ -192,9 +237,9 @@ enum GitRunner {
     }
 
     /// "main" when the repository has it, else "master", else nil.
-    private static func defaultBranch(root: String) -> String? {
-        for name in ["main", "master"] where run(["show-ref", "--verify", "--quiet", "refs/heads/" + name], cwd: root).status == 0 {
-            return name
+    private static func defaultBranch(root: String) async -> String? {
+        for name in ["main", "master"] {
+            if await run(["show-ref", "--verify", "--quiet", "refs/heads/" + name], cwd: root).status == 0 { return name }
         }
         return nil
     }
@@ -202,28 +247,29 @@ enum GitRunner {
     /// A branch checked out nowhere, read from the repository's main folder: its changes
     /// against its upstream (else the default branch) with `git diff base...branch`, the
     /// commits `base..branch`, and what a push would send. Nothing is checked out.
-    static func readBranch(repo: String, name: String, key: String) -> GitSnapshot {
+    static func readBranch(repo: String, name: String, key: String) async -> GitSnapshot {
         let ref = "refs/heads/" + name
-        guard run(["show-ref", "--verify", "--quiet", ref], cwd: repo).status == 0 else {
+        guard await run(["show-ref", "--verify", "--quiet", ref], cwd: repo).status == 0 else {
             return GitSnapshot(cwd: key, isRepo: false)
         }
         var snap = GitSnapshot(cwd: key, isRepo: true, root: repo)
         snap.checkedOut = false
         snap.branch = name
-        let common = run(["rev-parse", "--path-format=absolute", "--git-common-dir"], cwd: repo)
+        let common = await run(["rev-parse", "--path-format=absolute", "--git-common-dir"], cwd: repo)
         if common.status == 0 { snap.repoName = GitDir.repoName(commonDir: trimmed(common.out)) }
 
-        let remotes = lines(run(["remote"], cwd: repo).out)
-        let upstream = run(["rev-parse", "--abbrev-ref", name + "@{u}"], cwd: repo)
+        let remotes = lines(await run(["remote"], cwd: repo).out)
+        let upstream = await run(["rev-parse", "--abbrev-ref", name + "@{u}"], cwd: repo)
         if upstream.status == 0, !trimmed(upstream.out).isEmpty { snap.upstream = trimmed(upstream.out) }
         if let up = snap.upstream, let owner = remotes.first(where: { up.hasPrefix($0 + "/") }) {
             snap.remote = owner
         } else {
             snap.remote = remotes.contains("origin") ? "origin" : remotes.first
         }
+        if snap.upstream != nil { await resolvePushTarget(&snap, branch: name, root: repo) }
 
         if let up = snap.upstream {
-            let counts = trimmed(run(["rev-list", "--left-right", "--count", up + "..." + ref], cwd: repo).out)
+            let counts = trimmed(await run(["rev-list", "--left-right", "--count", up + "..." + ref], cwd: repo).out)
                 .split(whereSeparator: { $0 == "\t" || $0 == " " })
             if counts.count == 2 {
                 snap.behind = Int(counts[0]) ?? 0
@@ -235,19 +281,19 @@ enum GitRunner {
             let args = remotes.isEmpty
                 ? ["rev-list", "--count", ref]
                 : ["rev-list", "--count", ref, "--not", "--remotes"]
-            snap.unpushed = Int(trimmed(run(args, cwd: repo).out)) ?? 0
-            if let main = defaultBranch(root: repo), main != name { snap.base = main }
+            snap.unpushed = Int(trimmed(await run(args, cwd: repo).out)) ?? 0
+            if let main = await defaultBranch(root: repo), main != name { snap.base = main }
         }
 
         guard let base = snap.base else { return snap }
-        snap.baseAhead = Int(trimmed(run(["rev-list", "--count", base + ".." + ref], cwd: repo).out)) ?? 0
+        snap.baseAhead = Int(trimmed(await run(["rev-list", "--count", base + ".." + ref], cwd: repo).out)) ?? 0
 
         // Changes vs the base: the list and counts from --numstat, the kinds from
         // --name-status, the lines from -p (the hook's flags, so one parser reads them).
         let range = base + "..." + ref
-        let numstat = run(["diff", "--numstat", "--no-renames", range], cwd: repo)
-        let names = run(["diff", "--name-status", "--no-renames", range], cwd: repo)
-        let patch = run(["diff", "-p", "--no-color", "--no-ext-diff", "--no-renames",
+        let numstat = await run(["diff", "--numstat", "--no-renames", range], cwd: repo)
+        let names = await run(["diff", "--name-status", "--no-renames", range], cwd: repo)
+        let patch = await run(["diff", "-p", "--no-color", "--no-ext-diff", "--no-renames",
                          "--src-prefix=a/", "--dst-prefix=b/", range], cwd: repo)
         var kinds: [String: String] = [:]
         for line in lines(names.out) {
@@ -270,11 +316,11 @@ enum GitRunner {
             snap.files.append(file)
         }
         for file in snap.files.prefix(Theme.Limits.gitLineCountFiles) where file.kind != "deleted" {
-            let blob = run(["cat-file", "blob", ref + ":" + file.path], cwd: repo)
+            let blob = await run(["cat-file", "blob", ref + ":" + file.path], cwd: repo)
             if blob.status == 0 { snap.lineCounts[file.path] = lineCount(Data(blob.out.utf8)) }
         }
 
-        let log = run(["log", "-\(Theme.Limits.gitRecentCommits)", "--format=%h%x1f%s%x1f%ct", base + ".." + ref], cwd: repo)
+        let log = await run(["log", "-\(Theme.Limits.gitRecentCommits)", "--format=%h%x1f%s%x1f%ct", base + ".." + ref], cwd: repo)
         if log.status == 0 {
             for (index, line) in lines(log.out).enumerated() {
                 let parts = line.split(separator: "\u{1f}", omittingEmptySubsequences: false).map(String.init)
@@ -296,17 +342,17 @@ enum GitRunner {
     /// (main checkout, a worktree, or nowhere), with its uncommitted files (checkouts only)
     /// and the commits it is ahead of its upstream, or of the default branch without one.
     /// Repositories in the order the folders come, each listed once.
-    static func listBranches(cwds: [String]) -> (repos: [GitRepoGroup], rootByCwd: [String: String]) {
+    static func listBranches(cwds: [String]) async -> (repos: [GitRepoGroup], rootByCwd: [String: String]) {
         var repos: [GitRepoGroup] = []
         var rootByCwd: [String: String] = [:]
         var seenRoots = Set<String>()
         for cwd in cwds {
-            let top = run(["rev-parse", "--show-toplevel"], cwd: cwd)
+            let top = await run(["rev-parse", "--show-toplevel"], cwd: cwd)
             let root = trimmed(top.out)
             guard top.status == 0, !root.isEmpty else { continue }
             rootByCwd[cwd] = root
             if seenRoots.contains(root) { continue }
-            let list = run(["worktree", "list", "--porcelain"], cwd: root)
+            let list = await run(["worktree", "list", "--porcelain"], cwd: root)
             guard list.status == 0 else { continue }
             let entries = worktreeEntries(list.out)
             guard let main = entries.first else { continue }
@@ -326,9 +372,9 @@ enum GitRunner {
                 guard let branch = entry.branch, FileManager.default.fileExists(atPath: entry.path) else { continue }
                 checkouts[branch] = index == 0 ? .main(entry.path) : .worktree(entry.path)
             }
-            let defaultName = defaultBranch(root: root)
+            let defaultName = await defaultBranch(root: root)
 
-            let refs = run(["for-each-ref", "--sort=-committerdate",
+            let refs = await run(["for-each-ref", "--sort=-committerdate",
                             "--format=%(refname:short)%1f%(upstream:short)%1f%(committerdate:unix)", "refs/heads"], cwd: root)
             var branches: [GitBranch] = []
             for (index, line) in lines(refs.out).enumerated() {
@@ -343,7 +389,7 @@ enum GitRunner {
                     place: place
                 )
                 if let path = branch.path {
-                    let status = run(["status", "--porcelain=v1", "--untracked-files=all"], cwd: path)
+                    let status = await run(["status", "--porcelain=v1", "--untracked-files=all"], cwd: path)
                     branch.uncommitted = status.status == 0 ? lines(status.out).count : nil
                 }
                 let ref = "refs/heads/" + branch.name
@@ -356,7 +402,7 @@ enum GitRunner {
                     base = nil
                 }
                 if let base {
-                    let count = run(["rev-list", "--count", base + ".." + ref], cwd: root)
+                    let count = await run(["rev-list", "--count", base + ".." + ref], cwd: root)
                     branch.ahead = count.status == 0 ? Int(trimmed(count.out)) : nil
                 }
                 branches.append(branch)

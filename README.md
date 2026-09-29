@@ -155,7 +155,7 @@ It is the sibling of [sidecar-pane](https://github.com/evch1204/sidecar-pane), w
 
 ### What it touches
 
-The app never edits your project and makes no network requests of its own. The one command it runs is `git`, for the Git tool: read-only commands to show the worktree, and `git push` only when you press Push and confirm. The only file it writes outside its own folder is `~/.claude/settings.json`. It adds or removes only its own entries there, after a backup named `settings.json.notchcode-backup-<time>`, and only when you press Connect or Disconnect.
+The app never edits your project and makes no network requests of its own. The one command it runs is `git`, for the Git tool: read-only commands to show the worktree, and `git push` only when you press Push and confirm. The only file it writes outside its own folder is `~/.claude/settings.json`. It adds or removes only its own entries there, after a backup named `settings.json.notchcode-backup-<time>` (the newest five are kept), and only when you press Connect or Disconnect.
 
 ## Settings
 

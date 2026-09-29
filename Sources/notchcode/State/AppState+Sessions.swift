@@ -87,7 +87,13 @@ extension AppState {
 
     /// Drops a session and everything kept for it.
     private func forgetSession(_ sid: String) {
+        let gone = session(id: sid)
         sessions.removeAll { $0.id == sid }
+        // The reader's and the file tree's caches live for the app's life otherwise.
+        if let path = gone?.transcriptPath { TranscriptReader.forget(transcriptPath: path) }
+        if let cwd = gone?.cwd, !cwd.isEmpty, !sessions.contains(where: { RepoFiles.sameRoot($0.cwd, cwd) }) {
+            RepoFiles.forget(root: cwd)
+        }
         turnsBySession[sid] = nil
         turnStarts[sid] = nil
         turnTitles[sid] = nil

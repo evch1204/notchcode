@@ -265,6 +265,9 @@ struct TranscriptTurn: Identifiable, Equatable {
     var files: [FileChange]
     var tokens: TokenUsage
     var model: String?
+    /// Input + cache read + cache write of the turn's last main-thread assistant message:
+    /// the context size after it. Nil when the transcript did not say (demo turns).
+    var contextTokens: Int? = nil
 }
 
 /// A session found by reading `~/.claude/projects` directly, with no hook involved.

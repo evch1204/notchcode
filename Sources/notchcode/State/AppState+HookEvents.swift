@@ -273,7 +273,7 @@ extension AppState {
             added = counts.added
             removed = counts.removed
         } else if tool == "Write", let content = input?["content"]?.stringValue {
-            added = content.split(separator: "\n", omittingEmptySubsequences: false).count
+            added = content.fileLines.count
             removed = 0
         }
 

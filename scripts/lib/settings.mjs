@@ -94,22 +94,42 @@ export function readSettings(file) {
   return { data, existed: true, trailingNewline: text.endsWith("\n") || text.trim() === "" };
 }
 
-/** Backs up (if the file exists) then writes atomically, keeping 2-space indentation and file mode. */
+/** Backups kept next to settings.json; older ones we made are deleted. Same in HooksInstaller.swift. */
+export const KEPT_BACKUPS = 5;
+
+/**
+ * Backs up (if the file exists) then writes atomically, keeping 2-space indentation and file mode.
+ * A symlinked settings.json (a dotfiles repo) stays a link: the write goes to the file it points
+ * at, with the temp file in that file's folder so the rename stays on one volume.
+ */
 export function writeSettings(file, data, { existed, trailingNewline }) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
+  let target = file;
+  try { target = fs.realpathSync(file); } catch { /* not there yet: write it where asked */ }
   let backup = null;
   let mode = 0o600;
   if (existed) {
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     backup = `${file}.notchcode-backup-${stamp}`;
-    fs.copyFileSync(file, backup);
-    mode = fs.statSync(file).mode & 0o777;
+    fs.copyFileSync(target, backup);
+    mode = fs.statSync(target).mode & 0o777;
+    pruneBackups(file);
   }
   const text = JSON.stringify(data, null, 2) + (trailingNewline ? "\n" : "");
-  const tmp = `${file}.notchcode-tmp-${process.pid}`;
+  const tmp = `${target}.notchcode-tmp-${process.pid}`;
   fs.writeFileSync(tmp, text, { mode });
-  fs.renameSync(tmp, file);
+  fs.renameSync(tmp, target);
   return backup;
+}
+
+/** Keeps the newest KEPT_BACKUPS `<file>.notchcode-backup-*` (the timestamps sort by name). */
+function pruneBackups(file) {
+  const prefix = `${path.basename(file)}.notchcode-backup-`;
+  let names = [];
+  try { names = fs.readdirSync(path.dirname(file)).filter((n) => n.startsWith(prefix)).sort(); } catch { return; }
+  for (const name of names.slice(0, Math.max(0, names.length - KEPT_BACKUPS))) {
+    try { fs.unlinkSync(path.join(path.dirname(file), name)); } catch { /* keep going */ }
+  }
 }
 
 export function isOurs(hook) {

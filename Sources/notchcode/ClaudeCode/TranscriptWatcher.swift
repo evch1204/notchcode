@@ -96,6 +96,10 @@ final class TranscriptWatcher {
         var lastPrompt: String?
         var fallbackCWD: String?        // a cwd seen in the tail, for heads that have none
         var permissionMode: String?     // the last one written, raw
+        // The whole file was already searched for a prompt / a mode (this inode): a file
+        // with none is not re-read in full on every change.
+        var scannedWholeForPrompt = false
+        var scannedWholeForMode = false
     }
 
     private func poll() {
@@ -128,7 +132,11 @@ final class TranscriptWatcher {
                 permissionMode: info.permissionMode,
                 isHeadless: info.head.entrypoint == Self.headlessEntrypoint))
         }
-        for path in files.keys where !seen.contains(path) { files[path] = nil }
+        for path in files.keys where !seen.contains(path) {
+            files[path] = nil
+            // Past the lookback or deleted: the reader's caches for it go too.
+            TranscriptReader.forget(transcriptPath: path)
+        }
 
         sessions.sort { a, b in
             a.lastActivityAt != b.lastActivityAt ? a.lastActivityAt > b.lastActivityAt : a.id < b.id
@@ -186,12 +194,17 @@ final class TranscriptWatcher {
             tail.consume(last)
         }
 
+        // A new inode starts over; the same file keeps what it already searched.
+        var scannedForPrompt = sameFile && previous!.scannedWholeForPrompt
+        var scannedForMode = sameFile && previous!.scannedWholeForMode
+
         var lastPrompt = tail.lastPrompt
         if lastPrompt == nil {
             if sameFile, let old = previous?.lastPrompt {
                 lastPrompt = old                     // no new prompt since the last pass
-            } else if offset > 0 {
+            } else if offset > 0, !scannedForPrompt {
                 lastPrompt = Self.lastPromptInWholeFile(path)   // once, for a large file
+                scannedForPrompt = true
             }
         }
 
@@ -199,8 +212,9 @@ final class TranscriptWatcher {
         if mode == nil {
             if sameFile, let old = previous?.permissionMode {
                 mode = old                           // no mode written since the last pass
-            } else if offset > 0 {
+            } else if offset > 0, !scannedForMode {
                 mode = Self.permissionModeInWholeFile(path)
+                scannedForMode = true
             }
         }
 
@@ -209,7 +223,9 @@ final class TranscriptWatcher {
                         last: tail.last,
                         lastPrompt: lastPrompt,
                         fallbackCWD: tail.cwd ?? previous?.fallbackCWD,
-                        permissionMode: mode)
+                        permissionMode: mode,
+                        scannedWholeForPrompt: scannedForPrompt,
+                        scannedWholeForMode: scannedForMode)
     }
 
     private func readHead(path: String, into head: Head) -> Head {
