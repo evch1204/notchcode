@@ -361,6 +361,8 @@ enum Theme {
         static let gitCleanCircle: CGFloat = 22
         /// The target pill never takes more than this; the place truncates in the middle.
         static let gitTargetMaxWidth: CGFloat = 220
+        /// The push confirm's question wraps at this width, two lines at most.
+        static let gitConfirmMaxWidth: CGFloat = 360
         /// The file kind badge (M, A, D) in the diff pane's header.
         static let gitKindWidth: CGFloat = 14
         /// The branch picker: two-line rows, the worktree glyph before "worktree seadevil",
@@ -841,7 +843,11 @@ enum Theme {
                 : slide(dx: pickerHeaderShift, in: contentIn, out: contentOut)
         }
         /// The panes: out with a drop, back with the content rise.
-        @MainActor static var pickerPanesTransition: AnyTransition {
+        @MainActor static var pickerPanesTransition: AnyTransition { paneSwapTransition }
+        /// Content trading places in a pane: out with a 6 pt drop and a 0.08 s fade, in with
+        /// the content rise at 120 ms. The picker's panes, the Git diff pane's content and its
+        /// push confirm. Reduce Motion: a 0.2 s crossfade.
+        @MainActor static var paneSwapTransition: AnyTransition {
             if reduceMotion { return rise(dy: 0, in: reduced, out: reduced) }
             return .asymmetric(
                 insertion: AnyTransition.opacity.combined(with: .offset(y: contentRise)).animation(contentIn),
@@ -852,6 +858,10 @@ enum Theme {
         @MainActor static var pickerHeadTransition: AnyTransition {
             reduceMotion ? rise(dy: 0, in: reduced, out: reduced) : contentTransition(rise: true)
         }
+        // Git push confirm: the diff pane's content drops away, the question and Cancel rise
+        // in (`paneSwapTransition`), and the header's Push pill glides into the card on the
+        // picker pill's spring, and back when the confirm or the push ends.
+        @MainActor static var pushConfirm: Animation { pickerPill }
         /// The rows' block: nothing coming in (each row rises on its own), a fade going out.
         @MainActor static var pickerRowsTransition: AnyTransition {
             .asymmetric(insertion: .identity, removal: AnyTransition.opacity.animation(reduceMotion ? reduced : contentOut))

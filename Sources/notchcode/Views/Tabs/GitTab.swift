@@ -4,9 +4,10 @@
 // ("not published yet", "up to date with origin", "2 behind", "no remote"), and the white
 // Push (or Publish) pill with the count it would send and its P keycap ("Push 3  P"),
 // disabled when there is nothing to send.
-// P or the pill turns the status into a confirm line ("Push 3 commits to origin/seadevil?");
-// ⏎ or the pill again pushes, esc cancels. While git pushes the pill pulses; the result
-// ("Pushed 3 commits", or git's error in red) takes the status's place.
+// P or the pill asks in the right pane: the diff or the clean note drops away, the question
+// rises in with Push (⏎) and Cancel (esc), and the header's Push pill glides down to become
+// the card's; ⏎ or the pill pushes, esc sends it all back. While git pushes the card's pill
+// pulses; the result ("Pushed 3 commits", or git's error in red) shows in the header's status.
 //
 // Below, the Files tool's split: on the left "Uncommitted", one row per changed file (name,
 // the five ± cells, the counts), then "Recent commits", the last five, the ones not on the
@@ -33,8 +34,10 @@ import SwiftUI
 struct GitTab: View {
     @ObservedObject var state: AppState
     /// The target pill and the repository pill share one frame across the swap.
+    /// The Push pill shares one frame between the header and the push confirm.
     @Namespace private var pillSpace
     static let pillID = "gitPill"
+    static let pushPillID = "gitPushPill"
 
     /// The content and the picker both stay in the tree; only their parts come and go, so
     /// each part's transition fires (a child's transition does not when its parent is inserted).
@@ -49,6 +52,7 @@ struct GitTab: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .animation(Theme.Motion.pickerSwap, value: open)
+            .animation(Theme.Motion.pushConfirm, value: state.gitPhase)
         }
     }
 
@@ -106,7 +110,7 @@ struct GitTab: View {
                     .frame(width: collapsed ? 0 : Theme.Size.hairline)
                     .padding(.trailing, collapsed ? 0 : Theme.Size.filesColumnGap)
 
-                GitDiffPane(state: state, snap: snap)
+                GitDiffPane(state: state, snap: snap, pillSpace: pillSpace)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .parallaxGroup()
             }
@@ -193,46 +197,64 @@ private struct GitFileRow: View {
 
 /// The right pane: a header that stays on top (the ⌘B pill, the name, M/A/D, the counts),
 /// then the selected file's diff, which scrolls both ways under it with the minimap pinned
-/// to its right edge.
+/// to its right edge. While a push is asked or running, the push confirm takes the diff's
+/// (or the clean note's) place under the header.
 @MainActor
 private struct GitDiffPane: View {
     @ObservedObject var state: AppState
     let snap: GitSnapshot
+    let pillSpace: Namespace.ID
     /// The diff row at the top of the pane, and how many rows the pane shows.
     @State private var topRow = 0
     @State private var visibleCount = 0
 
     var body: some View {
         let file = state.gitSelectedFile
-        let lines = file.map(AppState.diffLines) ?? []
+        let phase = state.gitPhase
+        let asking = phase == .confirming || phase == .pushing
         VStack(alignment: .leading, spacing: Theme.Size.spaceS) {
             header(file: file)
                 .padding(.horizontal, Theme.Size.previewHPadding)
 
+            // The content and the confirm both stay in the tree; only their parts come and go,
+            // so each part's transition fires.
             ZStack(alignment: .top) {
-                if let file {
-                    if lines.isEmpty {
-                        centred(file.kind == "new" ? "Empty file" : "No text diff")
-                    } else {
-                        GitDiffBody(
-                            file: file,
-                            lines: lines,
-                            fileLines: snap.lineCounts[file.path],
-                            topRow: $topRow,
-                            visibleCount: $visibleCount
-                        )
+                if !asking {
+                    ZStack(alignment: .top) {
+                        content(file)
+                            .id(file?.path ?? "")
+                            .transition(.opacity)
                     }
-                } else {
-                    GitCleanNote(text: GitTab.emptyText(snap))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .transition(Theme.Motion.paneSwapTransition)
                 }
+                GitPushConfirm(state: state, phase: phase, pillSpace: pillSpace)
             }
-            .id(file?.path ?? "")
-            .transition(.opacity)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .animation(Theme.Motion.previewFade, value: file?.path)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onChange(of: file?.path) { _, _ in topRow = 0 }
+    }
+
+    @ViewBuilder
+    private func content(_ file: FileChange?) -> some View {
+        if let file {
+            let lines = AppState.diffLines(file)
+            if lines.isEmpty {
+                centred(file.kind == "new" ? "Empty file" : "No text diff")
+            } else {
+                GitDiffBody(
+                    file: file,
+                    lines: lines,
+                    fileLines: snap.lineCounts[file.path],
+                    topRow: $topRow,
+                    visibleCount: $visibleCount
+                )
+            }
+        } else {
+            GitCleanNote(text: GitTab.emptyText(snap))
+        }
     }
 
     private func header(file: FileChange?) -> some View {
@@ -279,6 +301,61 @@ private struct GitCleanNote: View {
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// The push confirm in the diff pane: "Push 3 commits to origin/seadevil?", then Push (⏎)
+/// and Cancel (esc). Stays in the tree with nothing in it outside the confirm, so its parts
+/// transition: the question and Cancel rise in and drop out, the Push pill arrives from the
+/// header (and goes back) through the shared frame. While git pushes the pill pulses in place
+/// and Cancel dims; the question stays.
+@MainActor
+private struct GitPushConfirm: View {
+    @ObservedObject var state: AppState
+    let phase: GitPushPhase
+    let pillSpace: Namespace.ID
+
+    var body: some View {
+        let confirming = phase == .confirming
+        let pushing = phase == .pushing
+        let asking = confirming || pushing
+        let verb = state.gitPushVerb
+        VStack(spacing: Theme.Size.spaceM) {
+            if asking {
+                Text(state.gitConfirmText)
+                    .font(Theme.Fonts.bodyMedium)
+                    .foregroundStyle(Theme.Colors.ink)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .frame(maxWidth: Theme.Size.gitConfirmMaxWidth)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .transition(Theme.Motion.paneSwapTransition)
+            }
+            HStack(spacing: Theme.Size.spaceM) {
+                if confirming {
+                    ActionSegment(title: verb, key: Theme.Keys.enter, role: .allow, count: state.gitPushCount) {
+                        state.pressGitPill()
+                    }
+                    .matchedGeometryEffect(id: GitTab.pushPillID, in: pillSpace)
+                    .transition(.opacity)
+                }
+                if pushing {
+                    GitPushingPill(title: verb == "Publish" ? "Publishing" : "Pushing")
+                        .matchedGeometryEffect(id: GitTab.pushPillID, in: pillSpace)
+                        .transition(.opacity)
+                }
+                if asking {
+                    ActionSegment(title: "Cancel", key: Theme.Keys.escape, role: .neutral) {
+                        state.cancelGitConfirm()
+                    }
+                    .disabled(pushing)
+                    .opacity(pushing ? Theme.Opacity.disabled : 1)
+                    .transition(Theme.Motion.paneSwapTransition)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .allowsHitTesting(asking)
     }
 }
 
@@ -423,8 +500,9 @@ private struct GitDiffBody: View {
 
 // MARK: - Header
 
-/// "notchcode › seadevil ▾ W   user-friendly-distribution-plan   [Push 3  P]",
-/// or the confirm, progress or result in the status's place. A branch checked out nowhere:
+/// "notchcode › seadevil ▾ W   user-friendly-distribution-plan   [Push 3  P]", or a push's
+/// result in the status's place. While the push is asked or running the pill is down in the
+/// diff pane's confirm. A branch checked out nowhere:
 /// "notchcode › design/toolbar ▾ W   not checked out · 4 commits ahead of main".
 @MainActor
 private struct GitHeader: View {
@@ -476,23 +554,15 @@ private struct GitHeader: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             pill(phase)
-            if phase == .confirming {
-                Button { state.cancelGitConfirm() } label: { InlineKeycap(Theme.Keys.escape) }
-                    .buttonStyle(.plain)
-                    .help("Cancel")
-            }
         }
     }
 
     @ViewBuilder
     private func status(_ phase: GitPushPhase) -> some View {
         switch phase {
-        case .idle:
+        case .idle, .confirming, .pushing:
+            // The confirm asks in the diff pane; the status stays what it was.
             line(state.gitStatusText, font: Theme.Fonts.caption, color: Theme.Colors.gitStatus)
-        case .confirming:
-            line(state.gitConfirmText, font: Theme.Fonts.captionMedium, color: Theme.Colors.ink)
-        case .pushing:
-            line("Pushing to " + state.gitPushTarget + Theme.Glyphs.ellipsis, font: Theme.Fonts.caption, color: Theme.Colors.gitStatus)
         case .pushed(let message):
             line(message, font: Theme.Fonts.captionMedium, color: Theme.Colors.gitPushed)
         case .failed(let message):
@@ -512,21 +582,21 @@ private struct GitHeader: View {
         }
     }
 
+    /// The Push pill, only while no push is asked or running (then it is the confirm's).
     @ViewBuilder
     private func pill(_ phase: GitPushPhase) -> some View {
         let verb = state.gitPushVerb
         switch phase {
-        case .pushing:
-            GitPushingPill(title: verb == "Publish" ? "Publishing" : "Pushing")
-        case .confirming:
-            ActionSegment(title: verb, key: Theme.Keys.enter, role: .allow, count: state.gitPushCount) { state.pressGitPill() }
-                .help(state.gitConfirmText)
+        case .confirming, .pushing:
+            EmptyView()
         case .idle, .pushed, .failed:
             let enabled = state.gitCanPush
             ActionSegment(title: verb, key: Theme.Keys.push, role: enabled ? .allow : .neutral, count: state.gitPushCount) { state.pressGitPill() }
                 .disabled(!enabled)
                 .opacity(enabled ? 1 : Theme.Opacity.disabled)
                 .help(enabled ? verb + " this branch (asks first)" : state.gitStatusText)
+                .matchedGeometryEffect(id: GitTab.pushPillID, in: pillSpace)
+                .transition(.opacity)
         }
     }
 }
@@ -944,7 +1014,7 @@ private struct GitBranchRow: View {
     }
 }
 
-/// The pill while git pushes: Claude's pulsing spark and "Pushing", not pressable.
+/// The confirm's pill while git pushes: Claude's pulsing spark and "Pushing", not pressable.
 @MainActor
 private struct GitPushingPill: View {
     let title: String
