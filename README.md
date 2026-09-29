@@ -4,8 +4,6 @@ The MacBook notch as a companion for Claude Code. See what every session is doin
 
 <p align="center"><img src="docs/readme/hero.svg" width="720" alt="The notch grown to two rows: Needs you, a countdown at 0:53, and Allow Bash? npm test -- --watch=false, with the keys Allow, Deny and Always under it"></p>
 
-Design: the [canvas](https://claude.ai/artifact/AChgFMt8kby2qukkVNxwrn) with every state, the directions explored and looping motion studies, and the [onboarding mockup](https://claude.ai/artifact/V2HFkMgJTpagrsjzd36v9n) for the first run.
-
 ## What it does
 
 ### Doorbell
