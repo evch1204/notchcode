@@ -76,6 +76,10 @@ A Settings page inside the card (gear, or ⌘, while the card is open). Never a 
 
 Like sidecar-pane, the app reads `~/.claude/projects/<cwd>/<session>.jsonl` directly and polls for changes every 2 s. That alone gives sessions, prompts, files, full diffs (`structuredPatch`), tokens, and estimated cost, with no setup and for sessions that started before the app. Hooks add what the files never record: the live permission and commit decisions, and precise start/stop timing. When both know a session, hooks win on state.
 
+## Sessions the list must not show, and edits it cannot see (2026-09-28)
+
+- **Helper runs.** Claude Code starts short runs of its own in a session's folder (naming a branch when a worktree is made, summarising). They write a transcript beside the real one, fire the same hooks, and ended up as a second "seadevil" row: Done, no files. Their lines carry `entrypoint: "sdk-cli"` (the owner's carry `"cli"`); the watcher marks such transcripts headless and the app drops any row with that id. Decided and built 2026-09-28.
+
 ## Sessions and worktrees
 
 A session is a worktree plus a branch. Named by the worktree folder (`ponyfish`), with the repo and branch underneath. Collapsed, the wings show the most urgent state and one dot per session. The sessions card lists them: state, verb, elapsed. `⏎` on a row teleports.

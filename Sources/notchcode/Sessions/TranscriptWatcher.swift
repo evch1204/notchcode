@@ -69,7 +69,12 @@ final class TranscriptWatcher {
     private struct Head {
         var cwd: String?
         var startedAt: Date?
+        var entrypoint: String?         // "cli" for the owner's sessions, "sdk-cli" for Claude Code's own helper runs
     }
+
+    /// The `entrypoint` Claude Code writes on the lines of a run it started for itself (naming a
+    /// branch, summarising) in the same folder as a real session. Those never reach the list.
+    static let headlessEntrypoint = "sdk-cli"
 
     private enum LastLine {
         case none
@@ -114,7 +119,8 @@ final class TranscriptWatcher {
                 lastActivityAt: stamp.modified,
                 state: state,
                 verb: verb,
-                lastPrompt: info.lastPrompt))
+                lastPrompt: info.lastPrompt,
+                isHeadless: info.head.entrypoint == Self.headlessEntrypoint))
         }
         for path in files.keys where !seen.contains(path) { files[path] = nil }
 
@@ -196,6 +202,7 @@ final class TranscriptWatcher {
         JSONLines.forEachCompleteLine(data) { line in
             if head.cwd == nil, let c = line["cwd"] as? String, !c.isEmpty { head.cwd = c }
             if head.startedAt == nil, let d = TranscriptDates.parse(line["timestamp"]) { head.startedAt = d }
+            if head.entrypoint == nil, let e = line["entrypoint"] as? String, !e.isEmpty { head.entrypoint = e }
         }
         return head
     }

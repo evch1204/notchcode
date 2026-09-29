@@ -1694,6 +1694,13 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         let now = Date()
         var changed: [String] = []
 
+        // Claude Code's own helper runs fire hooks like any session, so one may already be listed.
+        let headless = Set(discovered.filter(\.isHeadless).map(\.id))
+        if !headless.isEmpty, sessions.contains(where: { headless.contains($0.id) }) {
+            sessions.removeAll { headless.contains($0.id) }
+        }
+        let discovered = discovered.filter { !$0.isHeadless }
+
         // The newest transcript per folder tells the owner which of two same-folder sessions is theirs.
         var newest: [String: DiscoveredSession] = [:]
         for found in discovered where !found.cwd.isEmpty {

@@ -211,6 +211,9 @@ struct DiscoveredSession: Identifiable, Equatable {
     var state: SessionState         // inferred: working if the last line is recent and mid-turn, done if a turn just ended, idle otherwise
     var verb: String?               // from the last tool_use: "Editing", "Running", "Reading", "Thinking"
     var lastPrompt: String?
+    /// A helper run Claude Code started for itself (`entrypoint: sdk-cli`, such as naming a
+    /// branch): never one of the owner's sessions. Reported so a hook-made row can be dropped.
+    var isHeadless: Bool = false
 }
 
 /// Watches the projects directory and reports sessions active in the last few hours.
