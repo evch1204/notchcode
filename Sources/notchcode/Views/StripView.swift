@@ -432,12 +432,14 @@ extension PendingRequest.Kind {
     }
 }
 
-/// One action segment. Allow carries the countdown draining along its bottom edge.
+/// One action segment. Allow carries the countdown draining along its bottom edge. `count`:
+/// a number right after the title in the same pill ("Push 3"), coloured like the keycap text.
 @MainActor
 struct ActionSegment: View {
     let title: String
     var key: String? = nil
     let role: ActionRole
+    var count: Int? = nil
     var countdown: PendingRequest? = nil
     let action: () -> Void
 
@@ -445,11 +447,20 @@ struct ActionSegment: View {
         let colors = Theme.Colors.action(role)
         Button(action: action) {
             HStack(spacing: Theme.Size.actionKeyGap) {
-                Text(title)
-                    .font(Theme.Fonts.action)
-                    .foregroundStyle(colors.text)
-                    .lineLimit(1)
-                    .fixedSize()
+                HStack(spacing: Theme.Size.spaceS) {
+                    Text(title)
+                        .font(Theme.Fonts.action)
+                        .foregroundStyle(colors.text)
+                        .lineLimit(1)
+                        .fixedSize()
+                    if let count {
+                        Text("\(count)")
+                            .font(Theme.Fonts.captionMedium)
+                            .foregroundStyle(role == .allow ? Theme.Colors.keycapTextOnLight : Theme.Colors.inkSecondary)
+                            .lineLimit(1)
+                            .fixedSize()
+                    }
+                }
                 if let key {
                     Keycap(key, onLight: role == .allow)
                 }

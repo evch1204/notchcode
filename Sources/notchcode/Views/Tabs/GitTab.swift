@@ -1,8 +1,9 @@
 // GitTab.swift
 // The Git tool. A header row: the target pill ("notchcode › seadevil ▾  W", the repository
 // dim, the worktree in ink), the branch (mono), where it stands against its upstream
-// ("3 commits to push", "not published yet", "up to date with origin", "no remote"), and the
-// white Push (or Publish) pill with its P keycap, disabled when there is nothing to send.
+// ("not published yet", "up to date with origin", "2 behind", "no remote"), and the white
+// Push (or Publish) pill with the count it would send and its P keycap ("Push 3  P"),
+// disabled when there is nothing to send.
 // P or the pill turns the status into a confirm line ("Push 3 commits to origin/seadevil?");
 // ⏎ or the pill again pushes, esc cancels. While git pushes the pill pulses; the result
 // ("Pushed 3 commits", or git's error in red) takes the status's place.
@@ -422,7 +423,7 @@ private struct GitDiffBody: View {
 
 // MARK: - Header
 
-/// "notchcode › seadevil ▾ W   user-friendly-distribution-plan   3 commits to push   [Push P]",
+/// "notchcode › seadevil ▾ W   user-friendly-distribution-plan   [Push 3  P]",
 /// or the confirm, progress or result in the status's place. A branch checked out nowhere:
 /// "notchcode › design/toolbar ▾ W   not checked out · 4 commits ahead of main".
 @MainActor
@@ -500,12 +501,15 @@ private struct GitHeader: View {
         }
     }
 
+    @ViewBuilder
     private func line(_ text: String, font: Font, color: Color) -> some View {
-        Text(text)
-            .font(font)
-            .foregroundStyle(color)
-            .lineLimit(1)
-            .truncationMode(.tail)
+        if !text.isEmpty {
+            Text(text)
+                .font(font)
+                .foregroundStyle(color)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
     }
 
     @ViewBuilder
@@ -515,11 +519,11 @@ private struct GitHeader: View {
         case .pushing:
             GitPushingPill(title: verb == "Publish" ? "Publishing" : "Pushing")
         case .confirming:
-            ActionSegment(title: verb, key: Theme.Keys.enter, role: .allow) { state.pressGitPill() }
+            ActionSegment(title: verb, key: Theme.Keys.enter, role: .allow, count: state.gitPushCount) { state.pressGitPill() }
                 .help(state.gitConfirmText)
         case .idle, .pushed, .failed:
             let enabled = state.gitCanPush
-            ActionSegment(title: verb, key: Theme.Keys.push, role: enabled ? .allow : .neutral) { state.pressGitPill() }
+            ActionSegment(title: verb, key: Theme.Keys.push, role: enabled ? .allow : .neutral, count: state.gitPushCount) { state.pressGitPill() }
                 .disabled(!enabled)
                 .opacity(enabled ? 1 : Theme.Opacity.disabled)
                 .help(enabled ? verb + " this branch (asks first)" : state.gitStatusText)

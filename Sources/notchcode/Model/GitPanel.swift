@@ -277,8 +277,17 @@ extension AppState {
         return snap.upstream == nil ? "Publish" : "Push"
     }
 
-    /// "3 commits to push", "not published yet", "up to date with origin", "no remote"; for a
-    /// branch checked out nowhere "not checked out · 4 commits ahead of main".
+    /// The commits a push would send, for the pill's "Push 3" or "Publish 4"; nil when none
+    /// or unknown.
+    var gitPushCount: Int? {
+        guard let snap = focusedGit, snap.isRepo, snap.checkedOut, snap.branch != nil, snap.remote != nil,
+              snap.unpushed > 0 else { return nil }
+        return snap.unpushed
+    }
+
+    /// "not published yet", "up to date with origin", "2 behind origin", "no remote"; with
+    /// commits to push (their count sits in the pill) only "2 behind", or nothing. For a branch
+    /// checked out nowhere "not checked out · 4 commits ahead of main".
     var gitStatusText: String {
         guard let snap = focusedGit, snap.isRepo else { return "" }
         if !snap.checkedOut {
@@ -291,8 +300,7 @@ extension AppState {
         guard let remote = snap.remote else { return "no remote" }
         guard snap.upstream != nil else { return "not published yet" }
         if snap.ahead > 0 {
-            let push = Self.commits(snap.ahead) + " to push"
-            return snap.behind > 0 ? push + Theme.Glyphs.separator + "\(snap.behind) behind" : push
+            return snap.behind > 0 ? "\(snap.behind) behind" : ""
         }
         if snap.behind > 0 { return Self.commits(snap.behind) + " behind " + remote }
         return "up to date with " + remote
