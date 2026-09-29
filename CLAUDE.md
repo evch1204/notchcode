@@ -25,5 +25,5 @@ A notch app for macOS that surfaces Claude Code events as an interactive popup. 
 ## Checks before a commit
 
 ```sh
-xcodebuild -scheme notchcode build
+xcodegen generate --quiet && xcodebuild -scheme notchcode build
 ```

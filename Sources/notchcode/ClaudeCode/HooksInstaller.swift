@@ -74,7 +74,7 @@ enum HooksInstaller {
     /// The hook script inside the app bundle, or the repo's hooks/ folder when running unbundled.
     static var hookScriptPath: String {
         if let url = Bundle.main.url(forResource: "notchcode-hook", withExtension: "sh") { return url.path }
-        // Sources/notchcode/Sessions/HooksInstaller.swift -> <repo>/hooks/notchcode-hook.sh
+        // Sources/notchcode/ClaudeCode/HooksInstaller.swift -> <repo>/hooks/notchcode-hook.sh
         return URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()

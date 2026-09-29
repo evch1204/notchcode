@@ -191,12 +191,15 @@ claude --plugin-dir ./plugin
 
 ```
 Sources/notchcode/
-  Model/Contract.swift     the one contract every part talks through
+  App/                     the app entry, hotkey, keyboard routing
+  Core/                    the one contract every part talks through, preferences, the diff engine
+  ClaudeCode/              session files, the transcript watcher, the installer
   Transport/               the Unix socket server
-  Sessions/                session files, diffs, subagents, usage, the file tree, the installer
-  Notch/                   the panel over the notch, the geometry, the shape
-  Views/                   every state and tab
-  Theme.swift              every colour, size, font, radius, spring, and glyph
+  State/                   the app's live state
+  UI/                      the theme (every colour, size, font, radius, spring, glyph), components
+  Notch/                   the panel over the notch, the shape, every surface drawn in it
+  Features/                one folder per tool: Sessions, Changes, Files, Git, Usage, Requests, Settings
+  Demo/                    the --demo script
 hooks/                     the two shell scripts Claude Code calls
 scripts/                   connect, disconnect, test events, dev build, plugin sync
 plugin/                    the Claude Code plugin

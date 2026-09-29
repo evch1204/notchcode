@@ -77,7 +77,7 @@ struct HookEnvelope: Codable {
 }
 
 /// The working-tree report a hook attaches to `user_prompt` and Bash `post_tool` envelopes,
-/// with the base64 texts decoded. Parsed into per-file entries by Sessions/UnifiedDiff.swift.
+/// with the base64 texts decoded. Parsed into per-file entries by Core/Diff/UnifiedDiff.swift.
 struct TreeReport: Equatable, Codable {
     var root: String                // git toplevel
     var head: String?               // HEAD's sha; nil in a repository with no commit yet
@@ -281,13 +281,13 @@ struct DiscoveredSession: Identifiable, Equatable {
 }
 
 /// Watches the projects directory and reports sessions active in the last few hours.
-/// Delivered on the main actor. Implemented in Sessions/TranscriptWatcher.swift.
+/// Delivered on the main actor. Implemented in ClaudeCode/TranscriptWatcher.swift.
 @MainActor
 protocol TranscriptWatcherSink: AnyObject {
     func transcriptsChanged(_ sessions: [DiscoveredSession])
 }
 
-/// One entry of a repository's file tree, for the Files tab. Built by Sessions/RepoFiles.swift.
+/// One entry of a repository's file tree, for the Files tab. Built by Features/Files/RepoFiles.swift.
 struct FileTreeNode: Identifiable, Equatable {
     var id: String { path }
     var path: String                // relative to the session's cwd
@@ -296,7 +296,7 @@ struct FileTreeNode: Identifiable, Equatable {
     var children: [FileTreeNode] = []
 }
 
-/// A file's text for the preview pane, capped. Built by Sessions/RepoFiles.swift.
+/// A file's text for the preview pane, capped. Built by Features/Files/RepoFiles.swift.
 struct FilePreview: Equatable {
     var path: String
     var lines: [String]

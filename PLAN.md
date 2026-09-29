@@ -179,12 +179,25 @@ The question: how does a user open notchcode, and do they ever type a terminal c
 Layout of the repo:
 
 - `project.yml`: XcodeGen spec. `xcodegen generate` writes `notchcode.xcodeproj` (ignored by git). Needs the Xcode licence accepted first: `sudo xcodebuild -license accept`.
-- `Sources/notchcode/Model/Contract.swift`: the one shared contract: wire types, sessions, pending requests, file changes, turns, usage. Everything else talks through it.
-- `Sources/notchcode/App`, `Notch`, `Views`, `Theme.swift`: the window over the notch, the shape and its morph, the states, the cards and companion tabs.
+- `Sources/notchcode/App`: the app entry, delegate, hotkey, keyboard routing, system notifications, debug log.
+- `Sources/notchcode/Core`: `Contract.swift`, the one shared contract (wire types, sessions, pending requests, file changes, turns, usage) everything talks through; preferences, formatting, and `Diff/` (unified diff parser and builder).
+- `Sources/notchcode/ClaudeCode`: reads and writes Claude Code's own files: transcript reader and watcher (turns, files, tokens from `~/.claude/projects/<cwd>/<session>.jsonl`), JSON lines, the hooks installer.
 - `Sources/notchcode/Transport/SocketServer.swift`: Unix socket listener, one JSON line per event, replies for blocking events, deadline handling.
-- `Sources/notchcode/Sessions/TranscriptReader.swift`: turns, files and tokens from `~/.claude/projects/<cwd>/<session>.jsonl`.
+- `Sources/notchcode/State/AppState.swift`: the app's live state.
+- `Sources/notchcode/UI`: `Theme.swift` (every colour, radius, spring, glyph), shared components, the diff view.
+- `Sources/notchcode/Notch`: the window over the notch, the shape and its morph, and every surface drawn in it: root, wings, resting, peek, attention, card, strip.
+- `Sources/notchcode/Features/Sessions`: the Sessions tab.
+- `Sources/notchcode/Features/Changes`: the Changes tab.
+- `Sources/notchcode/Features/Files`: the Files tab, its browser state, the repo file tree, the Markdown view.
+- `Sources/notchcode/Features/Git`: the Git tab and its panel state.
+- `Sources/notchcode/Features/Usage`: the Usage tab and its calculator.
+- `Sources/notchcode/Features/Requests`: the permission, question and commit cards.
+- `Sources/notchcode/Features/Settings`: the Settings page.
+- `Sources/notchcode/Demo`: the `--demo` script.
 - `hooks/notchcode-hook.sh`: the single hook script, called with the event kind as its argument. Prints nothing unless the app replied.
 - `scripts/connect.mjs`, `scripts/disconnect.mjs`: add or remove only our hooks in `~/.claude/settings.json`, beside the owner's own hooks. `scripts/send-test-event.sh`: fires a fake event at the socket.
+
+Layout reorganised 2026-09-28: feature folders under Features/, shared code in Core/, UI/, State/, ClaudeCode/.
 
 Milestones:
 
