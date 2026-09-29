@@ -82,9 +82,7 @@ struct SessionsTab: View {
                     state.sessionCursor = index
                     state.teleport(session: session)
                 } label: {
-                    Image(systemName: Theme.Symbols.chevron)
-                        .font(Theme.Fonts.chevron)
-                        .foregroundStyle(Theme.Colors.inkSecondary)
+                    RowChevron(open: false, color: Theme.Colors.inkSecondary, width: nil, animated: false)
                         .frame(width: Theme.Size.chevronColumn + Theme.Size.rowHPadding, height: Theme.Size.chevronHitHeight)
                         .contentShape(Rectangle())
                 }
@@ -231,7 +229,7 @@ private struct SessionRow: View {
                     .foregroundStyle(Theme.Colors.stateText(shownState))
                     .lineLimit(1)
                 if shownState == .working, let turnStart {
-                    ElapsedText(since: turnStart, color: Theme.Colors.inkTertiary)
+                    ElapsedText(since: turnStart)
                 } else {
                     Text(Format.ago(session.lastEventAt))
                         .font(Theme.Fonts.caption)
@@ -256,9 +254,7 @@ struct SmallTag: View {
         Text(text)
             .font(Theme.Fonts.caption)
             .foregroundStyle(color)
-            .padding(.horizontal, Theme.Size.smallPillHPadding)
-            .frame(height: Theme.Size.smallPillHeight)
-            .background(Capsule(style: .continuous).fill(Theme.Colors.doneChipFill))
+            .capsuleTag()
             .fixedSize()
     }
 }
@@ -295,7 +291,7 @@ private struct AgentLane: View {
                     .foregroundStyle(Theme.Colors.inkTertiary)
                     .fixedSize()
             } else {
-                ElapsedText(since: agent.startedAt, color: Theme.Colors.inkTertiary)
+                ElapsedText(since: agent.startedAt)
             }
         }
         .padding(.leading, Theme.Size.laneIndent)
@@ -318,16 +314,12 @@ private struct DoneLane: View {
                 .frame(width: Theme.Size.laneLineWidth)
                 .frame(maxHeight: .infinity)
             HStack(spacing: Theme.Size.spaceS) {
-                Image(systemName: Theme.Symbols.chevron)
-                    .font(Theme.Fonts.chevron)
-                    .rotationEffect(.degrees(expanded ? Theme.Motion.chevronOpenDegrees : 0))
+                RowChevron(open: expanded, width: nil, animated: false)
                 Text("\(count) done")
                     .font(Theme.Fonts.caption)
             }
             .foregroundStyle(Theme.Colors.inkTertiary)
-            .padding(.horizontal, Theme.Size.smallPillHPadding)
-            .frame(height: Theme.Size.smallPillHeight)
-            .background(Capsule(style: .continuous).fill(Theme.Colors.doneChipFill))
+            .capsuleTag()
             Spacer(minLength: 0)
         }
         .padding(.leading, Theme.Size.laneIndent)

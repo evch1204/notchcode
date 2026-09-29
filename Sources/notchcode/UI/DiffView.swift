@@ -3,7 +3,7 @@
 // (old, new), then the line with its +/− prefix, in the mono size the Files preview uses.
 // Added rows green on a faint green, removed red on a faint red, context grey, hunk
 // headers blue. Lines never wrap. In this box they never scroll sideways either: long ones
-// are clipped (the Git tool's WideDiffLineRow scrolls sideways instead). Scrolls
+// are clipped (the Git tool's rows scroll sideways instead). Scrolls
 // vertically inside a capped height, with "… 9 more lines · scroll" at the bottom of the
 // box while more is below. Also the expandable file row that owns it, shared by the
 // Changes tool and the commit card.
@@ -36,7 +36,7 @@ struct DiffView: View {
             sized(ScrollView(.vertical, showsIndicators: false) {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(lines.enumerated()), id: \.offset) { item in
-                        DiffLineRow(line: item.element)
+                        CodeLineRow(item.element)
                     }
                 }
                 .scrollTargetLayout()
@@ -57,8 +57,7 @@ struct DiffView: View {
         }
         .padding(.vertical, Theme.Size.previewVPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Colors.inset)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.snippet, style: .continuous))
+        .snippetBox()
     }
 
     @ViewBuilder
@@ -79,38 +78,15 @@ struct DiffView: View {
         let visible = Int(viewportHeight / Theme.Size.diffLineHeight)
         let below = max(0, lines.count - (topLine ?? 0) - max(0, visible))
         if overflows, below > 0 {
-            let count = below == 1 ? "1 more line" : "\(below) more lines"
-            return Theme.Glyphs.ellipsis + " " + count + Theme.Glyphs.separator + "scroll"
+            return Format.moreLines(below) + Theme.Glyphs.separator + "scroll"
         }
         if file.patchTruncated {
             let shown = lines.filter { $0.kind == .added || $0.kind == .removed }.count
             let missing = max(0, file.added + file.removed - shown)
-            let count = missing > 0 ? "\(missing) more lines" : "more lines"
-            return Theme.Glyphs.ellipsis + " " + count + " in the editor"
+            return Format.moreLines(missing) + " in the editor"
         }
         return "end of diff"
     }
-}
-
-/// One diff line: "  42  44  + NotchShape(radius: theme.notchRadius)". The old file's
-/// number, then the new file's; a removed line has only the old, an added line only the
-/// new, a hunk header neither.
-@MainActor
-struct DiffLineRow: View {
-    let line: DiffLine
-
-    var body: some View {
-        DiffLineLayout(old: old, new: new) {
-            Text(prefix + line.text).foregroundStyle(textColor)
-        }
-        .background(background)
-    }
-
-    private var old: Int? { line.oldNumber }
-    private var new: Int? { line.newNumber }
-    private var prefix: String { line.prefix }
-    private var textColor: Color { line.textColor }
-    private var background: Color { line.background }
 }
 
 extension DiffLine {
@@ -159,56 +135,155 @@ extension DiffLine {
     var wordBackground: Color {
         kind == .added ? Theme.Colors.diffAddedWord : Theme.Colors.diffRemovedWord
     }
-}
 
-/// One diff line for a pane that scrolls both ways: the two numbers, then the whole line,
-/// never wrapped and never clipped; at least `minWidth` wide so its tint spans the pane.
-/// The words in `words` (character offsets into the text) carry the stronger word tint.
-@MainActor
-struct WideDiffLineRow: View {
-    let line: DiffLine
-    var words: [Range<Int>] = []
-    let minWidth: CGFloat
-
-    var body: some View {
-        HStack(spacing: Theme.Size.previewGutterSpacing) {
-            number(line.oldNumber)
-            number(line.newNumber)
-            Text(text)
-                .foregroundStyle(line.textColor)
-                .fixedSize(horizontal: true, vertical: false)
-        }
-        .font(Theme.Fonts.monoSmall)
-        .lineLimit(1)
-        .padding(.horizontal, Theme.Size.previewHPadding)
-        .frame(height: Theme.Size.diffLineHeight)
-        .frame(minWidth: minWidth, alignment: .leading)
-        .background(line.background)
-    }
-
-    private var text: AttributedString {
-        var out = AttributedString(line.prefix)
+    /// The prefix and the text, the words in `words` on the word tint.
+    func styledText(words: [Range<Int>]) -> AttributedString {
+        var out = AttributedString(prefix)
         guard !words.isEmpty else {
-            out += AttributedString(line.text)
+            out += AttributedString(text)
             return out
         }
-        let chars = Array(line.text)
+        let chars = Array(text)
         var cursor = 0
         for range in words where range.lowerBound >= cursor && range.upperBound <= chars.count {
             if range.lowerBound > cursor { out += AttributedString(String(chars[cursor..<range.lowerBound])) }
             var word = AttributedString(String(chars[range]))
-            word.backgroundColor = line.wordBackground
+            word.backgroundColor = wordBackground
             out += word
             cursor = range.upperBound
         }
         if cursor < chars.count { out += AttributedString(String(chars[cursor...])) }
         return out
     }
+}
 
-    private func number(_ value: Int?) -> some View {
-        Text(value.map(String.init) ?? "")
-            .foregroundStyle(Theme.Colors.diffLineNumber)
-            .frame(width: Theme.Size.diffLineNumberWidth, alignment: .trailing)
+/// One line of a file or a diff: one dim number column (a file's lines) or two (a diff's
+/// old and new), then the text in the mono size, never wrapped. Without `minWidth` the row
+/// fills its box and whatever runs past the edge is cut off (the text sits in an overlay,
+/// so it never widens the row); with one the line is whole and the row at least that wide,
+/// so its `tint` spans a pane that scrolls sideways.
+@MainActor
+struct CodeLineRow<Content: View>: View {
+    let numbers: [Int?]
+    var numberWidth: CGFloat = Theme.Size.diffLineNumberWidth
+    var numberColor: Color = Theme.Colors.diffLineNumber
+    var height: CGFloat = Theme.Size.diffLineHeight
+    var minWidth: CGFloat? = nil
+    var tint: Color = .clear
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        Group {
+            if let minWidth {
+                columns {
+                    content
+                        .fixedSize(horizontal: true, vertical: false)
+                }
+                .frame(minWidth: minWidth, alignment: .leading)
+            } else {
+                columns {
+                    Color.clear
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .overlay(alignment: .leading) {
+                            content
+                                .fixedSize(horizontal: true, vertical: false)
+                        }
+                        .clipped()
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .clipped()
+            }
+        }
+        .background(tint)
+    }
+
+    private func columns(@ViewBuilder text: () -> some View) -> some View {
+        HStack(spacing: Theme.Size.previewGutterSpacing) {
+            ForEach(Array(numbers.enumerated()), id: \.offset) { item in
+                Text(item.element.map(String.init) ?? "")
+                    .foregroundStyle(numberColor)
+                    .frame(width: numberWidth, alignment: .trailing)
+            }
+            text()
+        }
+        .font(Theme.Fonts.monoSmall)
+        .lineLimit(1)
+        .padding(.horizontal, Theme.Size.previewHPadding)
+        .frame(height: height)
+    }
+}
+
+extension CodeLineRow where Content == Text {
+    /// A diff line: both numbers, the +/− prefix and text in its colour, the line's tint, and
+    /// the words in `words` (character offsets into the text) with the stronger word tint.
+    init(_ line: DiffLine, words: [Range<Int>] = [], minWidth: CGFloat? = nil) {
+        self.init(numbers: [line.oldNumber, line.newNumber], minWidth: minWidth, tint: line.background) {
+            Text(line.styledText(words: words)).foregroundStyle(line.textColor)
+        }
+    }
+}
+
+/// Lines in a box that scrolls both ways (the Files preview, the Git diff): a lazy stack
+/// only knows its loaded rows, so the content's width is set from the longest of `texts`
+/// (tabs counted as four spaces, as the rows show them) to give the scroll view its
+/// sideways range, and every row gets that width so its tint spans it. `gutter` is what a
+/// row puts before its text (the number columns and their gaps); `reserve` is room kept
+/// clear at the right edge (the Git minimap). An optional footer line sits under the rows
+/// in the text column. The Git diff tracks the content's top (`onScroll`) and the pane's
+/// height (`onHeight`) and lays its minimap over the scroll (`accessory`).
+@MainActor
+struct WideLinesScroll<Rows: View, Accessory: View>: View {
+    let texts: [String]
+    let gutter: CGFloat
+    var lineHeight: CGFloat = Theme.Size.diffLineHeight
+    var reserve: CGFloat = 0
+    var footer: String? = nil
+    var onAppear: (ScrollViewProxy) -> Void = { _ in }
+    var onScroll: ((CGFloat) -> Void)? = nil
+    var onHeight: ((CGFloat) -> Void)? = nil
+    @ViewBuilder let rows: (_ contentWidth: CGFloat) -> Rows
+    @ViewBuilder let accessory: (ScrollViewProxy) -> Accessory
+
+    /// The longest line in characters, tabs expanded as the rows show them.
+    @State private var longest = 0
+
+    var body: some View {
+        GeometryReader { geo in
+            let available = max(0, geo.size.width - reserve)
+            let textWidth = Theme.Size.previewHPadding * 2 + gutter + CGFloat(longest) * Theme.Fonts.monoSmallAdvance
+            let contentWidth = max(available, textWidth.rounded(.up))
+            ScrollViewReader { proxy in
+                ScrollView([.vertical, .horizontal], showsIndicators: false) {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        rows(contentWidth)
+                        if let footer {
+                            Text(footer)
+                                .font(Theme.Fonts.caption)
+                                .foregroundStyle(Theme.Colors.inkTertiary)
+                                .padding(.leading, gutter + Theme.Size.previewHPadding)
+                                .frame(height: lineHeight)
+                        }
+                    }
+                    .frame(width: contentWidth, alignment: .leading)
+                    .padding(.vertical, Theme.Size.previewVPadding)
+                    .padding(.trailing, reserve)
+                    .onGeometryChange(for: CGFloat.self) { proxy in
+                        proxy.frame(in: .named("wideLinesScroll")).minY
+                    } action: { minY in
+                        onScroll?(minY)
+                    }
+                }
+                .coordinateSpace(.named("wideLinesScroll"))
+                .overlay(alignment: .topTrailing) { accessory(proxy) }
+                .onAppear { onAppear(proxy) }
+            }
+            .onAppear { onHeight?(geo.size.height) }
+            .onChange(of: geo.size.height) { _, height in onHeight?(height) }
+        }
+        .onChange(of: texts, initial: true) { _, texts in
+            longest = texts.map { $0.count + 3 * $0.reduce(0) { $1 == "\t" ? $0 + 1 : $0 } }.max() ?? 0
+        }
+        .snippetBox()
     }
 }
 
@@ -359,7 +434,7 @@ private struct DiffNoteRow: View {
     let text: String
 
     var body: some View {
-        DiffLineLayout(old: nil, new: nil) {
+        CodeLineRow(numbers: [nil, nil]) {
             Text(text)
                 .font(Theme.Fonts.caption)
                 .foregroundStyle(Theme.Colors.inkTertiary)
@@ -367,69 +442,33 @@ private struct DiffNoteRow: View {
     }
 }
 
-/// A diff line's columns: the two dim numbers, then the text. The text never wraps or
-/// widens the row: it sits in an overlay, so whatever runs past the edge is cut off.
+/// A changed-file row that opens to its diff under it. The Changes tool indents it one
+/// chevron column under its turn; the commit card lists its files with it. The caller
+/// says what a click does, whether the row is open and under the cursor, and draws the diff.
 @MainActor
-private struct DiffLineLayout<Content: View>: View {
-    let old: Int?
-    let new: Int?
-    @ViewBuilder let content: Content
+struct FileDiffRow<Diff: View>: View {
+    let file: FileChange
+    let open: Bool
+    let isCursor: Bool
+    var spacing: CGFloat = Theme.Size.spaceXS
+    /// The commit card's rows without a diff take no clicks; the Changes rows still move the cursor.
+    var disabledWithoutDiff = false
+    let action: () -> Void
+    @ViewBuilder let diff: () -> Diff
 
     var body: some View {
-        HStack(spacing: Theme.Size.previewGutterSpacing) {
-            number(old)
-            number(new)
-            Color.clear
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .overlay(alignment: .leading) {
-                    content
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
-                }
-                .clipped()
-        }
-        .font(Theme.Fonts.monoSmall)
-        .padding(.horizontal, Theme.Size.previewHPadding)
-        .frame(height: Theme.Size.diffLineHeight)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .clipped()
-    }
-
-    private func number(_ value: Int?) -> some View {
-        Text(value.map(String.init) ?? "")
-            .foregroundStyle(Theme.Colors.diffLineNumber)
-            .lineLimit(1)
-            .frame(width: Theme.Size.diffLineNumberWidth, alignment: .trailing)
-    }
-}
-
-/// A changed-file row that opens to its diff. Click or ⏎ (on the keyboard cursor)
-/// toggles it. The Changes tool indents it one chevron column under its turn.
-@MainActor
-struct FileDiffRow: View {
-    @ObservedObject var state: AppState
-    let item: DiffRowItem
-
-    var body: some View {
-        let file = item.file
         let hasDiff = !AppState.diffLines(file).isEmpty
-        let open = hasDiff && state.isDiffOpen(item)
-        let isCursor = state.cursorRowKey == item.key
-        VStack(alignment: .leading, spacing: Theme.Size.spaceXS) {
-            Button {
-                state.setRowCursor(key: item.key)
-                guard hasDiff else { return }
-                withAnimation(Theme.Motion.tap) { state.toggleDiff(item.key) }
-            } label: {
+        VStack(alignment: .leading, spacing: spacing) {
+            Button(action: action) {
                 FileRowLabel(file: file, open: open, hasDiff: hasDiff, isCursor: isCursor)
             }
             .buttonStyle(.plain)
+            .disabled(disabledWithoutDiff && !hasDiff)
 
             if open {
-                DiffView(file: file)
+                diff()
             }
         }
-        .id(item.key)
     }
 }
 
@@ -472,17 +511,30 @@ struct FileRowLabel: View {
 /// The disclosure chevron at the front of a turn or file row: a Sessions chevron, turned
 /// down while open. Its frame plus the row gap is one `chevronColumn`, so a file row
 /// indented by that column puts its chevron under the turn's title.
+/// The Files tree, the "Show changes" and "3 done" chevrons and a session row's teleport
+/// chevron pass their own font, colour and width; `animated: false` leaves the turn to
+/// whatever transaction toggles it.
 @MainActor
 struct RowChevron: View {
     let open: Bool
+    var font: Font = Theme.Fonts.chevron
+    var color: Color = Theme.Colors.inkTertiary
+    var width: CGFloat? = Theme.Size.chevronColumn - Theme.Size.spaceM
+    var animated = true
 
     var body: some View {
-        Image(systemName: Theme.Symbols.chevron)
-            .font(Theme.Fonts.chevron)
-            .foregroundStyle(Theme.Colors.inkTertiary)
+        let chevron = Image(systemName: Theme.Symbols.chevron)
+            .font(font)
+            .foregroundStyle(color)
             .rotationEffect(.degrees(open ? Theme.Motion.chevronOpenDegrees : 0))
-            .animation(Theme.Motion.disclosure, value: open)
-            .frame(width: Theme.Size.chevronColumn - Theme.Size.spaceM)
+        Group {
+            if animated {
+                chevron.animation(Theme.Motion.disclosure, value: open)
+            } else {
+                chevron
+            }
+        }
+        .frame(width: width)
     }
 }
 

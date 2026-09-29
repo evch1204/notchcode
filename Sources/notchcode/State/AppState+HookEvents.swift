@@ -29,7 +29,6 @@ extension AppState {
 
         if envelope.kind == .sessionEnd {
             endSession(sid)
-            if envelope.isBlocking { reply(HookReply(id: envelope.id, decision: .none)) }
             refresh()
             return
         }
@@ -289,7 +288,7 @@ extension AppState {
             $0.state = .working
             $0.verb = "Thinking"
         }
-        if extraPrefs.peekEdits {
+        if prefs.peekEdits {
             showPeek(Peek(
                 kind: .edit,
                 sessionId: sessionId,
@@ -306,7 +305,7 @@ extension AppState {
         let type = payload["notification_type"]?.stringValue ?? ""
         let message = payload["message"]?.stringValue ?? ""
         switch type {
-        case "idle_prompt":
+        case "idle_prompt", "agent_completed":
             // Claude finished and waits for the owner to type: that is done, not blocked.
             clearNeedsYou(sessionId)
             openTurns.remove(sessionId)
@@ -321,13 +320,6 @@ extension AppState {
                 question = QuestionPreview(sessionId: sessionId, question: message, options: [])
                 fillQuestionOptions(sessionId)
                 reloadTurns(for: sessionId)
-            }
-        case "agent_completed":
-            clearNeedsYou(sessionId)
-            openTurns.remove(sessionId)
-            updateSession(sessionId) {
-                $0.state = .done
-                $0.verb = nil
             }
         default:
             break

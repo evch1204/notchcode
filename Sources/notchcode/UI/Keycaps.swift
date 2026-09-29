@@ -36,17 +36,15 @@ struct Keycap: View {
 /// the attention row use Keycap directly.
 struct InlineKeycap: View {
     let label: String
-    var onLight = false
     @Environment(\.inlineKeycaps) private var shows
 
-    init(_ label: String, onLight: Bool = false) {
+    init(_ label: String) {
         self.label = label
-        self.onLight = onLight
     }
 
     var body: some View {
         if shows {
-            Keycap(label, onLight: onLight)
+            Keycap(label)
         }
     }
 }

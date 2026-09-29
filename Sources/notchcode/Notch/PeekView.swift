@@ -69,10 +69,10 @@ struct PeekView: View {
             switch peek.kind {
             case .edit:
                 if let added = peek.added {
-                    CountPill(text: Format.added(added), tint: Theme.Colors.green, fill: Theme.Colors.greenFill)
+                    CountPill(count: added, format: Format.added, tint: Theme.Colors.green, fill: Theme.Colors.greenFill)
                 }
                 if let removed = peek.removed {
-                    CountPill(text: Format.removed(removed), tint: Theme.Colors.red, fill: Theme.Colors.redFill)
+                    CountPill(count: removed, format: Format.removed, tint: Theme.Colors.red, fill: Theme.Colors.redFill)
                 }
                 if let detail = peek.detail {
                     Text(detail)
@@ -88,10 +88,10 @@ struct PeekView: View {
                         .lineLimit(1)
                 }
                 if let added = peek.added {
-                    CountUpPill(count: added, format: Format.added, tint: Theme.Colors.green, fill: Theme.Colors.greenFill)
+                    CountPill(count: added, format: Format.added, tint: Theme.Colors.green, fill: Theme.Colors.greenFill, countsUp: true)
                 }
                 if let removed = peek.removed {
-                    CountUpPill(count: removed, format: Format.removed, tint: Theme.Colors.red, fill: Theme.Colors.redFill)
+                    CountPill(count: removed, format: Format.removed, tint: Theme.Colors.red, fill: Theme.Colors.redFill, countsUp: true)
                 }
             case .agent:
                 Text(state.session(id: peek.sessionId)?.displayFull ?? "")

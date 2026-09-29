@@ -275,25 +275,6 @@ extension AppState {
 
         guard isCardOpen else { return false }
 
-        // Settings has no keys of its own beyond esc and ⌘,; ⇥ and 1–4 still leave it for a tool.
-        if selectedTab == .settings {
-            switch key {
-            case .number(let n):
-                guard n >= 1 && n <= CardTab.browsable.count else { return false }
-                selectTab(CardTab.browsable[n - 1])
-                flashToolLabel()
-                return true
-            case .nextTab:
-                cycleTab(by: 1)
-                return true
-            case .previousTab:
-                cycleTab(by: -1)
-                return true
-            default:
-                return false
-            }
-        }
-
         if showingQuestion {
             switch key {
             case .primary:

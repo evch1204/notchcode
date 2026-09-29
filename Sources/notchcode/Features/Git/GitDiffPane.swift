@@ -52,7 +52,7 @@ struct GitDiffPane: View {
         if let file {
             let lines = AppState.diffLines(file)
             if lines.isEmpty {
-                centred(file.kind == "new" ? "Empty file" : "No text diff")
+                EmptyNote(text: file.kind == "new" ? "Empty file" : "No text diff")
             } else {
                 GitDiffBody(
                     file: file,
@@ -87,13 +87,6 @@ struct GitDiffPane: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-    }
-
-    private func centred(_ text: String) -> some View {
-        Text(text)
-            .font(Theme.Fonts.body)
-            .foregroundStyle(Theme.Colors.inkTertiary)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -214,10 +207,6 @@ private struct GitDiffBody: View {
     /// Worked out once per diff, not on every scroll step (the header re-renders with it).
     @State private var words: [Int: [Range<Int>]] = [:]
     @State private var minimap: DiffMinimapModel?
-    /// The longest line in characters (prefix and text), for the content's width.
-    @State private var longest = 0
-
-    private nonisolated static let space = "gitDiffScroll"
 
     private struct Inputs: Equatable {
         var lines: [DiffLine]
@@ -225,66 +214,38 @@ private struct GitDiffBody: View {
     }
 
     var body: some View {
-        GeometryReader { geo in
-            let rowWidth = max(0, geo.size.width - Theme.Size.diffMinimapReserve)
-            // A lazy stack only knows its loaded rows, so its width is set from the longest
-            // line to give the scroll view its sideways range.
-            let textWidth = Theme.Size.previewHPadding * 2 + 2 * Theme.Size.diffLineNumberWidth
-                + 2 * Theme.Size.previewGutterSpacing + CGFloat(longest) * Theme.Fonts.monoSmallAdvance
-            let contentWidth = max(rowWidth, textWidth.rounded(.up))
-            ScrollViewReader { proxy in
-                ScrollView([.vertical, .horizontal], showsIndicators: false) {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(lines.indices, id: \.self) { index in
-                            WideDiffLineRow(line: lines[index], words: words[index] ?? [], minWidth: contentWidth)
-                                .id(index)
-                        }
-                        if file.patchTruncated {
-                            Text(truncatedNote)
-                                .font(Theme.Fonts.caption)
-                                .foregroundStyle(Theme.Colors.inkTertiary)
-                                .padding(.leading, 2 * (Theme.Size.diffLineNumberWidth + Theme.Size.previewGutterSpacing) + Theme.Size.previewHPadding)
-                                .frame(height: Theme.Size.diffLineHeight)
-                        }
-                    }
-                    .frame(width: contentWidth, alignment: .leading)
-                    .padding(.vertical, Theme.Size.previewVPadding)
-                    .padding(.trailing, Theme.Size.diffMinimapReserve)
-                    .onGeometryChange(for: CGFloat.self) { proxy in
-                        proxy.frame(in: .named(Self.space)).minY
-                    } action: { minY in
-                        let row = Int(((-minY - Theme.Size.previewVPadding) / Theme.Size.diffLineHeight).rounded())
-                        let clamped = max(0, min(max(0, lines.count - 1), row))
-                        if clamped != topRow { topRow = clamped }
-                    }
-                }
-                .coordinateSpace(.named(Self.space))
-                .overlay(alignment: .topTrailing) {
-                    if let minimap {
-                        DiffMinimap(model: minimap, visibleRows: visibleRange) { row in
-                            let target = max(0, row - visibleCount / 2)
-                            proxy.scrollTo(target, anchor: .topLeading)
-                        }
-                        .padding(.vertical, Theme.Size.diffMinimapInset)
-                        .padding(.trailing, Theme.Size.diffMinimapInset)
-                    }
-                }
-            }
-            .onAppear { visibleCount = Int(geo.size.height / Theme.Size.diffLineHeight) }
-            .onChange(of: Inputs(lines: lines, fileLines: fileLines), initial: true) { _, inputs in
-                words = WordDiff.marks(inputs.lines)
-                minimap = DiffMinimapModel(lines: inputs.lines, fileLines: inputs.fileLines)
-                longest = inputs.lines.map { $0.prefix.count + $0.text.count }.max() ?? 0
-            }
-            .onChange(of: geo.size.height) { _, height in
+        WideLinesScroll(
+            texts: lines.map { $0.prefix + $0.text },
+            gutter: 2 * (Theme.Size.diffLineNumberWidth + Theme.Size.previewGutterSpacing),
+            reserve: Theme.Size.diffMinimapReserve,
+            footer: file.patchTruncated ? truncatedNote : nil,
+            onScroll: { minY in
+                let row = Int(((-minY - Theme.Size.previewVPadding) / Theme.Size.diffLineHeight).rounded())
+                let clamped = max(0, min(max(0, lines.count - 1), row))
+                if clamped != topRow { topRow = clamped }
+            },
+            onHeight: { height in
                 visibleCount = Int(height / Theme.Size.diffLineHeight)
             }
+        ) { contentWidth in
+            ForEach(lines.indices, id: \.self) { index in
+                CodeLineRow(lines[index], words: words[index] ?? [], minWidth: contentWidth)
+                    .id(index)
+            }
+        } accessory: { proxy in
+            if let minimap {
+                DiffMinimap(model: minimap, visibleRows: visibleRange) { row in
+                    let target = max(0, row - visibleCount / 2)
+                    proxy.scrollTo(target, anchor: .topLeading)
+                }
+                .padding(.vertical, Theme.Size.diffMinimapInset)
+                .padding(.trailing, Theme.Size.diffMinimapInset)
+            }
         }
-        .background(
-            RoundedRectangle(cornerRadius: Theme.Radius.snippet, style: .continuous)
-                .fill(Theme.Colors.inset)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.snippet, style: .continuous))
+        .onChange(of: Inputs(lines: lines, fileLines: fileLines), initial: true) { _, inputs in
+            words = WordDiff.marks(inputs.lines)
+            minimap = DiffMinimapModel(lines: inputs.lines, fileLines: inputs.fileLines)
+        }
     }
 
     private var visibleRange: ClosedRange<Int> {
@@ -297,7 +258,6 @@ private struct GitDiffBody: View {
     private var truncatedNote: String {
         let shown = lines.filter { $0.kind == .added || $0.kind == .removed }.count
         let missing = max(0, file.added + file.removed - shown)
-        let count = missing > 0 ? "\(missing) more lines" : "more lines"
-        return Theme.Glyphs.ellipsis + " " + count + " in the editor"
+        return Format.moreLines(missing) + " in the editor"
     }
 }

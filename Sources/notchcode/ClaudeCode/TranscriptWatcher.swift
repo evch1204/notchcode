@@ -64,10 +64,6 @@ final class TranscriptWatcher {
         }
     }
 
-    func refreshNow() {
-        queue.async { [weak self] in self?.poll() }
-    }
-
     // MARK: Polling
 
     private struct Head {

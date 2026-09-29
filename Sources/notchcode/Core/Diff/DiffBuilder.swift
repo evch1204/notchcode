@@ -15,21 +15,7 @@ enum DiffBuilder {
     /// Files larger than this are not read; the diff falls back to the strings alone.
     static let maxFileBytes = 4 * 1024 * 1024
 
-    // MARK: Line diff
-
-    /// A unified line diff of two texts: `@@ -a,b +c,d @@` hunk headers, then context,
-    /// removed and added lines with old and new line numbers. At most `cap` lines
-    /// (then `truncated`). Line numbers start at 1.
-    static func lines(old: String, new: String, context: Int = 3, cap: Int = 400) -> (lines: [DiffLine], truncated: Bool) {
-        let result = diff(old: old, new: new, context: context, cap: cap)
-        return (result.lines, result.truncated)
-    }
-
     // MARK: Tools
-
-    static func forEdit(cwd: String, filePath: String, oldString: String, newString: String, replaceAll: Bool) -> FileChange {
-        forEdit(cwd: cwd, filePath: filePath, oldString: oldString, newString: newString, replaceAll: replaceAll, readsDisk: true)
-    }
 
     static func forEdit(cwd: String, filePath: String, oldString: String, newString: String, replaceAll: Bool, readsDisk: Bool) -> FileChange {
         let path = Paths.relative(filePath, cwd: cwd)
@@ -46,20 +32,12 @@ enum DiffBuilder {
     }
 
     /// Diffs against the file on disk when it exists (kind "write"), else all added (kind "new").
-    static func forWrite(cwd: String, filePath: String, content: String) -> FileChange {
-        forWrite(cwd: cwd, filePath: filePath, content: content, readsDisk: true)
-    }
-
     static func forWrite(cwd: String, filePath: String, content: String, readsDisk: Bool) -> FileChange {
         let path = Paths.relative(filePath, cwd: cwd)
         if readsDisk, let original = read(Paths.absolute(filePath, cwd: cwd)) {
             return change(path: path, kind: "write", diff: diff(old: original, new: content))
         }
         return change(path: path, kind: "new", diff: diff(old: "", new: content))
-    }
-
-    static func forMultiEdit(cwd: String, filePath: String, edits: [(old: String, new: String, replaceAll: Bool)]) -> FileChange {
-        forMultiEdit(cwd: cwd, filePath: filePath, edits: edits, readsDisk: true)
     }
 
     static func forMultiEdit(cwd: String, filePath: String, edits: [(old: String, new: String, replaceAll: Bool)], readsDisk: Bool) -> FileChange {
@@ -95,7 +73,7 @@ enum DiffBuilder {
             combined.added += part.added
             combined.removed += part.removed
             for line in part.lines {
-                if combined.lines.count >= EditCap.lines { combined.truncated = true; break }
+                if combined.lines.count >= Theme.Limits.patchLines { combined.truncated = true; break }
                 combined.lines.append(line)
             }
             combined.truncated = combined.truncated || part.truncated
@@ -104,8 +82,6 @@ enum DiffBuilder {
     }
 
     // MARK: - Internals
-
-    private enum EditCap { static let lines = 400 }
 
     private struct Diff {
         var lines: [DiffLine] = []
@@ -131,11 +107,11 @@ enum DiffBuilder {
         return file
     }
 
-    private static func diff(old: String, new: String, context: Int = 3, cap: Int = EditCap.lines) -> Diff {
+    private static func diff(old: String, new: String) -> Diff {
         let a = splitLines(old)
         let b = splitLines(new)
         let ops = editScript(a, b)
-        return hunks(ops: ops, a: a, b: b, context: context, cap: cap)
+        return hunks(ops: ops, a: a, b: b, context: 3, cap: Theme.Limits.patchLines)
     }
 
     /// Lines of a text: "" is none, a trailing line break does not add an empty line; CRLF counts as one break.

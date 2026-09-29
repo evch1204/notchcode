@@ -14,12 +14,6 @@ struct FileStamp: Equatable {
 
     var modified: Date { Date(timeIntervalSince1970: mtime) }
 
-    init(inode: UInt64, mtime: Double, size: Int64) {
-        self.inode = inode
-        self.mtime = mtime
-        self.size = size
-    }
-
     /// Nil when the file cannot be stat'ed.
     init?(path: String) {
         var st = stat()

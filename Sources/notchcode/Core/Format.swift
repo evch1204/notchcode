@@ -119,6 +119,12 @@ enum Format {
         "\(Int(value.rounded()))%"
     }
 
+    /// "… 9 more lines" ("… 1 more line"), or "… more lines" when the count is not known.
+    static func moreLines(_ count: Int?) -> String {
+        guard let count, count > 0 else { return Theme.Glyphs.ellipsis + " more lines" }
+        return Theme.Glyphs.ellipsis + (count == 1 ? " 1 more line" : " \(count) more lines")
+    }
+
     static func added(_ count: Int) -> String { "+\(count)" }
     static func removed(_ count: Int) -> String { Theme.Glyphs.minus + "\(count)" }
 

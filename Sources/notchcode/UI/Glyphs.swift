@@ -9,13 +9,12 @@ import SwiftUI
 /// Claude's clay sparkle with a pulsing ring while work is happening.
 @MainActor
 struct SparkleGlyph: View {
-    var pulsing = true
     var size: CGFloat = Theme.Size.glyph
     @State private var pulse = false
 
     var body: some View {
         ZStack {
-            if pulsing && !Theme.Motion.reduceMotion {
+            if !Theme.Motion.reduceMotion {
                 Circle()
                     .stroke(Theme.Colors.clay, lineWidth: Theme.Size.ringLine)
                     .frame(width: size, height: size)
@@ -28,7 +27,7 @@ struct SparkleGlyph: View {
         }
         .frame(width: size, height: size)
         .onAppear {
-            guard pulsing && !Theme.Motion.reduceMotion else { return }
+            guard !Theme.Motion.reduceMotion else { return }
             withAnimation(Theme.Motion.pulse) { pulse = true }
         }
     }
@@ -60,9 +59,9 @@ struct BreathingTriangle: View {
 struct CircleGlyph: View {
     let symbol: String
     let tint: Color
-    var size: CGFloat = Theme.Size.peekCircle
 
     var body: some View {
+        let size = Theme.Size.peekCircle
         ZStack {
             Circle().fill(tint.opacity(Theme.Opacity.glyphCircle))
             Image(systemName: symbol)
@@ -76,12 +75,11 @@ struct CircleGlyph: View {
 @MainActor
 struct StatusDot: View {
     let state: SessionState
-    var size: CGFloat = Theme.Size.dot
 
     var body: some View {
         Circle()
             .fill(Theme.Colors.stateGlyph(state))
-            .frame(width: size, height: size)
+            .frame(width: Theme.Size.dot, height: Theme.Size.dot)
     }
 }
 
@@ -110,7 +108,7 @@ struct StateGlyph: View {
     private var glyph: some View {
         switch state {
         case .working:
-            SparkleGlyph(pulsing: true)
+            SparkleGlyph()
         case .needsYou:
             BreathingTriangle()
         case .done:

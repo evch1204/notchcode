@@ -25,23 +25,50 @@ struct TeleportLink: View {
 
 // MARK: - Containers
 
+/// The inset fill around a group, with the pane parallax. `fillsHeight` stretches it to the
+/// room it is given, content at the top (the Usage tiles, at the tile radius).
 @MainActor
 struct InsetGroup<Content: View>: View {
+    var radius: CGFloat = Theme.Radius.inset
+    var fillsHeight = false
     let content: Content
 
-    init(@ViewBuilder content: () -> Content) {
+    init(radius: CGFloat = Theme.Radius.inset, fillsHeight: Bool = false, @ViewBuilder content: () -> Content) {
+        self.radius = radius
+        self.fillsHeight = fillsHeight
         self.content = content()
     }
 
     var body: some View {
         content
             .padding(Theme.Size.insetPadding)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, maxHeight: fillsHeight ? .infinity : nil,
+                   alignment: fillsHeight ? .topLeading : .leading)
             .background(
-                RoundedRectangle(cornerRadius: Theme.Radius.inset, style: .continuous)
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
                     .fill(Theme.Colors.inset)
             )
             .parallaxGroup()
+    }
+}
+
+extension View {
+    /// The snippet box around a diff, the Files preview or rendered Markdown: the inset fill
+    /// at the snippet radius, the content clipped to it.
+    func snippetBox() -> some View {
+        let shape = RoundedRectangle(cornerRadius: Theme.Radius.snippet, style: .continuous)
+        return background(shape.fill(Theme.Colors.inset)).clipShape(shape)
+    }
+
+    /// A small capsule behind a label: tags, count pills, the tree's ± badges.
+    func capsuleTag(
+        fill: Color = Theme.Colors.doneChipFill,
+        hPadding: CGFloat = Theme.Size.smallPillHPadding,
+        height: CGFloat = Theme.Size.smallPillHeight
+    ) -> some View {
+        padding(.horizontal, hPadding)
+            .frame(height: height)
+            .background(Capsule(style: .continuous).fill(fill))
     }
 }
 
@@ -81,14 +108,15 @@ struct WingRow<Left: View, Right: View>: View {
     }
 }
 
-/// A short tertiary line for empty tabs.
+/// A short tertiary line for empty tabs and panes, centred in the room it has.
 @MainActor
 struct EmptyNote: View {
     let text: String
+    var font: Font = Theme.Fonts.body
 
     var body: some View {
         Text(text)
-            .font(Theme.Fonts.body)
+            .font(font)
             .foregroundStyle(Theme.Colors.inkTertiary)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -100,7 +128,6 @@ struct EmptyNote: View {
 struct UsageBar: View {
     let fraction: Double
     var tint: Color = Theme.Colors.ink
-    var height: CGFloat = Theme.Size.barHeight
 
     var body: some View {
         GeometryReader { geo in
@@ -111,7 +138,7 @@ struct UsageBar: View {
                     .frame(width: geo.size.width * CGFloat(min(max(fraction, 0), 1)))
             }
         }
-        .frame(height: height)
+        .frame(height: Theme.Size.barHeight)
     }
 }
 
@@ -119,7 +146,6 @@ struct UsageBar: View {
 struct CountdownRing: View {
     let fraction: Double
     var size: CGFloat = Theme.Size.countdownRing
-    var tint: Color = Theme.Colors.attention
 
     var body: some View {
         ZStack {
@@ -127,7 +153,7 @@ struct CountdownRing: View {
                 .stroke(Theme.Colors.track, lineWidth: Theme.Size.countdownLine)
             Circle()
                 .trim(from: 0, to: CGFloat(min(max(fraction, 0), 1)))
-                .stroke(tint, style: StrokeStyle(lineWidth: Theme.Size.countdownLine, lineCap: .round))
+                .stroke(Theme.Colors.attention, style: StrokeStyle(lineWidth: Theme.Size.countdownLine, lineCap: .round))
                 .rotationEffect(.degrees(Theme.Motion.ringStartDegrees))
         }
         .frame(width: size, height: size)
@@ -169,18 +195,16 @@ struct DeadlineCountdown: View {
     }
 }
 
-/// Elapsed "mm:ss" since a date, ticking once a second.
+/// Elapsed "mm:ss" since a date in tertiary, ticking once a second.
 @MainActor
 struct ElapsedText: View {
     let since: Date
-    var font: Font = Theme.Fonts.caption
-    var color: Color = Theme.Colors.inkSecondary
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: Theme.Timing.clockTick)) { context in
             Text(Format.clock(context.date.timeIntervalSince(since)))
-                .font(font)
-                .foregroundStyle(color)
+                .font(Theme.Fonts.caption)
+                .foregroundStyle(Theme.Colors.inkTertiary)
                 .fixedSize()
         }
     }
@@ -247,47 +271,36 @@ struct CountingText: View, Animatable {
     }
 }
 
-/// A `CountPill` whose number counts up from 0 when it appears (done peek).
-/// Reduce Motion: the number is there at once.
+/// "+12" in a small tinted capsule. `countsUp`: the number counts up from 0 when it appears
+/// (done peek); Reduce Motion: it is there at once.
 @MainActor
-struct CountUpPill: View {
+struct CountPill: View {
     let count: Int
     let format: (Int) -> String
     let tint: Color
     let fill: Color
+    var countsUp = false
     @State private var shown: Double = 0
 
     var body: some View {
-        CountingText(value: shown, format: format)
-            .font(Theme.Fonts.monoCaption)
-            .foregroundStyle(tint)
-            .padding(.horizontal, Theme.Size.smallPillHPadding)
-            .frame(height: Theme.Size.smallPillHeight)
-            .background(Capsule(style: .continuous).fill(fill))
-            .onAppear {
-                if Theme.Motion.reduceMotion {
-                    shown = Double(count)
-                } else {
-                    withAnimation(Theme.Motion.countUp) { shown = Double(count) }
-                }
+        Group {
+            if countsUp {
+                CountingText(value: shown, format: format)
+            } else {
+                Text(format(count))
             }
-    }
-}
-
-/// "+12" in a small tinted capsule.
-@MainActor
-struct CountPill: View {
-    let text: String
-    let tint: Color
-    let fill: Color
-
-    var body: some View {
-        Text(text)
-            .font(Theme.Fonts.monoCaption)
-            .foregroundStyle(tint)
-            .padding(.horizontal, Theme.Size.smallPillHPadding)
-            .frame(height: Theme.Size.smallPillHeight)
-            .background(Capsule(style: .continuous).fill(fill))
+        }
+        .font(Theme.Fonts.monoCaption)
+        .foregroundStyle(tint)
+        .capsuleTag(fill: fill)
+        .onAppear {
+            guard countsUp else { return }
+            if Theme.Motion.reduceMotion {
+                shown = Double(count)
+            } else {
+                withAnimation(Theme.Motion.countUp) { shown = Double(count) }
+            }
+        }
     }
 }
 
@@ -316,13 +329,12 @@ struct ToolChip: View {
 struct AgentSquare: View {
     let colorIndex: Int
     var finished = false
-    var size: CGFloat = Theme.Size.agentSquare
 
     var body: some View {
         RoundedRectangle(cornerRadius: Theme.Radius.agentSquare, style: .continuous)
             .fill(Theme.Colors.agent(colorIndex))
             .opacity(finished ? Theme.Opacity.agentFinished : 1)
-            .frame(width: size, height: size)
+            .frame(width: Theme.Size.agentSquare, height: Theme.Size.agentSquare)
     }
 }
 

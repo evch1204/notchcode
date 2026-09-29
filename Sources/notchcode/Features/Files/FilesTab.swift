@@ -91,15 +91,15 @@ struct FilesTab: View {
     @ViewBuilder
     private var tree: some View {
         if state.focusedSession == nil {
-            note("No session")
+            EmptyNote(text: "No session", font: Theme.Fonts.caption)
         } else if let nodes = state.focusedTree {
             if nodes.isEmpty {
-                note("No files here")
+                EmptyNote(text: "No files here", font: Theme.Fonts.caption)
             } else {
                 treeList
             }
         } else {
-            note("Reading files" + Theme.Glyphs.ellipsis)
+            EmptyNote(text: "Reading files" + Theme.Glyphs.ellipsis, font: Theme.Fonts.caption)
         }
     }
 
@@ -126,7 +126,7 @@ struct FilesTab: View {
                 .animation(Theme.Motion.filterRows, value: state.fileFilter)
             }
             .overlay {
-                if rows.isEmpty { note("No matches") }
+                if rows.isEmpty { EmptyNote(text: "No matches", font: Theme.Fonts.caption) }
             }
             .onChange(of: state.treeCursorPath) { _, path in
                 guard let path else { return }
@@ -137,13 +137,6 @@ struct FilesTab: View {
                 if let path = opened { proxy.scrollTo(path) }
             }
         }
-    }
-
-    private func note(_ text: String) -> some View {
-        Text(text)
-            .font(Theme.Fonts.caption)
-            .foregroundStyle(Theme.Colors.inkTertiary)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -161,11 +154,7 @@ private struct TreeRowView: View {
                 .frame(width: CGFloat(row.depth) * Theme.Size.treeIndent)
             Group {
                 if row.node.isDirectory {
-                    Image(systemName: Theme.Symbols.chevron)
-                        .font(Theme.Fonts.treeChevron)
-                        .foregroundStyle(Theme.Colors.treeChevron)
-                        .rotationEffect(.degrees(row.isOpen ? Theme.Motion.chevronOpenDegrees : 0))
-                        .animation(Theme.Motion.disclosure, value: row.isOpen)
+                    RowChevron(open: row.isOpen, font: Theme.Fonts.treeChevron, color: Theme.Colors.treeChevron, width: nil)
                 } else {
                     Color.clear
                 }
@@ -214,9 +203,7 @@ private struct ChangeBadge: View {
         }
         .font(Theme.Fonts.badge)
         .lineLimit(1)
-        .padding(.horizontal, Theme.Size.badgeHPadding)
-        .frame(height: Theme.Size.badgeHeight)
-        .background(Capsule(style: .continuous).fill(Theme.Colors.badgeFill))
+        .capsuleTag(fill: Theme.Colors.badgeFill, hPadding: Theme.Size.badgeHPadding, height: Theme.Size.badgeHeight)
         .fixedSize()
     }
 }
@@ -262,12 +249,12 @@ private struct PreviewPane: View {
                         .id(path)
                         .transition(.opacity)
                     } else {
-                        centred(Theme.Glyphs.ellipsis)
+                        EmptyNote(text: Theme.Glyphs.ellipsis)
                             .id("loading|" + path)
                             .transition(.opacity)
                     }
                 } else {
-                    centred("Select a file")
+                    EmptyNote(text: "Select a file")
                         .transition(.opacity)
                 }
             }
@@ -282,13 +269,6 @@ private struct PreviewPane: View {
             get: { state.markdownShowsCode },
             set: { state.markdownShowsCode = $0 }
         )
-    }
-
-    private func centred(_ text: String) -> some View {
-        Text(text)
-            .font(Theme.Fonts.body)
-            .foregroundStyle(Theme.Colors.inkTertiary)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -356,9 +336,9 @@ private struct PreviewBody: View {
 
     var body: some View {
         if loaded.preview.isBinary {
-            message("Binary file")
+            EmptyNote(text: "Binary file")
         } else if loaded.preview.lines.isEmpty {
-            message(loaded.preview.truncated ? "Too large to preview" : "Empty file")
+            EmptyNote(text: loaded.preview.truncated ? "Too large to preview" : "Empty file")
         } else if rendersMarkdown {
             MarkdownView(lines: loaded.preview.lines, footer: footer)
                 .transition(.opacity)
@@ -371,18 +351,7 @@ private struct PreviewBody: View {
     /// "… 212 more lines" when RepoFiles capped the file.
     private var footer: String? {
         guard loaded.preview.truncated else { return nil }
-        let shown = loaded.preview.lines.count
-        if let total = loaded.totalLines, total > shown {
-            return Theme.Glyphs.ellipsis + " \(total - shown) more lines"
-        }
-        return Theme.Glyphs.ellipsis + " more lines"
-    }
-
-    private func message(_ text: String) -> some View {
-        Text(text)
-            .font(Theme.Fonts.body)
-            .foregroundStyle(Theme.Colors.inkTertiary)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        return Format.moreLines(loaded.totalLines.map { $0 - loaded.preview.lines.count })
     }
 }
 
@@ -392,96 +361,46 @@ private struct PreviewLines: View {
     let lines: [String]
     let marks: ChangeMarks
     let footer: String?
-    /// The longest line in characters, tabs expanded as the rows show them.
-    @State private var longest = 0
 
     var body: some View {
-        GeometryReader { geo in
-            // A lazy stack only knows its loaded rows, so its width is set from the longest
-            // line to give the scroll view its sideways range.
-            let textWidth = Theme.Size.previewHPadding * 2 + Theme.Size.previewNumberWidth
-                + Theme.Size.previewGutterSpacing + CGFloat(longest) * Theme.Fonts.monoSmallAdvance
-            let contentWidth = max(geo.size.width, textWidth.rounded(.up))
-            ScrollViewReader { proxy in
-                ScrollView([.vertical, .horizontal], showsIndicators: false) {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(lines.indices, id: \.self) { index in
-                            let number = index + 1
-                            PreviewLineRow(
-                                number: number,
-                                text: lines[index],
-                                added: marks.added.contains(number),
-                                removedHere: marks.removedAt.contains(number),
-                                minWidth: contentWidth
-                            )
-                            .id(number)
-                        }
-                        if let footer {
-                            Text(footer)
-                                .font(Theme.Fonts.caption)
-                                .foregroundStyle(Theme.Colors.inkTertiary)
-                                .padding(.leading, Theme.Size.previewNumberWidth + Theme.Size.previewGutterSpacing + Theme.Size.previewHPadding)
-                                .frame(height: Theme.Size.previewLineHeight)
-                        }
-                    }
-                    .frame(width: contentWidth, alignment: .leading)
-                    .padding(.vertical, Theme.Size.previewVPadding)
-                }
-                .onAppear {
-                    if let first = marks.firstLine, first > 1 {
-                        proxy.scrollTo(first, anchor: .top)
-                    }
+        WideLinesScroll(
+            texts: lines,
+            gutter: Theme.Size.previewNumberWidth + Theme.Size.previewGutterSpacing,
+            lineHeight: Theme.Size.previewLineHeight,
+            footer: footer,
+            onAppear: { proxy in
+                if let first = marks.firstLine, first > 1 {
+                    proxy.scrollTo(first, anchor: .top)
                 }
             }
-        }
-        .onChange(of: lines, initial: true) { _, lines in
-            longest = lines.map { line in
-                line.count + 3 * line.reduce(0) { $1 == "\t" ? $0 + 1 : $0 }
-            }.max() ?? 0
-        }
-        .background(
-            RoundedRectangle(cornerRadius: Theme.Radius.snippet, style: .continuous)
-                .fill(Theme.Colors.inset)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.snippet, style: .continuous))
-    }
-}
-
-@MainActor
-private struct PreviewLineRow: View {
-    let number: Int
-    let text: String
-    let added: Bool
-    let removedHere: Bool
-    let minWidth: CGFloat
-
-    var body: some View {
-        HStack(spacing: Theme.Size.previewGutterSpacing) {
-            Text(String(number))
-                .foregroundStyle(numberColor)
-                .frame(width: Theme.Size.previewNumberWidth, alignment: .trailing)
-            Text(text.replacingOccurrences(of: "\t", with: "    "))
-                .foregroundStyle(added ? Theme.Colors.ink : Theme.Colors.previewText)
-                .fixedSize(horizontal: true, vertical: false)
-        }
-        .font(Theme.Fonts.monoSmall)
-        .lineLimit(1)
-        .padding(.horizontal, Theme.Size.previewHPadding)
-        .frame(height: Theme.Size.previewLineHeight)
-        .frame(minWidth: minWidth, alignment: .leading)
-        .background(added ? Theme.Colors.previewAddedBackground : Color.clear)
-        .overlay(alignment: .leading) {
-            if removedHere {
-                Rectangle()
-                    .fill(Theme.Colors.previewRemovedMark)
-                    .frame(width: Theme.Size.removedMarkWidth)
+        ) { contentWidth in
+            ForEach(lines.indices, id: \.self) { index in
+                let number = index + 1
+                let added = marks.added.contains(number)
+                let removedHere = marks.removedAt.contains(number)
+                CodeLineRow(
+                    numbers: [number],
+                    numberWidth: Theme.Size.previewNumberWidth,
+                    numberColor: added ? Theme.Colors.previewAddedNumber
+                        : removedHere ? Theme.Colors.previewRemovedMark : Theme.Colors.previewLineNumber,
+                    height: Theme.Size.previewLineHeight,
+                    minWidth: contentWidth,
+                    tint: added ? Theme.Colors.previewAddedBackground : Color.clear
+                ) {
+                    Text(lines[index].replacingOccurrences(of: "\t", with: "    "))
+                        .foregroundStyle(added ? Theme.Colors.ink : Theme.Colors.previewText)
+                }
+                .overlay(alignment: .leading) {
+                    if removedHere {
+                        Rectangle()
+                            .fill(Theme.Colors.previewRemovedMark)
+                            .frame(width: Theme.Size.removedMarkWidth)
+                    }
+                }
+                .id(number)
             }
+        } accessory: { _ in
+            EmptyView()
         }
-    }
-
-    private var numberColor: Color {
-        if added { return Theme.Colors.previewAddedNumber }
-        if removedHere { return Theme.Colors.previewRemovedMark }
-        return Theme.Colors.previewLineNumber
     }
 }

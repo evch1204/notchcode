@@ -44,8 +44,8 @@ enum SocketServerError: Error, CustomStringConvertible {
 
 final class SocketServer {
     static let readTimeout: Int = 2             // seconds to receive the envelope line
-    /// The app's own deadline for a request is this same value, so the owner can never press
-    /// Allow after the hook has already been told "none" (hook waits 59 s, Claude Code 65 s).
+    /// The only deadline enforced for a request; the card's countdown draws the same value, so
+    /// the owner can never press Allow after the hook was told "none" (hook waits 59 s, Claude Code 65 s).
     static let replyDeadline: TimeInterval = Theme.Timing.permissionDeadline
     static let maxLineBytes = 8 * 1024 * 1024
 

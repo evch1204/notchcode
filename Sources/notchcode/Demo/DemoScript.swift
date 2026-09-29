@@ -34,11 +34,6 @@ final class DemoScript {
         }
     }
 
-    func stop() {
-        task?.cancel()
-        task = nil
-    }
-
     // MARK: - Timeline
 
     private func run() async {
@@ -363,7 +358,7 @@ final class DemoScript {
             ts: Date().timeIntervalSince1970,
             payload: .object(payload)
         )
-        state.receive(envelope) { _ in }
+        state.receiveDemo(envelope)
     }
 
     private func patchLines(added: Int, removed: Int) -> [JSONValue] {
@@ -402,7 +397,6 @@ final class DemoScript {
                 prompt: "Sketch the notch shape with concave ears and a spring morph",
                 startedAt: now.addingTimeInterval(-52 * 60),
                 endedAt: now.addingTimeInterval(-47 * 60),
-                assistantSummary: "Added NotchShape and the morph springs.",
                 files: [
                     file("Sources/notchcode/Notch/NotchShape.swift", kind: "new", hunks: [
                         (0, 1, [
@@ -453,7 +447,6 @@ final class DemoScript {
                 prompt: "Make the permission card answer through the hook with a 60 second deadline",
                 startedAt: now.addingTimeInterval(-31 * 60),
                 endedAt: now.addingTimeInterval(-24 * 60),
-                assistantSummary: "Pending requests now reply exactly once.",
                 files: [
                     file("Sources/notchcode/Model/AppState.swift", kind: "edit", hunks: [
                         (118, 118, [
@@ -507,7 +500,6 @@ final class DemoScript {
                 prompt: "Wire the permission card to the socket",
                 startedAt: now.addingTimeInterval(-3 * 60),
                 endedAt: nil,
-                assistantSummary: nil,
                 files: [
                     file("Sources/notchcode/Views/NotchView.swift", kind: "edit", hunks: [
                         (18, 18, [
@@ -537,7 +529,6 @@ final class DemoScript {
                 prompt: "Why does the hook sometimes time out on the first event?",
                 startedAt: now.addingTimeInterval(-18 * 60),
                 endedAt: now.addingTimeInterval(-16 * 60),
-                assistantSummary: "The socket is created after the first hook fires.",
                 files: [],
                 tokens: TokenUsage(input: 3_100, output: 1_400, cacheRead: 52_000, cacheWrite: 6_000),
                 model: "claude-sonnet-5-5"
@@ -547,7 +538,6 @@ final class DemoScript {
                 prompt: "Retry the socket connect with backoff",
                 startedAt: now.addingTimeInterval(-60),
                 endedAt: nil,
-                assistantSummary: nil,
                 files: [
                     file("Sources/notchcode/Transport/SocketServer.swift", kind: "edit", hunks: [
                         (88, 88, [

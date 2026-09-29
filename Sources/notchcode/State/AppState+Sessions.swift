@@ -21,7 +21,6 @@ extension AppState {
             }
             if let term = envelope.termProgram { s.termProgram = term }
             if let bundle = envelope.termBundleId { s.termBundleId = bundle }
-            if let pid = envelope.pid { s.pid = pid }
             if let mode = envelope.payload["permission_mode"]?.stringValue, !mode.isEmpty { s.permissionMode = mode }
             sessions[index] = s
             if transcriptChanged { reloadAgents(for: sid) }
@@ -51,7 +50,6 @@ extension AppState {
             transcriptPath: transcript,
             termProgram: envelope.termProgram,
             termBundleId: envelope.termBundleId,
-            pid: envelope.pid,
             permissionMode: envelope.payload["permission_mode"]?.stringValue
         )
         sessions.append(session)
@@ -66,6 +64,20 @@ extension AppState {
         }
         hookSeenAt[sid] = nil
         endedAt[sid] = Date()
+        clearSessionState(sid)
+        updateSession(sid) {
+            $0.state = .idle
+            $0.verb = nil
+        }
+        if let list = agents[sid], list.contains(where: { $0.isRunning }) {
+            agents[sid] = TranscriptReader.closeAgents(list, at: Date())
+        }
+        if !readsLocalFiles { forgetSession(sid) }
+    }
+
+    /// Forgets the turn in progress: its start, tallies and tree baseline, the needs-you,
+    /// the stop held for agents, and the session's question.
+    private func clearSessionState(_ sid: String) {
         turnStarts[sid] = nil
         turnFiles[sid] = nil
         turnLineCounts[sid] = nil
@@ -74,15 +86,7 @@ extension AppState {
         clearNeedsYou(sid)
         openTurns.remove(sid)
         stoppedWithAgents.remove(sid)
-        updateSession(sid) {
-            $0.state = .idle
-            $0.verb = nil
-        }
-        if let list = agents[sid], list.contains(where: { $0.isRunning }) {
-            agents[sid] = TranscriptReader.closeAgents(list, at: Date())
-        }
         if question?.sessionId == sid { question = nil }
-        if !readsLocalFiles { forgetSession(sid) }
     }
 
     /// Drops a session and everything kept for it.
@@ -95,23 +99,15 @@ extension AppState {
             RepoFiles.forget(root: cwd)
         }
         turnsBySession[sid] = nil
-        turnStarts[sid] = nil
         turnTitles[sid] = nil
-        turnFiles[sid] = nil
-        turnLineCounts[sid] = nil
-        turnShellCounts[sid] = nil
-        treeSnapshots[sid] = nil
         shellFiles[sid] = nil
         statusline[sid] = nil
-        clearNeedsYou(sid)
-        openTurns.remove(sid)
-        stoppedWithAgents.remove(sid)
+        clearSessionState(sid)
         if let ended = agents.removeValue(forKey: sid) {
             let ids = Set(ended.map { $0.id })
             agentKeys = agentKeys.filter { !ids.contains($0.value) }
             unmatchedHookAgents.subtract(ids)
         }
-        if question?.sessionId == sid { question = nil }
         if focusedSessionId == sid { focusedSessionId = nil }
         sessionCursor = min(sessionCursor, max(0, sessions.count - 1))
     }
@@ -239,7 +235,6 @@ extension AppState {
                     transcriptPath: found.transcriptPath,
                     termProgram: nil,
                     termBundleId: nil,
-                    pid: nil,
                     permissionMode: found.permissionMode
                 ))
                 if let prompt = found.lastPrompt, !prompt.isEmpty { turnTitles[found.id] = prompt }

@@ -133,31 +133,9 @@ enum GitRunner {
         }
 
         let remotes = lines(await run(["remote"], cwd: root).out)
-        let upstream = await run(["rev-parse", "--abbrev-ref", "@{u}"], cwd: root)
-        if upstream.status == 0, !trimmed(upstream.out).isEmpty {
-            snap.upstream = trimmed(upstream.out)
-        }
-        if let up = snap.upstream, let owner = remotes.first(where: { up.hasPrefix($0 + "/") }) {
-            snap.remote = owner
-        } else {
-            snap.remote = remotes.contains("origin") ? "origin" : remotes.first
-        }
-        if snap.upstream != nil, let branch = snap.branch { await resolvePushTarget(&snap, branch: branch, root: root) }
-
-        if snap.upstream != nil {
-            // "<behind>\t<ahead>": left is the upstream, right is HEAD.
-            let counts = trimmed(await run(["rev-list", "--left-right", "--count", "@{u}...HEAD"], cwd: root).out)
-                .split(whereSeparator: { $0 == "\t" || $0 == " " })
-            if counts.count == 2 {
-                snap.behind = Int(counts[0]) ?? 0
-                snap.ahead = Int(counts[1]) ?? 0
-            }
-            snap.unpushed = snap.ahead
-        } else if snap.branch != nil {
-            let args = remotes.isEmpty
-                ? ["rev-list", "--count", "HEAD"]
-                : ["rev-list", "--count", "HEAD", "--not", "--remotes"]
-            snap.unpushed = Int(trimmed(await run(args, cwd: root).out)) ?? 0
+        await resolveUpstream(&snap, of: "@{u}", branch: snap.branch, remotes: remotes, root: root)
+        if snap.upstream != nil || snap.branch != nil {
+            await countUnpushed(&snap, upstream: snap.upstream == nil ? nil : "@{u}", ref: "HEAD", remotes: remotes, root: root)
         }
 
         // Uncommitted files: the same commands the hook's tree report runs.
@@ -177,13 +155,7 @@ enum GitRunner {
         var seen = Set<String>()
         for entry in entries where !seen.contains(entry.path) {
             seen.insert(entry.path)
-            let diff = byPath[entry.path]
-            var file = FileChange(path: entry.path, added: diff?.added ?? 0, removed: diff?.removed ?? 0,
-                                  kind: kind(statusCode: entry.code))
-            file.patch = diff?.lines ?? []
-            file.patchTruncated = diff?.truncated ?? false
-            file.snippet = Array(file.patch.prefix(DiffBuilder.snippetLimit))
-            snap.files.append(file)
+            snap.files.append(fileChange(entry.path, kind: kind(statusCode: entry.code), diff: byPath[entry.path]))
         }
         for file in snap.files.prefix(Theme.Limits.gitLineCountFiles) where file.kind != "deleted" {
             // Regular files only: an untracked FIFO would block the read forever.
@@ -193,20 +165,68 @@ enum GitRunner {
             if let data { snap.lineCounts[file.path] = lineCount(data) }
         }
 
-        let log = await run(["log", "-\(Theme.Limits.gitRecentCommits)", "--format=%h%x1f%s%x1f%ct"], cwd: root)
-        if log.status == 0 {
-            for (index, line) in lines(log.out).enumerated() {
-                let parts = line.split(separator: "\u{1f}", omittingEmptySubsequences: false).map(String.init)
-                guard parts.count == 3 else { continue }
-                snap.commits.append(GitCommit(
-                    sha: parts[0],
-                    subject: parts[1],
-                    date: Date(timeIntervalSince1970: TimeInterval(parts[2]) ?? 0),
-                    pushed: index >= snap.unpushed
-                ))
-            }
-        }
+        snap.commits = await recentCommits([], unpushed: snap.unpushed, root: root)
         return snap
+    }
+
+    /// The upstream `spec` names ("@{u}", or "<branch>@{u}") and the remote a push goes to:
+    /// the upstream's, else origin, else the first; with an upstream, the exact push target.
+    private static func resolveUpstream(_ snap: inout GitSnapshot, of spec: String, branch: String?,
+                                        remotes: [String], root: String) async {
+        let upstream = await run(["rev-parse", "--abbrev-ref", spec], cwd: root)
+        if upstream.status == 0, !trimmed(upstream.out).isEmpty { snap.upstream = trimmed(upstream.out) }
+        if let up = snap.upstream, let owner = remotes.first(where: { up.hasPrefix($0 + "/") }) {
+            snap.remote = owner
+        } else {
+            snap.remote = remotes.contains("origin") ? "origin" : remotes.first
+        }
+        if snap.upstream != nil, let branch { await resolvePushTarget(&snap, branch: branch, root: root) }
+    }
+
+    /// What a push would send from `ref`: behind and ahead of `upstream`, or without one the
+    /// commits on no remote.
+    private static func countUnpushed(_ snap: inout GitSnapshot, upstream: String?, ref: String,
+                                      remotes: [String], root: String) async {
+        if let upstream {
+            // "<behind>\t<ahead>": left is the upstream, right is the ref.
+            let counts = trimmed(await run(["rev-list", "--left-right", "--count", upstream + "..." + ref], cwd: root).out)
+                .split(whereSeparator: { $0 == "\t" || $0 == " " })
+            if counts.count == 2 {
+                snap.behind = Int(counts[0]) ?? 0
+                snap.ahead = Int(counts[1]) ?? 0
+            }
+            snap.unpushed = snap.ahead
+        } else {
+            let args = remotes.isEmpty
+                ? ["rev-list", "--count", ref]
+                : ["rev-list", "--count", ref, "--not", "--remotes"]
+            snap.unpushed = Int(trimmed(await run(args, cwd: root).out)) ?? 0
+        }
+    }
+
+    /// A file of the list with its parsed diff; counts are 0 without one.
+    private static func fileChange(_ path: String, kind: String, diff: FileDiff?) -> FileChange {
+        var file = FileChange(path: path, added: diff?.added ?? 0, removed: diff?.removed ?? 0, kind: kind)
+        file.patch = diff?.lines ?? []
+        file.patchTruncated = diff?.truncated ?? false
+        return file
+    }
+
+    /// The last `gitRecentCommits` commits (of `range`, else HEAD's), the newest `unpushed` of
+    /// them marked as not pushed.
+    private static func recentCommits(_ range: [String], unpushed: Int, root: String) async -> [GitCommit] {
+        let log = await run(["log", "-\(Theme.Limits.gitRecentCommits)", "--format=%h%x1f%s%x1f%ct"] + range, cwd: root)
+        guard log.status == 0 else { return [] }
+        return lines(log.out).enumerated().compactMap { index, line in
+            let parts = line.split(separator: "\u{1f}", omittingEmptySubsequences: false).map(String.init)
+            guard parts.count == 3 else { return nil }
+            return GitCommit(
+                sha: parts[0],
+                subject: parts[1],
+                date: Date(timeIntervalSince1970: TimeInterval(parts[2]) ?? 0),
+                pushed: index >= unpushed
+            )
+        }
     }
 
     /// The upstream as git's config names it (`branch.<b>.remote` and `.merge`), so the push
@@ -259,80 +279,32 @@ enum GitRunner {
         if common.status == 0 { snap.repoName = GitDir.repoName(commonDir: trimmed(common.out)) }
 
         let remotes = lines(await run(["remote"], cwd: repo).out)
-        let upstream = await run(["rev-parse", "--abbrev-ref", name + "@{u}"], cwd: repo)
-        if upstream.status == 0, !trimmed(upstream.out).isEmpty { snap.upstream = trimmed(upstream.out) }
-        if let up = snap.upstream, let owner = remotes.first(where: { up.hasPrefix($0 + "/") }) {
-            snap.remote = owner
-        } else {
-            snap.remote = remotes.contains("origin") ? "origin" : remotes.first
-        }
-        if snap.upstream != nil { await resolvePushTarget(&snap, branch: name, root: repo) }
-
+        await resolveUpstream(&snap, of: name + "@{u}", branch: name, remotes: remotes, root: repo)
+        await countUnpushed(&snap, upstream: snap.upstream, ref: ref, remotes: remotes, root: repo)
         if let up = snap.upstream {
-            let counts = trimmed(await run(["rev-list", "--left-right", "--count", up + "..." + ref], cwd: repo).out)
-                .split(whereSeparator: { $0 == "\t" || $0 == " " })
-            if counts.count == 2 {
-                snap.behind = Int(counts[0]) ?? 0
-                snap.ahead = Int(counts[1]) ?? 0
-            }
-            snap.unpushed = snap.ahead
             snap.base = up
-        } else {
-            let args = remotes.isEmpty
-                ? ["rev-list", "--count", ref]
-                : ["rev-list", "--count", ref, "--not", "--remotes"]
-            snap.unpushed = Int(trimmed(await run(args, cwd: repo).out)) ?? 0
-            if let main = await defaultBranch(root: repo), main != name { snap.base = main }
+        } else if let main = await defaultBranch(root: repo), main != name {
+            snap.base = main
         }
 
         guard let base = snap.base else { return snap }
         snap.baseAhead = Int(trimmed(await run(["rev-list", "--count", base + ".." + ref], cwd: repo).out)) ?? 0
 
-        // Changes vs the base: the list and counts from --numstat, the kinds from
-        // --name-status, the lines from -p (the hook's flags, so one parser reads them).
-        let range = base + "..." + ref
-        let numstat = await run(["diff", "--numstat", "--no-renames", range], cwd: repo)
-        let names = await run(["diff", "--name-status", "--no-renames", range], cwd: repo)
+        // Changes vs the base, with the hook's flags so one parser reads them: the counts and
+        // the kinds (from the mode lines) come with the lines.
         let patch = await run(["diff", "-p", "--no-color", "--no-ext-diff", "--no-renames",
-                         "--src-prefix=a/", "--dst-prefix=b/", range], cwd: repo)
-        var kinds: [String: String] = [:]
-        for line in lines(names.out) {
-            let parts = line.split(separator: "\t", maxSplits: 1).map(String.init)
-            guard parts.count == 2 else { continue }
-            kinds[parts[1]] = kind(statusCode: parts[0])
-        }
-        var byPath: [String: FileDiff] = [:]
-        for diff in UnifiedDiff.parse(patch.out) where byPath[diff.path] == nil { byPath[diff.path] = diff }
-        for line in lines(numstat.out) {
-            let parts = line.split(separator: "\t", maxSplits: 2).map(String.init)
-            guard parts.count == 3 else { continue }
-            let path = parts[2]
-            let diff = byPath[path]
-            var file = FileChange(path: path, added: Int(parts[0]) ?? diff?.added ?? 0,
-                                  removed: Int(parts[1]) ?? diff?.removed ?? 0, kind: kinds[path] ?? "edit")
-            file.patch = diff?.lines ?? []
-            file.patchTruncated = diff?.truncated ?? false
-            file.snippet = Array(file.patch.prefix(DiffBuilder.snippetLimit))
-            snap.files.append(file)
+                         "--src-prefix=a/", "--dst-prefix=b/", base + "..." + ref], cwd: repo)
+        var seen = Set<String>()
+        for diff in UnifiedDiff.parse(patch.out) where !seen.contains(diff.path) {
+            seen.insert(diff.path)
+            snap.files.append(fileChange(diff.path, kind: diff.kind ?? "edit", diff: diff))
         }
         for file in snap.files.prefix(Theme.Limits.gitLineCountFiles) where file.kind != "deleted" {
             let blob = await run(["cat-file", "blob", ref + ":" + file.path], cwd: repo)
             if blob.status == 0 { snap.lineCounts[file.path] = lineCount(Data(blob.out.utf8)) }
         }
 
-        let log = await run(["log", "-\(Theme.Limits.gitRecentCommits)", "--format=%h%x1f%s%x1f%ct", base + ".." + ref], cwd: repo)
-        if log.status == 0 {
-            for (index, line) in lines(log.out).enumerated() {
-                let parts = line.split(separator: "\u{1f}", omittingEmptySubsequences: false).map(String.init)
-                guard parts.count == 3 else { continue }
-                snap.commits.append(GitCommit(
-                    sha: parts[0],
-                    subject: parts[1],
-                    date: Date(timeIntervalSince1970: TimeInterval(parts[2]) ?? 0),
-                    pushed: index >= snap.unpushed
-                ))
-            }
-        }
+        snap.commits = await recentCommits([base + ".." + ref], unpushed: snap.unpushed, root: repo)
         return snap
     }
 

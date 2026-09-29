@@ -173,10 +173,9 @@ export function chainPathFor(settingsFile) {
     : `${path.resolve(settingsFile)}.notchcode-statusline-chain.json`;
 }
 
-/** Our statusLine command. A non-default chain file is passed in NOTCHCODE_CHAIN. */
-export function statusLineCommand(script, chain) {
-  const q = shellQuote(script);
-  return path.resolve(chain) === path.resolve(DEFAULT_CHAIN) ? q : `NOTCHCODE_CHAIN=${shellQuote(chain)} ${q}`;
+/** Our statusLine command. The script always reads the default chain file. */
+export function statusLineCommand(script) {
+  return shellQuote(script);
 }
 
 export function isOurStatusLine(line) {

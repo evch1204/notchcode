@@ -133,20 +133,12 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     @Published var prefs: Preferences {
         didSet {
             guard prefs != oldValue else { return }
-            PreferencesStore.save(prefs, extras: extraPrefs)
+            PreferencesStore.save(prefs)
             if prefs.systemNotifications && !oldValue.systemNotifications {
                 SystemNotifier.requestAuthorization()
             }
             if !prefs.showPeeks { peekTask?.cancel(); peek = nil }
             refresh()
-        }
-    }
-
-    /// Choices Contract's `Preferences` has no field for, saved in the same blob.
-    @Published var extraPrefs: ExtraPreferences {
-        didSet {
-            guard extraPrefs != oldValue else { return }
-            PreferencesStore.save(prefs, extras: extraPrefs)
         }
     }
 
@@ -167,7 +159,6 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     // MARK: Private state (never published)
 
     var handlers: [String: ReplyHandler] = [:]
-    var deadlineTasks: [String: Task<Void, Never>] = [:]
     /// When a Notification (or a lapsed permission) last said the session waits on the owner.
     /// `.needsYou` without a pending request lives only this long (Theme.Timing.needsYouLifetime),
     /// and any later activity for the session clears it.
@@ -211,7 +202,6 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
 
     init() {
         prefs = PreferencesStore.load()
-        extraPrefs = PreferencesStore.loadExtras()
     }
 
     // MARK: - Derived values for views
@@ -374,17 +364,8 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         agents(for: sessionId).filter { $0.isRunning }
     }
 
-    func finishedAgentCount(for sessionId: String) -> Int {
-        agents(for: sessionId).filter { !$0.isRunning }.count
-    }
-
     var runningAgentCount: Int {
         agents.values.reduce(0) { $0 + $1.filter { $0.isRunning }.count }
-    }
-
-    /// Every running agent, most urgent session first, in start order inside a session.
-    var allRunningAgents: [Agent] {
-        orderedSessions.flatMap { runningAgents(for: $0.id) }
     }
 
     /// Stable colour slot: the agent's index among all agents its session has had.

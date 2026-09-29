@@ -56,13 +56,6 @@ enum HooksInstaller {
             .appendingPathComponent("Library/Application Support/notchcode/statusline-chain.json").path
     }
 
-    /// The real settings file uses chainPath; any other (a test copy) gets its own chain file
-    /// beside it, so a test never touches the real one. Same rule as chainPathFor() in settings.mjs.
-    static func chainPath(forSettings path: String) -> String {
-        let p = (path as NSString).standardizingPath
-        return p == (settingsPath as NSString).standardizingPath ? chainPath : path + ".notchcode-statusline-chain.json"
-    }
-
     /// The status line script inside the app bundle, or the repo's hooks/ folder when running unbundled.
     static var statuslineScriptPath: String {
         if let url = Bundle.main.url(forResource: "notchcode-statusline", withExtension: "sh") { return url.path }
@@ -84,13 +77,9 @@ enum HooksInstaller {
 
     // MARK: Public
 
-    static func status() -> Status { status(settingsPath: settingsPath) }
-    static func connect() throws { try connect(settingsPath: settingsPath) }
-    static func disconnect() throws { try disconnect(settingsPath: settingsPath) }
-
     /// Connected means every hook and the statusLine are ours; partial means some are.
-    static func status(settingsPath path: String) -> Status {
-        guard let file = try? readSettings(path), case .object(let top) = file.root else { return .notConnected }
+    static func status() -> Status {
+        guard let file = try? readSettings(settingsPath), case .object(let top) = file.root else { return .notConnected }
         var hooks: [OJ.Member] = []
         if let h = top.first(where: { $0.key == "hooks" })?.value, case .object(let m) = h { hooks = m }
         let events = wantedEventNames
@@ -106,13 +95,13 @@ enum HooksInstaller {
         return count == 0 ? .notConnected : .partial
     }
 
-    static func connect(settingsPath path: String, hookScript: String? = nil,
-                        statuslineScript: String? = nil, chainPath chainOverride: String? = nil) throws {
-        let script = hookScript ?? hookScriptPath
+    static func connect() throws {
+        let path = settingsPath
+        let script = hookScriptPath
         guard FileManager.default.fileExists(atPath: script) else { throw InstallError.hookScriptMissing(script) }
-        let lineScript = statuslineScript ?? statuslineScriptPath
+        let lineScript = statuslineScriptPath
         guard FileManager.default.fileExists(atPath: lineScript) else { throw InstallError.hookScriptMissing(lineScript) }
-        let chain = chainOverride ?? chainPath(forSettings: path)
+        let chain = chainPath
 
         // A script without the executable bit (for example one copied into a bundle that
         // lost it) is run through sh instead. The bundle itself is never modified.
@@ -122,10 +111,7 @@ enum HooksInstaller {
         }
         let prefix = runnable(script)
         let wanted = wantedHooks { kind in "\(prefix) \(kind)" }
-        // A non-default chain file is handed to the script in NOTCHCODE_CHAIN.
-        let lineCommand = (chain as NSString).standardizingPath == (chainPath as NSString).standardizingPath
-            ? runnable(lineScript)
-            : "NOTCHCODE_CHAIN=\(shellQuote(chain)) \(runnable(lineScript))"
+        let lineCommand = runnable(lineScript)
 
         var file = try readSettings(path)
         guard case .object(var top) = file.root else { throw InstallError.notAnObject("the top level") }
@@ -211,11 +197,12 @@ enum HooksInstaller {
         try writeSettings(path, file)
     }
 
-    static func disconnect(settingsPath path: String, chainPath chainOverride: String? = nil) throws {
+    static func disconnect() throws {
+        let path = settingsPath
         var file = try readSettings(path)
         guard file.existed else { return }
         guard case .object(var top) = file.root else { throw InstallError.notAnObject("the top level") }
-        let chain = chainOverride ?? chainPath(forSettings: path)
+        let chain = chainPath
 
         var changed = false
         var restored = false

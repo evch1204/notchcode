@@ -19,6 +19,7 @@ struct FileDiff: Equatable {
     var added: Int                  // every added line, capped or not
     var removed: Int
     var textHash: Int               // hash of the diff's body (hunks, or the binary note), not its headers; 0 when none
+    var kind: String? = nil         // "new" or "deleted" from the file header's mode line, else nil
 }
 
 /// What a file looked like in one report: enough to tell whether it changed since.
@@ -47,12 +48,11 @@ struct TreeSnapshot: Equatable {
 }
 
 enum UnifiedDiff {
-    static let patchLimit = 400
-
     // MARK: Parsing
 
     /// Splits a multi-file unified diff (`diff --git` sections) into per-file entries.
-    static func parse(_ text: String, cap: Int = patchLimit) -> [FileDiff] {
+    static func parse(_ text: String) -> [FileDiff] {
+        let cap = Theme.Limits.patchLines
         var files: [FileDiff] = []
         var current: FileDiff?
         var raw: [Substring] = []
@@ -98,7 +98,11 @@ enum UnifiedDiff {
             }
             if !inHunk {
                 // File headers. "+++ b/path" (or "--- a/path" for a deletion) names the file best.
-                if line.hasPrefix("+++ "), let path = sidePath(line.dropFirst(4), prefix: "b/") {
+                if line.hasPrefix("new file mode ") {
+                    current!.kind = "new"
+                } else if line.hasPrefix("deleted file mode ") {
+                    current!.kind = "deleted"
+                } else if line.hasPrefix("+++ "), let path = sidePath(line.dropFirst(4), prefix: "b/") {
                     current!.path = path
                 } else if line.hasPrefix("--- "), let path = sidePath(line.dropFirst(4), prefix: "a/"),
                           current!.path.isEmpty {

@@ -110,20 +110,6 @@ enum RepoFiles {
 
     // MARK: Ignore
 
-    /// True when `relativePath` (relative to `cwd`) or any folder above it is ignored.
-    static func isIgnored(relativePath: String, cwd: String) -> Bool {
-        let root = normalized(cwd)
-        let rules = ignoreRules(cwd: root)
-        let parts = relativePath.split(separator: "/").map(String.init).filter { !$0.isEmpty && $0 != "." }
-        var rel = ""
-        for (i, name) in parts.enumerated() {
-            rel = rel.isEmpty ? name : rel + "/" + name
-            let isDir = i < parts.count - 1 || isRealDirectory(root + "/" + rel)
-            if alwaysIgnored.contains(name) || rules.matches(rel, name: name, isDirectory: isDir) { return true }
-        }
-        return false
-    }
-
     struct IgnoreRules {
         struct Rule {
             var pattern: String

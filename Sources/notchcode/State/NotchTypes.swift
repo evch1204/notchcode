@@ -80,7 +80,6 @@ struct Peek: Identifiable, Equatable {
     var detail: String? = nil
     /// Agent peeks: the finished agent's colour slot.
     var colorIndex: Int? = nil
-    var createdAt = Date()
 }
 
 /// A question Claude asked in the terminal. Read-only here: no hook can answer it.

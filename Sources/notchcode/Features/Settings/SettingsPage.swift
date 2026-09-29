@@ -66,7 +66,7 @@ struct SettingsPage: View {
                             SmallSwitch(isOn: $state.prefs.showPeeks)
                         }
                         SettingsRow(label: "Also peek each file edit", enabled: state.prefs.showPeeks) {
-                            SmallSwitch(isOn: $state.extraPrefs.peekEdits)
+                            SmallSwitch(isOn: $state.prefs.peekEdits)
                                 .opacity(state.prefs.showPeeks ? 1 : Theme.Opacity.disabled)
                                 .disabled(!state.prefs.showPeeks)
                         }
@@ -95,7 +95,7 @@ struct SettingsPage: View {
                             SmallSwitch(isOn: $state.prefs.hotkeyEnabled)
                         }
                         SettingsRow(label: "Show keys beside buttons in the card") {
-                            SmallSwitch(isOn: $state.extraPrefs.keycapsBesideButtons)
+                            SmallSwitch(isOn: $state.prefs.keycapsBesideButtons)
                         }
                     }
 

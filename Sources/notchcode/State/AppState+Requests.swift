@@ -124,30 +124,15 @@ extension AppState {
                 id: request.id
             )
         }
-
-        let id = request.id
-        let delay = max(0, request.deadline.timeIntervalSinceNow)
-        deadlineTasks[id] = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(delay))
-            if Task.isCancelled { return }
-            self?.resolve(id, with: HookReply(id: id, decision: .none), timedOut: true)
-        }
+        // The deadline is the transport's: it replies "none" and calls `timedOut(requestId:)`.
     }
 
-    /// Replies exactly once and forgets the request. An answer means Claude moves on; a lapsed
-    /// deadline means Claude Code's own terminal prompt now waits, which still needs the owner
-    /// for a short while.
-    func resolve(_ id: String, with reply: HookReply, timedOut: Bool = false) {
+    /// Replies exactly once and forgets the request. An answer means Claude moves on.
+    func resolve(_ id: String, with reply: HookReply) {
         guard let handler = handlers[id] else { return }
         let sid = dropPending(id)
         handler(reply)
-        if let sid {
-            if reply.decision != .none {
-                clearNeedsYou(sid)
-            } else if timedOut, !pending.contains(where: { $0.sessionId == sid }) {
-                markNeedsYou(sid)
-            }
-        }
+        if let sid, reply.decision != .none { clearNeedsYou(sid) }
         afterPendingChange(sessionId: sid)
     }
 
@@ -155,7 +140,6 @@ extension AppState {
     @discardableResult
     func dropPending(_ id: String) -> String? {
         guard handlers.removeValue(forKey: id) != nil else { return nil }
-        deadlineTasks.removeValue(forKey: id)?.cancel()
         let sid = pending.first(where: { $0.id == id })?.sessionId
         pending.removeAll { $0.id == id }
         SystemNotifier.remove(id: id)

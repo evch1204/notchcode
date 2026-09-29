@@ -8,6 +8,17 @@ extension AppState {
 
     // MARK: - Hooks for DemoScript
 
+    /// An envelope as the socket would deliver it. The demo has no socket, so a blocking one
+    /// gets the transport's deadline here: past it the request goes the timed-out way.
+    func receiveDemo(_ envelope: HookEnvelope) {
+        receive(envelope) { _ in }
+        guard envelope.isBlocking else { return }
+        let id = envelope.id
+        DispatchQueue.main.asyncAfter(deadline: .now() + Theme.Timing.permissionDeadline) { [weak self] in
+            self?.timedOut(requestId: id)
+        }
+    }
+
     func mutateSession(_ id: String, _ change: (inout Session) -> Void) {
         updateSession(id, change)
         refresh()

@@ -424,7 +424,6 @@ enum Theme {
         static let barHeight: CGFloat = 4
         static let footerBarWidth: CGFloat = 64
         static let legendDot: CGFloat = 6
-        static let tilePadding: CGFloat = 10
         static let insetPadding: CGFloat = 10
         /// Padding inside the card's content well.
         static let wellPadding: CGFloat = 8
@@ -959,6 +958,8 @@ enum Theme {
     // MARK: - Limits (counts)
 
     enum Limits {
+        /// Diff lines kept per file (FileChange.patch), from transcripts, hooks and git alike.
+        static let patchLines: Int = 400
         /// The commit card lists at most this many files, then "N more".
         static let commitMaxFileRows: Int = 5
         /// The permission card lists at most this many of the rules Always would add, then "+N more".

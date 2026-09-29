@@ -78,7 +78,6 @@ extension AppState {
 
     /// The key of the row under the keyboard cursor in the Changes tab.
     var cursorRowKey: String? {
-        if selectedTab == .git { return gitCursorRowKey }
         guard selectedTab == .changes else { return nil }
         let rows = changesRows
         return rows.indices.contains(rowCursor) ? rows[rowCursor].id : nil
@@ -102,7 +101,6 @@ extension AppState {
 
     /// Moves the keyboard cursor to a row the owner clicked.
     func setRowCursor(key: String) {
-        if selectedTab == .git { setGitRowCursor(key: key); return }
         if let index = changesRows.firstIndex(where: { $0.id == key }) {
             rowCursor = index
         }

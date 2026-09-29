@@ -395,7 +395,6 @@ fileprivate struct RawTurn {
     var prompt: String
     var startedAt: Date
     var endedAt: Date?
-    var summary: String?
     var model: String?
     var log: EditLog
     var cwd: String?
@@ -435,13 +434,6 @@ private struct TurnBuilder {
             if let model = message["model"] as? String, !model.hasPrefix("<") { current!.model = model }
             if let context = current!.log.consumeAssistant(message) { current!.lastContext = context }
             if let asked = Self.askedQuestion(message) { current!.question = asked }
-            if current!.summary == nil, let blocks = message["content"] as? [[String: Any]] {
-                for block in blocks where (block["type"] as? String) == "text" {
-                    guard let text = block["text"] as? String else { continue }
-                    let trimmed = Self.summarize(text)
-                    if !trimmed.isEmpty { current!.summary = trimmed; break }
-                }
-            }
         case "user":
             current!.log.consumeToolResult(line)
         default:
@@ -473,18 +465,6 @@ private struct TurnBuilder {
         current = nil
         p.cwd = cwd
         turns.append(p)
-    }
-
-    static let summaryLength = 160
-
-    private static func summarize(_ text: String) -> String {
-        let flat = text
-            .components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-            .joined(separator: " ")
-        guard flat.count > summaryLength else { return flat }
-        return String(flat.prefix(summaryLength - 1)).trimmingCharacters(in: .whitespaces) + "…"
     }
 }
 
@@ -527,7 +507,6 @@ fileprivate struct EditLog {
     var agentIds: [String: String] = [:]    // tool_use id -> agentId, from the tool result
 
     static let snippetLimit = 8     // changed lines; below this the card shows the snippet
-    static let patchLimit = 400     // lines kept in FileChange.patch
 
     /// Usage, edits and agent launches of one assistant line. Returns the message's
     /// input-side token count (input + cache read + cache write) when it has usage.
@@ -655,7 +634,7 @@ fileprivate struct EditLog {
                     m.change.removed += e.removed
                     m.change.kind = strongerKind(m.change.kind, e.kind)
                     if let h = e.hunks {
-                        if m.hunks.count <= patchLimit { m.hunks += h }
+                        if m.hunks.count <= Theme.Limits.patchLines { m.hunks += h }
                     } else {
                         m.exact = false
                     }
@@ -674,8 +653,8 @@ fileprivate struct EditLog {
             if m.exact, changed > 0, changed < snippetLimit {
                 m.change.snippet = m.hunks
             }
-            if m.hunks.count > patchLimit {
-                m.change.patch = Array(m.hunks.prefix(patchLimit))
+            if m.hunks.count > Theme.Limits.patchLines {
+                m.change.patch = Array(m.hunks.prefix(Theme.Limits.patchLines))
                 m.change.patchTruncated = true
             } else {
                 m.change.patch = m.hunks
@@ -689,7 +668,6 @@ fileprivate struct EditLog {
             prompt: raw.prompt,
             startedAt: raw.startedAt,
             endedAt: raw.endedAt,
-            assistantSummary: raw.summary,
             files: files,
             tokens: tokens,
             model: raw.model,
@@ -705,9 +683,9 @@ fileprivate struct EditLog {
         var removed = 0
         var truncated = false
 
-        /// Counts every line, keeps at most `patchLimit` (one over, so the merge sees the overflow).
+        /// Counts every line, keeps at most `Theme.Limits.patchLines` (one over, so the merge sees the overflow).
         mutating func append(_ line: DiffLine) {
-            if lines.count > EditLog.patchLimit { truncated = true; return }
+            if lines.count > Theme.Limits.patchLines { truncated = true; return }
             lines.append(line)
         }
     }
@@ -757,7 +735,7 @@ fileprivate struct EditLog {
         diff.append(DiffLine(kind: .hunk, text: "@@ -0,0 +1,\(count) @@", oldLine: nil, newLine: nil))
         var n = 1
         for raw in lines {
-            if diff.lines.count > patchLimit { diff.truncated = true; break }
+            if diff.lines.count > Theme.Limits.patchLines { diff.truncated = true; break }
             diff.append(DiffLine(kind: .added, text: String(raw), oldLine: nil, newLine: n))
             n += 1
         }

@@ -14,12 +14,11 @@
 #
 # Rules: no dependencies beyond macOS base (sh, cat, stat, date, plutil, sed, tr, nc);
 # never prints an error; always exits 0, including when the app is not running.
-# NOTCHCODE_CHAIN overrides the chain file (connect sets it only for non-default installs).
 
 here=$(dirname "$0")
 dir="$HOME/Library/Application Support/notchcode"
 sock="${NOTCHCODE_SOCK:-$dir/notchcode.sock}"
-chain="${NOTCHCODE_CHAIN:-$dir/statusline-chain.json}"
+chain="$dir/statusline-chain.json"
 
 input=$(cat 2>/dev/null)
 

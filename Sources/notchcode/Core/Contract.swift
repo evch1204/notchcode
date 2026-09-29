@@ -178,7 +178,6 @@ struct Session: Identifiable, Equatable {
     var transcriptPath: String?
     var termProgram: String?
     var termBundleId: String?
-    var pid: Int?
     var permissionMode: String? = nil  // raw: "default", "plan", "bypassPermissions", "acceptEdits", "auto"; the transcript is the source of truth
 }
 
@@ -193,7 +192,8 @@ struct Agent: Identifiable, Equatable {
     var isRunning: Bool { endedAt == nil }
 }
 
-/// What the owner can change. Persisted in UserDefaults by the UI; the keys are the property names.
+/// What the owner can change. Persisted in UserDefaults by the UI; the keys are the property
+/// names. A key missing from the stored blob (a choice added later) takes its default.
 struct Preferences: Equatable, Codable {
     enum IdleStyle: String, Codable, CaseIterable { case closed, wings }
     enum AttentionStyle: String, Codable, CaseIterable { case twoRow, wings }
@@ -207,6 +207,31 @@ struct Preferences: Equatable, Codable {
     var hotkeyEnabled: Bool = true             // ⌥ space
     var showAgentsInWings: Bool = true         // the running subagent count in the closed state's wings
     var systemNotifications: Bool = false      // also post a macOS notification for blocking events
+    /// Peek every file edit, not only completed turns and subagents.
+    var peekEdits: Bool = false
+    /// The Files tool's tree is collapsed so the preview takes the whole well (⌘B).
+    var filesTreeHidden: Bool = false
+    /// The small keycaps beside buttons and pills inside the card. The footer's key row and
+    /// the attention row keep theirs either way; the shortcuts work either way.
+    var keycapsBesideButtons: Bool = true
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = Preferences()
+        idleStyle = try c.decodeIfPresent(IdleStyle.self, forKey: .idleStyle) ?? d.idleStyle
+        attentionStyle = try c.decodeIfPresent(AttentionStyle.self, forKey: .attentionStyle) ?? d.attentionStyle
+        showPeeks = try c.decodeIfPresent(Bool.self, forKey: .showPeeks) ?? d.showPeeks
+        peekSeconds = try c.decodeIfPresent(Double.self, forKey: .peekSeconds) ?? d.peekSeconds
+        openGesture = try c.decodeIfPresent(OpenGesture.self, forKey: .openGesture) ?? d.openGesture
+        hotkeyEnabled = try c.decodeIfPresent(Bool.self, forKey: .hotkeyEnabled) ?? d.hotkeyEnabled
+        showAgentsInWings = try c.decodeIfPresent(Bool.self, forKey: .showAgentsInWings) ?? d.showAgentsInWings
+        systemNotifications = try c.decodeIfPresent(Bool.self, forKey: .systemNotifications) ?? d.systemNotifications
+        peekEdits = try c.decodeIfPresent(Bool.self, forKey: .peekEdits) ?? d.peekEdits
+        filesTreeHidden = try c.decodeIfPresent(Bool.self, forKey: .filesTreeHidden) ?? d.filesTreeHidden
+        keycapsBesideButtons = try c.decodeIfPresent(Bool.self, forKey: .keycapsBesideButtons) ?? d.keycapsBesideButtons
+    }
 }
 
 /// A blocking request waiting for the owner.
@@ -261,7 +286,6 @@ struct TranscriptTurn: Identifiable, Equatable {
     var prompt: String
     var startedAt: Date
     var endedAt: Date?
-    var assistantSummary: String?   // first assistant text, trimmed
     var files: [FileChange]
     var tokens: TokenUsage
     var model: String?
@@ -375,7 +399,6 @@ enum JSONValue: Codable, Equatable {
     var intValue: Int? { doubleValue.flatMap { Int(exactly: $0.rounded(.towardZero)) } }
     var boolValue: Bool? { if case .bool(let b) = self { return b }; return nil }
     var arrayValue: [JSONValue]? { if case .array(let a) = self { return a }; return nil }
-    var objectValue: [String: JSONValue]? { if case .object(let o) = self { return o }; return nil }
 }
 
 // MARK: - Paths

@@ -9,7 +9,8 @@
 //   node scripts/connect.mjs [--settings <path>] [--chain <path>] [--dry-run]
 //
 // With --settings pointing anywhere but ~/.claude/settings.json, the chain file defaults
-// to <settings>.notchcode-statusline-chain.json, so a test copy never touches the real one.
+// to <settings>.notchcode-statusline-chain.json, so a test copy never touches the real one
+// (the status line script itself always reads the default chain file).
 
 import fs from "node:fs";
 import {
@@ -65,7 +66,7 @@ function main() {
 
   // statusLine: ours, with the previous one chained.
   const had = settings.statusLine;
-  const plan = planStatusLine(had, statusLineCommand(STATUSLINE_SCRIPT, args.chain));
+  const plan = planStatusLine(had, statusLineCommand(STATUSLINE_SCRIPT));
   if (plan.chain === "keep") {
     console.log(plan.line === had ? "kept statusLine (already notchcode)" : "updated statusLine command");
   } else if (plan.chain === "write") {

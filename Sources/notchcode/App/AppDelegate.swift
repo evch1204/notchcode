@@ -11,7 +11,6 @@ import SwiftUI
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let state = AppState()
-    private var appState: AppState?
     private var panel: NotchPanel?
     private var server: SocketServer?
     private var hotKey: HotKey?
@@ -34,7 +33,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
 
         let state = self.state
-        appState = state
 
         let panel = NotchPanel(rootView: NotchRootView(state: state))
         self.panel = panel
@@ -52,7 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updateHotKey(enabled: state.prefs.hotkeyEnabled)
 
         keyboard = KeyboardController { [weak self] key in
-            self?.appState?.handleKey(key) ?? false
+            self?.state.handleKey(key) ?? false
         }
 
         installObservers(state)
@@ -88,7 +86,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard hotKey == nil else { return }
         hotKey = HotKey(keyCode: UInt32(kVK_Space), modifiers: UInt32(optionKey)) { [weak self] in
             MainActor.assumeIsolated {
-                self?.appState?.toggleFromNotchTap()
+                self?.state.toggleFromNotchTap()
             }
         }
     }
@@ -150,10 +148,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Panel state
 
     private func reposition() {
-        guard let panel, let appState else { return }
+        guard let panel else { return }
         // No screen (lid closed, display unplugged): keep the last frame until one returns.
         guard let geometry = NotchGeometry.current() else { return }
-        appState.setNotch(width: geometry.notchWidth, height: geometry.notchHeight)
+        state.setNotch(width: geometry.notchWidth, height: geometry.notchHeight)
         let frame = NSRect(
             x: geometry.notchFrame.midX - Theme.Size.panelWidth / 2,
             y: geometry.screen.frame.maxY - Theme.Size.panelHeight,
@@ -167,9 +165,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func syncPanel() {
-        guard let panel, let appState else { return }
-        let mode = appState.mode
-        panel.container.interactiveSize = appState.layout.outerSize(for: mode, cardHeight: appState.cardHeight)
+        guard let panel else { return }
+        let mode = state.mode
+        panel.container.interactiveSize = state.layout.outerSize(for: mode, cardHeight: state.cardHeight)
         updateMousePassthrough()
 
         if mode != lastMode {
@@ -200,7 +198,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// card, and a rim fading in while the shape starts growing (then vanishing as the mode
     /// leaves closed) read as a second, competing animation.
     private func updateRim(inside: Bool) {
-        guard let appState else { return }
         guard inside != rimInside else { return }
         rimInside = inside
         rimWork?.cancel()
@@ -210,14 +207,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 MainActor.assumeIsolated {
                     guard let self, self.rimInside else { return }
                     self.rimWork = nil
-                    guard self.appState?.prefs.openGesture != .hover else { return }
-                    self.appState?.setHovering(true)
+                    guard self.state.prefs.openGesture != .hover else { return }
+                    self.state.setHovering(true)
                 }
             }
             rimWork = work
             DispatchQueue.main.asyncAfter(deadline: .now() + Theme.Motion.rimDelay, execute: work)
         } else {
-            appState.setHovering(false)
+            state.setHovering(false)
         }
     }
 
@@ -225,25 +222,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Open after the mouse rests on the shape; close after it has left the card.
     private func updateHover(inside: Bool) {
-        guard let appState, appState.prefs.openGesture == .hover else {
+        guard state.prefs.openGesture == .hover else {
             cancelHover()
             mouseInside = false
             return
         }
         let changed = inside != mouseInside
         mouseInside = inside
-        let open = appState.mode == .card
+        let open = state.mode == .card
 
         if inside {
             hoverCloseWork?.cancel()
             hoverCloseWork = nil
             // The attention row answers in one press; opening under the pointer on its way to
             // Allow would move the button away. Click row 1 (or ⌥ space) opens it instead.
-            guard !open, appState.mode != .attention, changed || hoverOpenWork == nil else { return }
+            guard !open, state.mode != .attention, changed || hoverOpenWork == nil else { return }
             hoverOpenWork?.cancel()
             let work = DispatchWorkItem { [weak self] in
                 MainActor.assumeIsolated {
-                    guard let self, let state = self.appState else { return }
+                    guard let self else { return }
+                    let state = self.state
                     self.hoverOpenWork = nil
                     guard self.mouseInside, state.mode != .card, state.mode != .attention,
                           state.prefs.openGesture == .hover else { return }
@@ -258,7 +256,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard open, hoverCloseWork == nil else { return }
             let work = DispatchWorkItem { [weak self] in
                 MainActor.assumeIsolated {
-                    guard let self, let state = self.appState else { return }
+                    guard let self else { return }
+                    let state = self.state
                     self.hoverCloseWork = nil
                     guard !self.mouseInside, state.mode == .card, state.prefs.openGesture == .hover else { return }
                     state.closeCard()
@@ -291,7 +290,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else if panel.allowsKey {
             panel.allowsKey = false
             // Teleport already brought a terminal forward; do not steal focus back from it.
-            if appState?.takeSkipFocusReturn() == true { previousApp = nil }
+            if state.takeSkipFocusReturn() == true { previousApp = nil }
             if panel.isKeyWindow {
                 // Give key status back without hiding the notch.
                 panel.orderOut(nil)
@@ -303,7 +302,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func clickedElsewhere() {
-        guard let appState, appState.mode == .card else { return }
-        appState.closeCard()
+        guard state.mode == .card else { return }
+        state.closeCard()
     }
 }

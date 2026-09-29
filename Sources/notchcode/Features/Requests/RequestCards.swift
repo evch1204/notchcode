@@ -41,10 +41,7 @@ private struct ShowChangesRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: Theme.Size.spaceM) {
-                Image(systemName: Theme.Symbols.chevron)
-                    .font(Theme.Fonts.chevron)
-                    .foregroundStyle(Theme.Colors.inkTertiary)
-                    .rotationEffect(.degrees(open ? Theme.Motion.chevronOpenDegrees : 0))
+                RowChevron(open: open, width: nil, animated: false)
                 HStack(spacing: 0) {
                     DiffCounts(added: file.added, removed: file.removed)
                     Text(Theme.Glyphs.separator + (open ? "Hide changes" : "Show changes"))
@@ -137,8 +134,7 @@ private struct CommandBox: View {
         guard viewportHeight > 0, contentHeight.rounded() > viewportHeight.rounded() else { return nil }
         let below = Int(((contentHeight - viewportHeight - scrolled) / Self.lineHeight).rounded(.up))
         guard below > 0 else { return "end of command" }
-        let count = below == 1 ? "1 more line" : "\(below) more lines"
-        return Theme.Glyphs.ellipsis + " " + count + Theme.Glyphs.separator + "scroll"
+        return Format.moreLines(below) + Theme.Glyphs.separator + "scroll"
     }
 }
 
@@ -234,31 +230,21 @@ struct CommitCard: View {
     let request: PendingRequest
 
     /// A file row like the Changes tool's; click (or D on the cursor row) opens its diff under it.
-    @ViewBuilder
     private func fileRow(_ file: FileChange, index: Int, openPath: String?) -> some View {
-        let hasDiff = !AppState.diffLines(file).isEmpty
-        let open = openPath == file.path
-        let cursorShown = request.files.count > 1 && hasDiff
-        VStack(alignment: .leading, spacing: 0) {
-            Button {
-                state.requestRowCursor = index
-                state.toggleRequestDiff(path: file.path)
-            } label: {
-                FileRowLabel(
-                    file: file,
-                    open: open,
-                    hasDiff: hasDiff,
-                    isCursor: cursorShown && state.requestRowCursor == index
-                )
-            }
-            .buttonStyle(.plain)
-            .disabled(!hasDiff)
-
-            if open {
-                DiffView(file: file, maxHeight: Theme.Size.requestDiffMaxHeight, scroll: state.requestDiffScroll)
-                    .layoutPriority(-1)
-                    .transition(Theme.Motion.requestDiffTransition)
-            }
+        let cursorShown = request.files.count > 1 && !AppState.diffLines(file).isEmpty
+        return FileDiffRow(
+            file: file,
+            open: openPath == file.path,
+            isCursor: cursorShown && state.requestRowCursor == index,
+            spacing: 0,
+            disabledWithoutDiff: true
+        ) {
+            state.requestRowCursor = index
+            state.toggleRequestDiff(path: file.path)
+        } diff: {
+            DiffView(file: file, maxHeight: Theme.Size.requestDiffMaxHeight, scroll: state.requestDiffScroll)
+                .layoutPriority(-1)
+                .transition(Theme.Motion.requestDiffTransition)
         }
     }
 

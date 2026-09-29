@@ -39,11 +39,7 @@ struct MarkdownView: View {
             // Web links open in the browser; relative links in a repo lead nowhere from here.
             ["http", "https"].contains(url.scheme?.lowercased() ?? "") ? .systemAction : .discarded
         })
-        .background(
-            RoundedRectangle(cornerRadius: Theme.Radius.snippet, style: .continuous)
-                .fill(Theme.Colors.inset)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.snippet, style: .continuous))
+        .snippetBox()
         .onChange(of: lines, initial: true) { _, lines in
             blocks = MarkdownParser.parse(lines)
         }

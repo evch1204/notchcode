@@ -154,6 +154,14 @@ struct GitPanelState: Equatable {
     var rootByCwd: [String: String] = [:]
     /// A listing is running.
     var listing = false
+
+    /// Shuts the picker (or opens it with `open`) with its dropdown closed and the filter cleared.
+    mutating func resetPicker(open: Bool = false) {
+        pickerOpen = open
+        repoMenuOpen = false
+        filter = ""
+        filterFocused = false
+    }
 }
 
 extension AppState {
@@ -251,7 +259,7 @@ extension AppState {
     /// The file list is hidden (⌘B). One preference with the Files tree: the left column of
     /// both tools. Only while a diff shows, as Files needs an open file.
     var gitListCollapsed: Bool {
-        extraPrefs.filesTreeHidden && gitSelectedFile != nil
+        prefs.filesTreeHidden && gitSelectedFile != nil
     }
 
     /// ⌘B or the pill. Does nothing with no file to show.
@@ -369,10 +377,7 @@ extension AppState {
     func gitCardClosed() {
         updateGit {
             $0.picked = nil
-            $0.pickerOpen = false
-            $0.repoMenuOpen = false
-            $0.filter = ""
-            $0.filterFocused = false
+            $0.resetPicker()
         }
     }
 
@@ -585,12 +590,7 @@ extension AppState {
     func openGitPicker() {
         guard readsLocalFiles else { return }
         cancelGitConfirm()
-        updateGit {
-            $0.pickerOpen = true
-            $0.repoMenuOpen = false
-            $0.filter = ""
-            $0.filterFocused = false
-        }
+        updateGit { $0.resetPicker(open: true) }
         placeGitPickerOnTarget()
         refreshGitWorktrees()
     }
@@ -616,12 +616,7 @@ extension AppState {
     @discardableResult
     func closeGitPicker() -> Bool {
         guard gitPanel.pickerOpen else { return false }
-        updateGit {
-            $0.pickerOpen = false
-            $0.repoMenuOpen = false
-            $0.filter = ""
-            $0.filterFocused = false
-        }
+        updateGit { $0.resetPicker() }
         return true
     }
 
@@ -679,10 +674,7 @@ extension AppState {
         if gitPanel.picked != target { cancelGitConfirm() }
         updateGit {
             $0.picked = target
-            $0.pickerOpen = false
-            $0.repoMenuOpen = false
-            $0.filter = ""
-            $0.filterFocused = false
+            $0.resetPicker()
         }
         rowCursor = 0
         debugLog("git target picked: \(target.key)")

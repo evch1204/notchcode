@@ -11,19 +11,18 @@ import SwiftUI
 // MARK: - Segment style
 
 /// Hover lift and press depress for any segment. A `fill` gives the segment a fixed
-/// colour (action segments, Settings pills); without one it is invisible at rest.
-/// `capsule` rounds it fully (the Settings pills) instead of the segment radius.
+/// colour (action segments); without one it is invisible at rest.
 @MainActor
 struct SegmentStyle: ButtonStyle {
     var fill: Color? = nil
-    var capsule = false
 
     func makeBody(configuration: Configuration) -> some View {
-        SegmentBody(label: configuration.label, pressed: configuration.isPressed, fill: fill, capsule: capsule)
+        SegmentBody(label: configuration.label, pressed: configuration.isPressed, fill: fill)
     }
 }
 
 /// The segment's look around any label; `SegmentStyle` and the Settings pills share it.
+/// `capsule` rounds it fully (the Settings pills) instead of the segment radius.
 @MainActor
 struct SegmentBody<Label: View>: View {
     let label: Label

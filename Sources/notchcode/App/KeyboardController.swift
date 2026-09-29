@@ -14,8 +14,6 @@ final class KeyboardController {
         self.handler = handler
     }
 
-    var isInstalled: Bool { monitor != nil }
-
     func install() {
         guard monitor == nil else { return }
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: { [weak self] event in

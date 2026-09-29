@@ -51,10 +51,20 @@ struct ChangesTab: View {
 
             if open {
                 ForEach(Array(turn.files.enumerated()), id: \.element.id) { item in
+                    let row = DiffRowItem(key: AppState.changesRowKey(turn: turn, file: item.element), file: item.element)
+                    let hasDiff = !AppState.diffLines(row.file).isEmpty
                     FileDiffRow(
-                        state: state,
-                        item: DiffRowItem(key: AppState.changesRowKey(turn: turn, file: item.element), file: item.element)
-                    )
+                        file: row.file,
+                        open: hasDiff && state.isDiffOpen(row),
+                        isCursor: state.cursorRowKey == row.key
+                    ) {
+                        state.setRowCursor(key: row.key)
+                        guard hasDiff else { return }
+                        withAnimation(Theme.Motion.tap) { state.toggleDiff(row.key) }
+                    } diff: {
+                        DiffView(file: row.file)
+                    }
+                    .id(row.key)
                     .padding(.leading, Theme.Size.chevronColumn)
                     .transition(Theme.Motion.childTransition(item.offset))
                 }
@@ -115,7 +125,7 @@ private struct TurnRow: View {
                 Text("Working")
                     .font(Theme.Fonts.captionMedium)
                     .foregroundStyle(Theme.Colors.clay)
-                ElapsedText(since: turn.startedAt, color: Theme.Colors.inkTertiary)
+                ElapsedText(since: turn.startedAt)
             }
         }
     }

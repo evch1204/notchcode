@@ -250,13 +250,13 @@ extension AppState {
     /// The owner collapsed the tree. It only takes effect while a file is open: with nothing
     /// to preview, the tree shows (and the collapse pill is disabled).
     var filesTreeCollapsed: Bool {
-        extraPrefs.filesTreeHidden && openedFilePath != nil
+        prefs.filesTreeHidden && openedFilePath != nil
     }
 
     func setFilesTreeHidden(_ hidden: Bool) {
-        guard extraPrefs.filesTreeHidden != hidden else { return }
+        guard prefs.filesTreeHidden != hidden else { return }
         if hidden { fileFilterFocused = false }
-        withAnimation(Theme.Motion.treeCollapse) { extraPrefs.filesTreeHidden = hidden }
+        withAnimation(Theme.Motion.treeCollapse) { prefs.filesTreeHidden = hidden }
     }
 
     /// ⌘B or the pill. Does nothing with no file open.

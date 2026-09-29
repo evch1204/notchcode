@@ -114,27 +114,6 @@ struct UsageTab: View {
     }
 }
 
-/// A tile's frame: the inset fill, padding, and the pane parallax.
-@MainActor
-private struct Tile<Content: View>: View {
-    let content: Content
-
-    init(@ViewBuilder content: () -> Content) {
-        self.content = content()
-    }
-
-    var body: some View {
-        content
-            .padding(Theme.Size.tilePadding)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(
-                RoundedRectangle(cornerRadius: Theme.Radius.tile, style: .continuous)
-                    .fill(Theme.Colors.inset)
-            )
-            .parallaxGroup()
-    }
-}
-
 /// "5-hour", "61%" large, a bar, "resets in 1h 52m". Before any limit has arrived: "—",
 /// an empty bar, and "connect the status line", in the same places. When the window has
 /// rolled over since the last report, the old percent dims and the line says when it reset.
@@ -146,7 +125,7 @@ private struct LimitTile: View {
     let filled: Bool
 
     var body: some View {
-        Tile {
+        InsetGroup(radius: Theme.Radius.tile, fillsHeight: true) {
             VStack(alignment: .leading, spacing: Theme.Size.usageLineSpacing) {
                 Text(title)
                     .font(Theme.Fonts.captionMedium)
@@ -184,7 +163,7 @@ private struct SmallTile: View {
     let detail: String?
 
     var body: some View {
-        Tile {
+        InsetGroup(radius: Theme.Radius.tile, fillsHeight: true) {
             VStack(alignment: .leading, spacing: Theme.Size.usageLineSpacing) {
                 Text(title)
                     .font(Theme.Fonts.captionMedium)
@@ -229,7 +208,7 @@ private struct TokenBlock: View {
 
     var body: some View {
         let total = tokens.total
-        Tile {
+        InsetGroup(radius: Theme.Radius.tile, fillsHeight: true) {
             VStack(alignment: .leading, spacing: Theme.Size.spaceM) {
                 GeometryReader { geo in
                     HStack(spacing: 0) {

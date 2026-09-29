@@ -6,43 +6,27 @@ import SwiftUI
 
 extension AppState {
 
-    /// TERM_PROGRAM -> bundle id.
-    static let terminalBundleIds: [String: String] = [
-        "ghostty": "com.mitchellh.ghostty",
-        "iTerm.app": "com.googlecode.iterm2",
-        "Apple_Terminal": "com.apple.Terminal",
-        "vscode": "com.microsoft.VSCode",
-        "cursor": "com.todesktop.230313mzl4w4u92",
-        "WarpTerminal": "dev.warp.Warp-Stable",
+    /// The terminals teleport knows: TERM_PROGRAM, the name buttons show, the bundle id.
+    /// With no terminal on record for a session, the first one running wins, in this order.
+    private static let terminals: [(program: String?, name: String?, bundleId: String)] = [
+        ("ghostty", "Ghostty", "com.mitchellh.ghostty"),
+        ("iTerm.app", "iTerm", "com.googlecode.iterm2"),
+        ("Apple_Terminal", "Terminal", "com.apple.Terminal"),
+        ("vscode", "VS Code", "com.microsoft.VSCode"),
+        ("cursor", "Cursor", "com.todesktop.230313mzl4w4u92"),
+        (nil, nil, "dev.warp.Warp"),
+        ("WarpTerminal", "Warp", "dev.warp.Warp-Stable"),
+        (nil, nil, "net.kovidgoyal.kitty"),
+        (nil, nil, "org.alacritty"),
     ]
 
-    static let terminalNames: [String: String] = [
-        "ghostty": "Ghostty",
-        "iTerm.app": "iTerm",
-        "Apple_Terminal": "Terminal",
-        "vscode": "VS Code",
-        "cursor": "Cursor",
-        "WarpTerminal": "Warp",
-    ]
-
-    /// Tried in order when a session has no terminal on record: the first one running wins.
-    static let knownTerminalBundleIds: [String] = [
-        "com.mitchellh.ghostty",
-        "com.googlecode.iterm2",
-        "com.apple.Terminal",
-        "com.microsoft.VSCode",
-        "com.todesktop.230313mzl4w4u92",
-        "dev.warp.Warp",
-        "dev.warp.Warp-Stable",
-        "net.kovidgoyal.kitty",
-        "org.alacritty",
-    ]
+    private static func terminal(program: String?) -> (program: String?, name: String?, bundleId: String)? {
+        guard let program else { return nil }
+        return terminals.first { $0.program == program }
+    }
 
     func terminalName(for session: Session?) -> String {
-        guard let program = session?.termProgram, let name = Self.terminalNames[program] else {
-            return "terminal"
-        }
-        return name
+        Self.terminal(program: session?.termProgram)?.name ?? "terminal"
     }
 
     func setNotch(width: CGFloat, height: CGFloat) {
@@ -55,7 +39,7 @@ extension AppState {
     /// terminal that is running. With none, a short "No terminal found" hint and the card stays.
     func teleport(session: Session?) {
         let session = session ?? focusedSession
-        let recorded = [session?.termBundleId, session?.termProgram.flatMap { Self.terminalBundleIds[$0] }].compactMap { $0 }
+        let recorded = [session?.termBundleId, Self.terminal(program: session?.termProgram)?.bundleId].compactMap { $0 }
         for bundleId in recorded {
             if let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).first {
                 activateAndClose(app)
@@ -70,7 +54,7 @@ extension AppState {
                 return
             }
         }
-        for bundleId in Self.knownTerminalBundleIds {
+        for bundleId in Self.terminals.map(\.bundleId) {
             if let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).first {
                 activateAndClose(app)
                 return

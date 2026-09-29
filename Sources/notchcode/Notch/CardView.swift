@@ -88,7 +88,7 @@ struct CardView: View {
         .background(shape.fill(Theme.Colors.well))
         .overlay(shape.strokeBorder(Theme.Colors.wellStroke, lineWidth: Theme.Size.hairline))
         .clipShape(shape)
-        .environment(\.inlineKeycaps, state.extraPrefs.keycapsBesideButtons)
+        .environment(\.inlineKeycaps, state.prefs.keycapsBesideButtons)
     }
 
     /// The tool's pane, sliding a short way toward its anchor when the tool changes. The pane's
