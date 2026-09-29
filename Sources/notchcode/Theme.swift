@@ -195,6 +195,16 @@ enum Theme {
         static let groupHeaderName = inkSecondary
         static let groupHeaderCount = inkTertiary
 
+        /// A session's permission mode, as a word in its Sessions row and the open card's status
+        /// line: bypass in clay (the dangerous one), plan in blue, the rest tertiary.
+        static func permissionMode(_ raw: String?) -> Color {
+            switch raw {
+            case "bypassPermissions": return clay
+            case "plan": return blue
+            default: return inkTertiary
+            }
+        }
+
         /// Hover rim light along the bottom edge of the closed and resting shape (50% white),
         /// and its soft glow (12%). Both sit outside the black silhouette.
         static let rim = ink.opacity(0.5)

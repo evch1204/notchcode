@@ -84,7 +84,7 @@ Like sidecar-pane, the app reads `~/.claude/projects/<cwd>/<session>.jsonl` dire
 
 ## Sessions and worktrees
 
-A session is a worktree plus a branch. Named by the worktree folder (`ponyfish`), with the repo and branch underneath. Collapsed, the wings show the most urgent state and one dot per session. The sessions card lists them: state, verb, elapsed. `⏎` on a row teleports.
+A session is a worktree plus a branch. Named by the worktree folder (`ponyfish`), with the repo and branch underneath. Collapsed, the wings show the most urgent state and one dot per session. The sessions card lists them: state, verb, elapsed. `⏎` on a row teleports. Each session also shows its permission mode, read from the last `permissionMode` in its transcript (the hook's `permission_mode` as a fallback): a tag on its Sessions row and one more part of the open card's status line, `bypass` in clay, `plan` in blue, `accept edits` / `auto` / `don't ask` tertiary, nothing for default; the collapsed wings stay as they are.
 
 Teleport: the hook forwards `TERM_PROGRAM` and the session's process id. iTerm2 and Terminal.app can focus the exact window through AppleScript. VS Code and Cursor: `code --reuse-window <cwd>`. Ghostty: activate the app only, until it grows a scripting interface.
 

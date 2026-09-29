@@ -14,6 +14,10 @@
 //   user prompt / tool result / task notification, < 3 min -> working "Thinking"
 //   interruption, local command output, anything older      -> idle
 // Age is measured from that line's own timestamp.
+//
+// Permission mode ("default", "plan", "bypassPermissions", "acceptEdits", "auto", ...) comes from
+// the last non-sidechain line that carries `permissionMode`: every prompt line, and the
+// `permission-mode` line Claude Code writes when the owner switches modes mid-session.
 
 import Foundation
 
@@ -91,6 +95,7 @@ final class TranscriptWatcher {
         var last: LastLine
         var lastPrompt: String?
         var fallbackCWD: String?        // a cwd seen in the tail, for heads that have none
+        var permissionMode: String?     // the last one written, raw
     }
 
     private func poll() {
@@ -120,6 +125,7 @@ final class TranscriptWatcher {
                 state: state,
                 verb: verb,
                 lastPrompt: info.lastPrompt,
+                permissionMode: info.permissionMode,
                 isHeadless: info.head.entrypoint == Self.headlessEntrypoint))
         }
         for path in files.keys where !seen.contains(path) { files[path] = nil }
@@ -189,11 +195,21 @@ final class TranscriptWatcher {
             }
         }
 
+        var mode = tail.permissionMode
+        if mode == nil {
+            if sameFile, let old = previous?.permissionMode {
+                mode = old                           // no mode written since the last pass
+            } else if offset > 0 {
+                mode = Self.permissionModeInWholeFile(path)
+            }
+        }
+
         return FileInfo(stamp: stamp,
                         head: head,
                         last: tail.last,
                         lastPrompt: lastPrompt,
-                        fallbackCWD: tail.cwd ?? previous?.fallbackCWD)
+                        fallbackCWD: tail.cwd ?? previous?.fallbackCWD,
+                        permissionMode: mode)
     }
 
     private func readHead(path: String, into head: Head) -> Head {
@@ -216,14 +232,25 @@ final class TranscriptWatcher {
         return prompt
     }
 
+    private static func permissionModeInWholeFile(_ path: String) -> String? {
+        guard let data = try? JSONLines.read(path, from: 0) else { return nil }
+        var mode: String?
+        JSONLines.forEachCompleteLine(data) { line in
+            if (line["isSidechain"] as? Bool) != true, let m = line["permissionMode"] as? String, !m.isEmpty { mode = m }
+        }
+        return mode
+    }
+
     private struct TailScan {
         var last: LastLine = .none
         var lastPrompt: String?
         var cwd: String?
+        var permissionMode: String?
 
         mutating func consume(_ line: [String: Any]) {
             if (line["isSidechain"] as? Bool) == true { return }
             if let c = line["cwd"] as? String, !c.isEmpty { cwd = c }
+            if let m = line["permissionMode"] as? String, !m.isEmpty { permissionMode = m }
             let date = TranscriptDates.parse(line["timestamp"]) ?? .distantPast
             switch line["type"] as? String {
             case "assistant":

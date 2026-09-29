@@ -352,9 +352,10 @@ struct StatusSegment: View {
         }
     }
 
-    /// "main · opus · Editing · ■ Explore ■ general-purpose": branch, model, verb, then one
-    /// coloured square per running agent. With a second session in the same folder the start
-    /// time follows the model: "main · opus · started 1:10 PM · Editing".
+    /// "main · opus · Editing · bypass · ■ Explore ■ general-purpose": branch, model, verb, the
+    /// permission mode when not default ("bypass" in clay, "plan" in blue), then one coloured
+    /// square per running agent. With a second session in the same folder the start time
+    /// follows the model: "main · opus · started 1:10 PM · Editing".
     private func subtitle(_ session: Session) -> some View {
         let running = state.runningAgents(for: session.id)
         let shownAgents = Array(running.prefix(Theme.Limits.maxStatusAgents))
@@ -364,9 +365,17 @@ struct StatusSegment: View {
             started: state.isAmbiguous(session) ? state.startTime(for: session) : nil,
             verb: state.shownState(session) == .working ? session.verb : nil
         )
+        let mode = Format.permissionModeLabel(session.permissionMode)
+        let sep = Theme.Glyphs.separator
+        var line = Text(text)
+        if let mode {
+            line = line + Text(text.isEmpty ? "" : sep)
+                + Text(mode).foregroundStyle(Theme.Colors.permissionMode(session.permissionMode))
+        }
+        let hasLine = !text.isEmpty || mode != nil
         return HStack(spacing: Theme.Size.spaceS) {
-            if !text.isEmpty {
-                Text(text + (running.isEmpty ? "" : Theme.Glyphs.separator))
+            if hasLine {
+                (line + Text(running.isEmpty ? "" : sep))
                     .lineLimit(1)
                     .truncationMode(.middle)
             }

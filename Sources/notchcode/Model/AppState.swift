@@ -1584,6 +1584,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
             if let term = envelope.termProgram { s.termProgram = term }
             if let bundle = envelope.termBundleId { s.termBundleId = bundle }
             if let pid = envelope.pid { s.pid = pid }
+            if let mode = envelope.payload["permission_mode"]?.stringValue, !mode.isEmpty { s.permissionMode = mode }
             sessions[index] = s
             if transcriptChanged { reloadAgents(for: sid) }
             return
@@ -1612,7 +1613,8 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
             transcriptPath: transcript,
             termProgram: envelope.termProgram,
             termBundleId: envelope.termBundleId,
-            pid: envelope.pid
+            pid: envelope.pid,
+            permissionMode: envelope.payload["permission_mode"]?.stringValue
         )
         sessions.append(session)
         if transcript != nil { reloadAgents(for: sid) }
@@ -1826,6 +1828,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
             if let index = sessions.firstIndex(where: { $0.id == found.id }) {
                 var s = sessions[index]
                 if s.transcriptPath == nil { s.transcriptPath = found.transcriptPath }
+                if let mode = found.permissionMode { s.permissionMode = mode }   // the transcript wins over hooks
                 if !isHookDriven(found.id, now: now) {
                     let endedBefore = endedAt[found.id].map { found.lastActivityAt <= $0 } ?? false
                     if !endedBefore {
@@ -1854,7 +1857,8 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
                     transcriptPath: found.transcriptPath,
                     termProgram: nil,
                     termBundleId: nil,
-                    pid: nil
+                    pid: nil,
+                    permissionMode: found.permissionMode
                 ))
                 if let prompt = found.lastPrompt, !prompt.isEmpty { turnTitles[found.id] = prompt }
             }

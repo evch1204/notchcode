@@ -5,6 +5,7 @@
 // clock on the right, the current prompt dimmed below. A plain checkout is its own
 // group with one row named after its folder. Groups with someone waiting come first.
 // Two sessions in one folder also show their start time, and the newest gets a tag.
+// A session not in the default permission mode carries its mode as a tag ("bypass" in clay).
 // Clicking a row (or ⏎) selects the session and shows its Changes; the chevron (or ⌥⏎)
 // teleports to its terminal. Each subagent gets a lane with its own colour square;
 // finished ones collapse into "N done", which opens on click. Counts live in the footer.
@@ -205,6 +206,9 @@ private struct SessionRow: View {
                             .lineLimit(1)
                             .fixedSize()
                     }
+                    if let mode = Format.permissionModeLabel(session.permissionMode) {
+                        SmallTag(text: mode, color: Theme.Colors.permissionMode(session.permissionMode))
+                    }
                     if twin?.isNewest == true {
                         SmallTag(text: "newest")
                     }
@@ -242,15 +246,16 @@ private struct SessionRow: View {
     }
 }
 
-/// A small tertiary capsule: "Showing", "newest".
+/// A small capsule: "Showing", "newest", or the permission mode ("bypass" in clay).
 @MainActor
-private struct SmallTag: View {
+struct SmallTag: View {
     let text: String
+    var color: Color = Theme.Colors.inkTertiary
 
     var body: some View {
         Text(text)
             .font(Theme.Fonts.caption)
-            .foregroundStyle(Theme.Colors.inkTertiary)
+            .foregroundStyle(color)
             .padding(.horizontal, Theme.Size.smallPillHPadding)
             .frame(height: Theme.Size.smallPillHeight)
             .background(Capsule(style: .continuous).fill(Theme.Colors.doneChipFill))

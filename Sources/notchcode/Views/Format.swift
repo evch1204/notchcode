@@ -180,6 +180,18 @@ enum Format {
         }
     }
 
+    /// A permission mode in a word: "bypass", "plan", "accept edits", "don't ask". Default and auto (the owner's everyday modes) show nothing.
+    /// Nil for the default mode and for anything unknown, which show nothing.
+    static func permissionModeLabel(_ raw: String?) -> String? {
+        switch raw {
+        case "bypassPermissions": return "bypass"
+        case "plan": return "plan"
+        case "acceptEdits": return "accept edits"
+        case "dontAsk": return "don't ask"
+        default: return nil
+        }
+    }
+
     /// "+1 session", "+3 sessions": the other sessions beside the one the wings name.
     static func otherSessions(_ count: Int) -> String {
         count == 1 ? "+1 session" : "+\(count) sessions"
