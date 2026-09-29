@@ -392,9 +392,16 @@ private struct PreviewLines: View {
     let lines: [String]
     let marks: ChangeMarks
     let footer: String?
+    /// The longest line in characters, tabs expanded as the rows show them.
+    @State private var longest = 0
 
     var body: some View {
         GeometryReader { geo in
+            // A lazy stack only knows its loaded rows, so its width is set from the longest
+            // line to give the scroll view its sideways range.
+            let textWidth = Theme.Size.previewHPadding * 2 + Theme.Size.previewNumberWidth
+                + Theme.Size.previewGutterSpacing + CGFloat(longest) * Theme.Fonts.monoSmallAdvance
+            let contentWidth = max(geo.size.width, textWidth.rounded(.up))
             ScrollViewReader { proxy in
                 ScrollView([.vertical, .horizontal], showsIndicators: false) {
                     LazyVStack(alignment: .leading, spacing: 0) {
@@ -417,6 +424,7 @@ private struct PreviewLines: View {
                                 .frame(height: Theme.Size.previewLineHeight)
                         }
                     }
+                    .frame(width: contentWidth, alignment: .leading)
                     .padding(.vertical, Theme.Size.previewVPadding)
                 }
                 .onAppear {
@@ -425,6 +433,11 @@ private struct PreviewLines: View {
                     }
                 }
             }
+        }
+        .onChange(of: lines, initial: true) { _, lines in
+            longest = lines.map { line in
+                line.count + 3 * line.reduce(0) { $1 == "\t" ? $0 + 1 : $0 }
+            }.max() ?? 0
         }
         .background(
             RoundedRectangle(cornerRadius: Theme.Radius.snippet, style: .continuous)

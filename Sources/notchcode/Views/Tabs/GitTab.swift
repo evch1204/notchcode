@@ -311,6 +311,8 @@ private struct GitDiffBody: View {
     /// Worked out once per diff, not on every scroll step (the header re-renders with it).
     @State private var words: [Int: [Range<Int>]] = [:]
     @State private var minimap: DiffMinimapModel?
+    /// The longest line in characters (prefix and text), for the content's width.
+    @State private var longest = 0
 
     private static let space = "gitDiffScroll"
 
@@ -322,6 +324,11 @@ private struct GitDiffBody: View {
     var body: some View {
         GeometryReader { geo in
             let rowWidth = max(0, geo.size.width - Theme.Size.diffMinimapReserve)
+            // A lazy stack only knows its loaded rows, so its width is set from the longest
+            // line to give the scroll view its sideways range.
+            let textWidth = Theme.Size.previewHPadding * 2 + 2 * Theme.Size.diffLineNumberWidth
+                + 2 * Theme.Size.previewGutterSpacing + CGFloat(longest) * Theme.Fonts.monoSmallAdvance
+            let contentWidth = max(rowWidth, textWidth.rounded(.up))
             ScrollViewReader { proxy in
                 ScrollView([.vertical, .horizontal], showsIndicators: false) {
                     LazyVStack(alignment: .leading, spacing: 0) {
@@ -337,6 +344,7 @@ private struct GitDiffBody: View {
                                 .frame(height: Theme.Size.diffLineHeight)
                         }
                     }
+                    .frame(width: contentWidth, alignment: .leading)
                     .padding(.vertical, Theme.Size.previewVPadding)
                     .padding(.trailing, Theme.Size.diffMinimapReserve)
                     .onGeometryChange(for: CGFloat.self) { proxy in
@@ -363,6 +371,7 @@ private struct GitDiffBody: View {
             .onChange(of: Inputs(lines: lines, fileLines: fileLines), initial: true) { _, inputs in
                 words = WordDiff.marks(inputs.lines)
                 minimap = DiffMinimapModel(lines: inputs.lines, fileLines: inputs.fileLines)
+                longest = inputs.lines.map { $0.prefix.count + $0.text.count }.max() ?? 0
             }
             .onChange(of: geo.size.height) { _, height in
                 visibleCount = Int(height / Theme.Size.diffLineHeight)

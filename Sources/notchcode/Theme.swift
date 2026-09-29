@@ -960,6 +960,10 @@ enum Theme {
         static let mono = Font.system(size: bodySize, design: .monospaced)
         static let monoCaption = Font.system(size: captionSize, design: .monospaced)
         static let monoSmall = Font.system(size: monoSmallSize, design: .monospaced)
+        /// One character of `monoSmall`, for the width of a line that never wraps.
+        static let monoSmallAdvance: CGFloat = ("0" as NSString).size(withAttributes: [
+            .font: NSFont.monospacedSystemFont(ofSize: monoSmallSize, weight: .regular),
+        ]).width
 
         static let tiny = Font.system(size: tinySize).monospacedDigit()
 
