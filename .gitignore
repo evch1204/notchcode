@@ -23,3 +23,6 @@ node_modules/
 
 # XcodeGen output
 notchcode.xcodeproj/
+
+# Claude Code agent worktrees
+.claude/worktrees/
