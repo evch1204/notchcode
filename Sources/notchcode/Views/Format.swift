@@ -126,11 +126,6 @@ enum Format {
         (path as NSString).lastPathComponent
     }
 
-    /// "Sources/notchcode" for "Sources/notchcode/Theme.swift"; empty at the root.
-    static func directory(_ path: String) -> String {
-        (path as NSString).deletingLastPathComponent
-    }
-
     /// The open card's status line: "main · opus · Editing", with the start time after the
     /// model when another session shares the folder ("main · opus · started 1:10 PM").
     static func statusSubtitle(_ session: Session, model: String?, started: Date?, verb: String?) -> String {

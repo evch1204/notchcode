@@ -1,9 +1,11 @@
 // DiffView.swift
-// A file's diff as Claude Code recorded it: mono, old and new line numbers in a
-// dim gutter, hunk headers in blue, added rows on green, removed on red. Lines
-// never wrap and never scroll sideways: long ones are clipped. Scrolls
-// vertically inside a fixed maximum height. Also the expandable file row that
-// owns it, shared by the Changes and Files tabs.
+// A file's diff as Claude Code recorded it: a rounded box, two dim line-number columns
+// (old, new), then the line with its +/− prefix, in the mono size the Files preview uses.
+// Added rows green on a faint green, removed red on a faint red, context grey, hunk
+// headers blue. Lines never wrap and never scroll sideways: long ones are clipped. Scrolls
+// vertically inside a capped height, with "… 9 more lines · scroll" at the bottom of the
+// box while more is below. Also the expandable file row that owns it, shared by the
+// Changes tool and the commit card.
 
 import SwiftUI
 
@@ -23,7 +25,8 @@ struct DiffView: View {
 
     var body: some View {
         let lines = self.lines
-        let contentHeight = CGFloat(lines.count) * Theme.Size.diffLineHeight + 2 * Theme.Size.diffVPadding
+        let contentHeight = CGFloat(lines.count) * Theme.Size.diffLineHeight
+        let overflows = contentHeight > (maxHeight ?? Theme.Size.diffMaxHeight)
         VStack(alignment: .leading, spacing: 0) {
             sized(ScrollView(.vertical, showsIndicators: false) {
                 LazyVStack(alignment: .leading, spacing: 0) {
@@ -32,7 +35,6 @@ struct DiffView: View {
                     }
                 }
                 .scrollTargetLayout()
-                .padding(.vertical, Theme.Size.diffVPadding)
             }
             .scrollPosition(id: $topLine), contentHeight: contentHeight)
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewportHeight = $0 }
@@ -44,21 +46,13 @@ struct DiffView: View {
                 withAnimation(Theme.Motion.tap) { topLine = next }
             }
 
-            if file.patchTruncated {
-                Text(moreLinesText)
-                    .font(Theme.Fonts.caption)
-                    .foregroundStyle(Theme.Colors.inkTertiary)
-                    .lineLimit(1)
-                    .padding(.horizontal, Theme.Size.snippetLinePadding)
-                    .padding(.bottom, Theme.Size.diffVPadding)
+            if overflows || file.patchTruncated {
+                DiffNoteRow(text: footerText(lines: lines, overflows: overflows))
             }
         }
+        .padding(.vertical, Theme.Size.previewVPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .clipped()
-        .background(
-            RoundedRectangle(cornerRadius: Theme.Radius.snippet, style: .continuous)
-                .fill(Theme.Colors.inset)
-        )
+        .background(Theme.Colors.inset)
         .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.snippet, style: .continuous))
     }
 
@@ -74,50 +68,131 @@ struct DiffView: View {
         }
     }
 
-    /// "… 212 more lines in the editor": changed lines the counts know about but the patch left out.
-    private var moreLinesText: String {
-        let shown = lines.filter { $0.kind == .added || $0.kind == .removed }.count
-        let missing = max(0, file.added + file.removed - shown)
-        let count = missing > 0 ? "\(missing) more lines" : "more lines"
-        return Theme.Glyphs.ellipsis + " " + count + " in the editor"
+    /// "… 9 more lines · scroll" while lines are below the viewport; at the bottom,
+    /// "… 212 more lines in the editor" when the patch left lines out, else "end of diff".
+    private func footerText(lines: [DiffLine], overflows: Bool) -> String {
+        let visible = Int(viewportHeight / Theme.Size.diffLineHeight)
+        let below = max(0, lines.count - (topLine ?? 0) - max(0, visible))
+        if overflows, below > 0 {
+            let count = below == 1 ? "1 more line" : "\(below) more lines"
+            return Theme.Glyphs.ellipsis + " " + count + Theme.Glyphs.separator + "scroll"
+        }
+        if file.patchTruncated {
+            let shown = lines.filter { $0.kind == .added || $0.kind == .removed }.count
+            let missing = max(0, file.added + file.removed - shown)
+            let count = missing > 0 ? "\(missing) more lines" : "more lines"
+            return Theme.Glyphs.ellipsis + " " + count + " in the editor"
+        }
+        return "end of diff"
     }
 }
 
+/// One diff line: "  42  44  + NotchShape(radius: theme.notchRadius)". The old file's
+/// number, then the new file's; a removed line has only the old, an added line only the
+/// new, a hunk header neither.
 @MainActor
 struct DiffLineRow: View {
     let line: DiffLine
 
     var body: some View {
-        HStack(spacing: Theme.Size.diffGutterSpacing) {
-            if line.kind == .hunk {
-                clipped(Text(line.text).foregroundStyle(Theme.Colors.diffHunk))
-            } else {
-                number(line.kind == .added ? nil : line.oldLine)
-                number(line.kind == .removed ? nil : line.newLine)
-                Text(prefix)
-                    .foregroundStyle(color)
-                clipped(Text(line.text).foregroundStyle(line.kind == .context ? Theme.Colors.diffText : color))
-            }
+        DiffLineLayout(old: old, new: new) {
+            Text(prefix + line.text).foregroundStyle(textColor)
         }
-        .font(Theme.Fonts.monoSmall)
-        .padding(.horizontal, Theme.Size.snippetLinePadding)
-        .frame(height: Theme.Size.diffLineHeight)
-        .frame(maxWidth: .infinity, alignment: .leading)
         .background(background)
-        .clipped()
     }
 
-    /// Full-length text that never wraps or widens the row: it sits in an overlay, so
-    /// the row keeps the card's width and whatever runs past the edge is cut off.
-    private func clipped(_ text: some View) -> some View {
-        Color.clear
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .overlay(alignment: .leading) {
-                text
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-            }
-            .clipped()
+    private var old: Int? { line.oldNumber }
+    private var new: Int? { line.newNumber }
+    private var prefix: String { line.prefix }
+    private var textColor: Color { line.textColor }
+    private var background: Color { line.background }
+}
+
+extension DiffLine {
+    /// The old file's number: a removed or context line has one.
+    var oldNumber: Int? {
+        switch kind {
+        case .removed, .context: return oldLine
+        case .added, .hunk: return nil
+        }
+    }
+
+    /// The new file's number: an added or context line has one.
+    var newNumber: Int? {
+        switch kind {
+        case .added, .context: return newLine
+        case .removed, .hunk: return nil
+        }
+    }
+
+    var prefix: String {
+        switch kind {
+        case .added: return Theme.Glyphs.diffAdded
+        case .removed: return Theme.Glyphs.diffRemoved
+        case .context: return Theme.Glyphs.diffContext
+        case .hunk: return ""
+        }
+    }
+
+    var textColor: Color {
+        switch kind {
+        case .added: return Theme.Colors.green
+        case .removed: return Theme.Colors.red
+        case .context: return Theme.Colors.diffText
+        case .hunk: return Theme.Colors.diffHunk
+        }
+    }
+
+    var background: Color {
+        switch kind {
+        case .added: return Theme.Colors.diffAddedBackground
+        case .removed: return Theme.Colors.diffRemovedBackground
+        case .context, .hunk: return Color.clear
+        }
+    }
+}
+
+/// The line at the bottom of a diff's box ("… 9 more lines · scroll"), in the caption
+/// size, lined up with the diff's text column.
+@MainActor
+private struct DiffNoteRow: View {
+    let text: String
+
+    var body: some View {
+        DiffLineLayout(old: nil, new: nil) {
+            Text(text)
+                .font(Theme.Fonts.caption)
+                .foregroundStyle(Theme.Colors.inkTertiary)
+        }
+    }
+}
+
+/// A diff line's columns: the two dim numbers, then the text. The text never wraps or
+/// widens the row: it sits in an overlay, so whatever runs past the edge is cut off.
+@MainActor
+private struct DiffLineLayout<Content: View>: View {
+    let old: Int?
+    let new: Int?
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        HStack(spacing: Theme.Size.previewGutterSpacing) {
+            number(old)
+            number(new)
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .overlay(alignment: .leading) {
+                    content
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
+                .clipped()
+        }
+        .font(Theme.Fonts.monoSmall)
+        .padding(.horizontal, Theme.Size.previewHPadding)
+        .frame(height: Theme.Size.diffLineHeight)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .clipped()
     }
 
     private func number(_ value: Int?) -> some View {
@@ -126,53 +201,27 @@ struct DiffLineRow: View {
             .lineLimit(1)
             .frame(width: Theme.Size.diffLineNumberWidth, alignment: .trailing)
     }
-
-    private var prefix: String {
-        switch line.kind {
-        case .added: return "+"
-        case .removed: return Theme.Glyphs.minus
-        case .context, .hunk: return " "
-        }
-    }
-
-    private var color: Color {
-        switch line.kind {
-        case .added: return Theme.Colors.green
-        case .removed: return Theme.Colors.red
-        case .context: return Theme.Colors.inkTertiary
-        case .hunk: return Theme.Colors.diffHunk
-        }
-    }
-
-    private var background: Color {
-        switch line.kind {
-        case .added: return Theme.Colors.diffAddedBackground
-        case .removed: return Theme.Colors.diffRemovedBackground
-        case .context, .hunk: return Color.clear
-        }
-    }
 }
 
-/// A file row that opens to its diff. Click or ⏎ (on the keyboard cursor) toggles it.
+/// A changed-file row that opens to its diff. Click or ⏎ (on the keyboard cursor)
+/// toggles it. The Changes tool indents it one chevron column under its turn.
 @MainActor
 struct FileDiffRow: View {
     @ObservedObject var state: AppState
     let item: DiffRowItem
-    /// Files tab rows sit under a directory header, so they show the file name only.
-    var showDirectory = false
 
     var body: some View {
         let file = item.file
         let hasDiff = !AppState.diffLines(file).isEmpty
         let open = hasDiff && state.isDiffOpen(item)
         let isCursor = state.cursorRowKey == item.key
-        VStack(alignment: .leading, spacing: Theme.Size.spaceS) {
+        VStack(alignment: .leading, spacing: Theme.Size.spaceXS) {
             Button {
                 state.setRowCursor(key: item.key)
                 guard hasDiff else { return }
                 withAnimation(Theme.Motion.tap) { state.toggleDiff(item.key) }
             } label: {
-                FileRowLabel(file: file, open: open, hasDiff: hasDiff, isCursor: isCursor, showDirectory: showDirectory)
+                FileRowLabel(file: file, open: open, hasDiff: hasDiff, isCursor: isCursor)
             }
             .buttonStyle(.plain)
 
@@ -184,85 +233,77 @@ struct FileDiffRow: View {
     }
 }
 
-/// "▸ Theme.swift · Sources/notchcode   ▮▮▮▯▯ +12 −3": the row a diff opens under.
+/// "▸ NotchView.swift            ▮▮▮▮▮  +12 −12": the row a diff opens under, with a
+/// Sessions row's padding, radius and cursor fill. The name truncates in the middle; the
+/// cells and counts always keep their room at the right.
 @MainActor
 struct FileRowLabel: View {
     let file: FileChange
     let open: Bool
     let hasDiff: Bool
     let isCursor: Bool
-    var showDirectory = false
 
     var body: some View {
         HStack(spacing: Theme.Size.spaceM) {
-            Image(systemName: Theme.Symbols.chevron)
-                .font(Theme.Fonts.chevron)
-                .foregroundStyle(Theme.Colors.inkTertiary)
-                .rotationEffect(.degrees(open ? Theme.Motion.chevronOpenDegrees : 0))
+            RowChevron(open: open)
                 .opacity(hasDiff ? 1 : 0)
-            PathLabel(path: file.path, showDirectory: showDirectory)
-                .layoutPriority(1)
-            Spacer(minLength: Theme.Size.spaceM)
-            DiffCells(added: file.added, removed: file.removed)
-            DiffCounts(added: file.added, removed: file.removed)
+            HStack(spacing: Theme.Size.spaceM) {
+                PathLabel(path: file.path)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: Theme.Size.spaceM) {
+                DiffCells(added: file.added, removed: file.removed)
+                DiffCounts(added: file.added, removed: file.removed)
+            }
+            .fixedSize()
         }
-        .padding(.horizontal, Theme.Size.rowHPadding)
-        .padding(.vertical, Theme.Size.rowVPadding)
-        .background(
-            RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous)
-                .fill(isCursor ? Theme.Colors.rowCursor : Color.clear)
-        )
-        .contentShape(Rectangle())
+        .rowCursorFill(isCursor)
     }
 }
 
-/// "Theme.swift · Sources/notchcode": the file name first, in ink, always whole while it
-/// fits; the folder after it, dim, head-truncated so the nearest folder survives, and
-/// dropped when less than `pathFolderMinWidth` is left. A name too long for the row
-/// truncates in the middle. Used wherever a changed file is a row: the Changes tool, the
-/// commit card's file list, the Files preview header.
+/// The disclosure chevron at the front of a turn or file row: a Sessions chevron, turned
+/// down while open. Its frame plus the row gap is one `chevronColumn`, so a file row
+/// indented by that column puts its chevron under the turn's title.
+@MainActor
+struct RowChevron: View {
+    let open: Bool
+
+    var body: some View {
+        Image(systemName: Theme.Symbols.chevron)
+            .font(Theme.Fonts.chevron)
+            .foregroundStyle(Theme.Colors.inkTertiary)
+            .rotationEffect(.degrees(open ? Theme.Motion.chevronOpenDegrees : 0))
+            .animation(Theme.Motion.disclosure, value: open)
+            .frame(width: Theme.Size.chevronColumn - Theme.Size.spaceM)
+    }
+}
+
+extension View {
+    /// A list row's padding, and the keyboard cursor's fill behind it: the same as a Sessions row.
+    func rowCursorFill(_ isCursor: Bool) -> some View {
+        padding(.horizontal, Theme.Size.rowHPadding)
+            .padding(.vertical, Theme.Size.rowVPadding)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous)
+                    .fill(isCursor ? Theme.Colors.rowCursor : Color.clear)
+            )
+            .contentShape(Rectangle())
+    }
+}
+
+/// "Theme.swift": a changed file's name only, in ink, truncated in the middle when long,
+/// with the full path on hover. Used wherever a changed file is a row: the Changes tool,
+/// the commit card's file list, the Files preview header.
 @MainActor
 struct PathLabel: View {
     let path: String
-    var showDirectory = true
 
     var body: some View {
-        let name = Format.fileName(path)
-        let folder = showDirectory ? Format.directory(path) : ""
-        Group {
-            if folder.isEmpty {
-                nameText(name)
-            } else {
-                // The first layout reports the folder's ideal width as its minimum, so it is
-                // chosen whenever the whole name and a readable piece of the folder fit.
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 0) {
-                        Text(name)
-                            .foregroundStyle(Theme.Colors.ink)
-                            .lineLimit(1)
-                            .fixedSize()
-                        Text(Theme.Glyphs.separator)
-                            .foregroundStyle(Theme.Colors.inkTertiary)
-                            .lineLimit(1)
-                            .fixedSize()
-                        Text(folder)
-                            .foregroundStyle(Theme.Colors.inkTertiary)
-                            .lineLimit(1)
-                            .truncationMode(.head)
-                            .frame(minWidth: Theme.Size.pathFolderMinWidth, idealWidth: Theme.Size.pathFolderMinWidth, alignment: .leading)
-                    }
-                    nameText(name)
-                }
-            }
-        }
-        .font(Theme.Fonts.monoCaption)
-        .help(path)
-    }
-
-    private func nameText(_ name: String) -> some View {
-        Text(name)
+        Text(Format.fileName(path))
+            .font(Theme.Fonts.monoCaption)
             .foregroundStyle(Theme.Colors.ink)
             .lineLimit(1)
             .truncationMode(.middle)
+            .help(path)
     }
 }

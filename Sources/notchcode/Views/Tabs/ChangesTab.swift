@@ -1,8 +1,11 @@
 // ChangesTab.swift
-// Each turn of the selected session, newest first. The turn header is one line: prompt,
-// file count, ± totals, how long it took. Under it, its files: open for the newest turn,
-// folded for older ones (click the header, or ⏎ on it). A file row opens to its whole diff,
-// scrollable and capped. Diffs under 8 lines open by default.
+// Each turn of the selected session, newest first, in the Toolbar layout: one flat list.
+// A turn is one row: chevron, prompt, file count, ± totals, how long it took. Under an
+// open turn its files, indented one chevron column so their chevrons sit under the turn's
+// title: open for the newest turn, folded for older ones (click the row, or ⏎ on it). A
+// file row opens to its whole diff in a rounded box under it, scrollable and capped.
+// Diffs under 8 lines open by default. Rows use the app's shared type scale and row
+// metrics, the same as a Sessions row.
 
 import SwiftUI
 
@@ -41,32 +44,30 @@ struct ChangesTab: View {
                 guard !turn.files.isEmpty else { return }
                 withAnimation(Theme.Motion.disclosure) { state.toggleTurn(turn.id) }
             } label: {
-                TurnHeader(turn: turn, open: open, isCursor: state.cursorRowKey == key)
+                TurnRow(turn: turn, open: open, isCursor: state.cursorRowKey == key)
             }
             .buttonStyle(.plain)
             .id(key)
 
             if open {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(turn.files.enumerated()), id: \.element.id) { item in
-                        FileDiffRow(
-                            state: state,
-                            item: DiffRowItem(key: AppState.changesRowKey(turn: turn, file: item.element), file: item.element),
-                            showDirectory: true
-                        )
-                        .transition(Theme.Motion.childTransition(item.offset))
-                    }
+                ForEach(Array(turn.files.enumerated()), id: \.element.id) { item in
+                    FileDiffRow(
+                        state: state,
+                        item: DiffRowItem(key: AppState.changesRowKey(turn: turn, file: item.element), file: item.element)
+                    )
+                    .padding(.leading, Theme.Size.chevronColumn)
+                    .transition(Theme.Motion.childTransition(item.offset))
                 }
-                .padding(.leading, Theme.Size.turnFilesIndent)
             }
         }
     }
 }
 
-/// "▸ Wire the permission card to the socket   3 files  +48 −9   2m 14s", on one line.
-/// A turn without files says "no file changes" instead of the counts, and has no chevron.
+/// "▸ Wire the permission card to the socket   3 files  +48 −9  Working 4:12", on one
+/// line. A turn without files says "no file changes" instead of the counts, and has no
+/// chevron.
 @MainActor
-private struct TurnHeader: View {
+private struct TurnRow: View {
     let turn: TranscriptTurn
     let open: Bool
     let isCursor: Bool
@@ -74,11 +75,7 @@ private struct TurnHeader: View {
     var body: some View {
         let hasFiles = !turn.files.isEmpty
         HStack(spacing: Theme.Size.spaceM) {
-            Image(systemName: Theme.Symbols.chevron)
-                .font(Theme.Fonts.chevron)
-                .foregroundStyle(Theme.Colors.inkTertiary)
-                .rotationEffect(.degrees(open ? Theme.Motion.chevronOpenDegrees : 0))
-                .animation(Theme.Motion.disclosure, value: open)
+            RowChevron(open: open)
                 .opacity(hasFiles ? 1 : 0)
             Text(turn.prompt)
                 .font(Theme.Fonts.bodySemibold)
@@ -86,7 +83,7 @@ private struct TurnHeader: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
             Spacer(minLength: Theme.Size.spaceM)
-            Group {
+            HStack(spacing: Theme.Size.spaceM) {
                 if hasFiles {
                     Text(Format.files(turn.files.count))
                         .font(Theme.Fonts.caption)
@@ -104,13 +101,7 @@ private struct TurnHeader: View {
             }
             .fixedSize()
         }
-        .padding(.horizontal, Theme.Size.rowHPadding)
-        .padding(.vertical, Theme.Size.turnHeaderVPadding)
-        .background(
-            RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous)
-                .fill(isCursor ? Theme.Colors.rowCursor : Color.clear)
-        )
-        .contentShape(Rectangle())
+        .rowCursorFill(isCursor)
     }
 
     @ViewBuilder
@@ -120,7 +111,7 @@ private struct TurnHeader: View {
                 .font(Theme.Fonts.caption)
                 .foregroundStyle(Theme.Colors.inkTertiary)
         } else {
-            HStack(spacing: Theme.Size.spaceS) {
+            HStack(spacing: Theme.Size.spaceM) {
                 Text("Working")
                     .font(Theme.Fonts.captionMedium)
                     .foregroundStyle(Theme.Colors.clay)

@@ -241,7 +241,7 @@ enum Theme {
         static let row: CGFloat = 10
         static let keycap: CGFloat = 4
         static let chip: CGFloat = 6
-        static let diffCell: CGFloat = 1.5
+        static let diffCell: CGFloat = 1
         static let agentSquare: CGFloat = 1.5
         static let snippet: CGFloat = 8
 
@@ -385,10 +385,6 @@ enum Theme {
         /// The open card's status segment (left wing).
         static let statusSpacing: CGFloat = 8
 
-        // Changed-file rows: "Theme.swift · Sources/notchcode". The name never truncates
-        // while it fits; the folder gets what is left and is dropped below this width.
-        static let pathFolderMinWidth: CGFloat = 56
-
         // Usage tab: one fixed page, never scrolls. Heights derive from `usageCardHeight`.
         static let usageRowSpacing: CGFloat = 10
         static let usageTileSpacing: CGFloat = 8
@@ -432,11 +428,11 @@ enum Theme {
         static let checkLine: CGFloat = 1.8
         static let checkInset: CGFloat = 0.28
 
-        // Changes tab.
-        static let diffCellWidth: CGFloat = 5
-        static let diffCellHeight: CGFloat = 8
-        static let diffCellSpacing: CGFloat = 1.5
-        static let snippetLinePadding: CGFloat = 6
+        // The five cells in a changed-file row.
+        static let diffCellWidth: CGFloat = 4
+        static let diffCellHeight: CGFloat = 7
+        static let diffCellSpacing: CGFloat = 1
+        /// Every list row (Sessions, Changes turns and files, request rows) pads by these.
         static let rowVPadding: CGFloat = 6
         static let rowHPadding: CGFloat = 8
 
@@ -444,7 +440,8 @@ enum Theme {
         static let laneIndent: CGFloat = 22
         static let laneVPadding: CGFloat = 3
         static let laneLineWidth: CGFloat = 1
-        /// Chevron plus its gap, so lane clocks line up with the row clock.
+        /// Chevron plus its gap, so lane clocks line up with the row clock. Changes indents a
+        /// turn's files by it, so their chevrons sit under the turn's title.
         static let chevronColumn: CGFloat = 14
         /// The teleport chevron's hit area height on a session row.
         static let chevronHitHeight: CGFloat = 34
@@ -467,12 +464,12 @@ enum Theme {
         static let agentSquare: CGFloat = 7
         static let agentSquareSpacing: CGFloat = 3
 
-        // Diff view.
+        // Diff view: a rounded box, two line-number columns (old, new), then the line.
+        // Its font, padding and gutter are the Files preview's.
         static let diffLineHeight: CGFloat = 16
         static let diffMaxHeight: CGFloat = 220
+        /// One line-number column, wide enough for four digits at the mono size.
         static let diffLineNumberWidth: CGFloat = 30
-        static let diffGutterSpacing: CGFloat = 4
-        static let diffVPadding: CGFloat = 4
         static let groupHeaderTopPadding: CGFloat = 6
         /// Inside a request card the diff takes what is left above the footer, up to this.
         static let requestDiffMaxHeight: CGFloat = 260
@@ -481,10 +478,6 @@ enum Theme {
 
         // Sessions tab: one slim sticky header per repository.
         static let repoHeaderHeight: CGFloat = 22
-
-        // Changes tab: one-line turn header.
-        static let turnHeaderVPadding: CGFloat = 5
-        static let turnFilesIndent: CGFloat = 14
 
         // Files tab: the tree on the left, the preview on the right.
         /// The tree column's share of the card's content width.
@@ -904,6 +897,10 @@ enum Theme {
         static let separator = " · "
         static let approx = "\u{2248} "
         static let ellipsis = "\u{2026}"
+        // A diff line's prefix.
+        static let diffAdded = "+"
+        static let diffRemoved = minus
+        static let diffContext = " "
         /// "~$1.42": an estimated cost.
         static let estimate = "~"
         static let emDash = "\u{2014}"

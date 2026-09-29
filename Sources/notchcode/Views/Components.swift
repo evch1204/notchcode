@@ -501,7 +501,7 @@ struct DiffCells: View {
     }
 }
 
-/// "+12 −3" in mono.
+/// "+12 −3" in mono, at the caption size.
 @MainActor
 struct DiffCounts: View {
     let added: Int
@@ -513,6 +513,7 @@ struct DiffCounts: View {
             Text(Format.removed(removed)).foregroundStyle(Theme.Colors.red)
         }
         .font(Theme.Fonts.monoCaption)
+        .lineLimit(1)
     }
 }
 

@@ -144,7 +144,7 @@ struct CommitCard: View {
         let hasDiff = !AppState.diffLines(file).isEmpty
         let open = openPath == file.path
         let cursorShown = request.files.count > 1 && hasDiff
-        VStack(alignment: .leading, spacing: Theme.Size.spaceS) {
+        VStack(alignment: .leading, spacing: 0) {
             Button {
                 state.requestRowCursor = index
                 state.toggleRequestDiff(path: file.path)
@@ -153,8 +153,7 @@ struct CommitCard: View {
                     file: file,
                     open: open,
                     hasDiff: hasDiff,
-                    isCursor: cursorShown && state.requestRowCursor == index,
-                    showDirectory: true
+                    isCursor: cursorShown && state.requestRowCursor == index
                 )
             }
             .buttonStyle(.plain)
