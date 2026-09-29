@@ -78,21 +78,30 @@ struct NotchRootView: View {
 
     // MARK: Rim and bleed
 
-    /// A 2 pt light on the outer edge of the shape (sides below the ears, both bottom
-    /// corners, the bottom edge), outset by its own width so it never touches the black,
-    /// with a soft glow spilling about 10 pt below and around the wings. Drawn behind the
-    /// shape, so any glow that falls inside the silhouette is covered.
+    /// A static 2 pt light hugging the bottom edge and both bottom corners, just outside the
+    /// black, fading out as each corner turns up into the side (the board's inset bottom
+    /// shadow), with a soft glow dropped 2 pt below it. No sides, no top. The camera hides the
+    /// centre 180 pt of the bottom edge; the wings carry the light. Drawn behind the shape, so
+    /// any glow that falls inside the silhouette is covered.
     /// Reduce Motion: the same light, no glow.
     private func rim(on: Bool) -> some View {
         let path = NotchRimShape(topRadius: topRadius, bottomRadius: bottomRadius, outset: Theme.Size.rimOutset)
+        let bounds = CGRect(x: 0, y: 0, width: shapeWidth, height: shapeHeight)
+        let corner = clampedRadii(top: topRadius, bottom: bottomRadius, in: bounds).bottom
+        // Clear where a corner leaves the side, full at the bottom edge (and below it).
+        let fadeStart = UnitPoint(x: 0.5, y: shapeHeight > 0 ? max(0, 1 - corner / shapeHeight) : 0)
+        func fade(_ color: Color) -> LinearGradient {
+            LinearGradient(colors: [color.opacity(0), color], startPoint: fadeStart, endPoint: .bottom)
+        }
         return ZStack {
             if !Theme.Motion.reduceMotion {
                 path
-                    .stroke(Theme.Colors.rimGlow, style: StrokeStyle(lineWidth: Theme.Size.rimGlowLine, lineCap: .round))
+                    .stroke(fade(Theme.Colors.rimGlow), style: StrokeStyle(lineWidth: Theme.Size.rimGlowLine, lineCap: .round))
+                    .offset(y: Theme.Size.rimGlowDrop)
                     .blur(radius: Theme.Size.rimGlowRadius)
             }
             path
-                .stroke(Theme.Colors.rim, style: StrokeStyle(lineWidth: Theme.Size.rimLine, lineCap: .round))
+                .stroke(fade(Theme.Colors.rim), style: StrokeStyle(lineWidth: Theme.Size.rimLine, lineCap: .round))
         }
         .frame(width: shapeWidth, height: shapeHeight)
         .opacity(on ? 1 : 0)

@@ -153,7 +153,7 @@ Unix socket at `~/Library/Application Support/notchcode/notchcode.sock`. Hook sc
 
 ## Motion decisions (owner, 2026-09-27)
 
-Implement now: hover rim light on the closed and resting notch for click-to-open owners (hover-to-open owners get the card on the same dwell, so no rim); attention arrival with the clay bleed (the breath was dropped 2026-09-27 evening: on top of the height spring it read as a bounce); tab slide with parallax; done peek with the check drawing on and counts counting up; the simple teleport fold (card folds into the notch over 0.28 s, terminal activated at 0.15 s, no scale, no blur). No blur anywhere: content fades and rises 10 pt. The rest of the table below is later, or never.
+Implement now: hover rim light on the closed and resting notch for click-to-open owners (hover-to-open owners get the card on the same dwell, so no rim). Rebuilt 2026-09-28 to the canvas board M7: a static 2 pt line along the bottom edge and both bottom corners only, just outside the black, fading out where each corner turns up (no sides, no top, so it no longer reads as an outline); the camera hides its centre, the wings carry it; attention arrival with the clay bleed (the breath was dropped 2026-09-27 evening: on top of the height spring it read as a bounce); tab slide with parallax; done peek with the check drawing on and counts counting up; the simple teleport fold (card folds into the notch over 0.28 s, terminal activated at 0.15 s, no scale, no blur). No blur anywhere: content fades and rises 10 pt. The rest of the table below is later, or never.
 
 After Done: 4 s, then the Resting state (see States). Never a bare notch while a session exists, unless the owner chose pure notch.
 
@@ -195,7 +195,7 @@ What exists today: width/height springs (open 0.45/0.72 and 0.55/0.78, close 0.3
 | Agent finish | square → check, same pop | 0 | no | crossfade |
 | Teleport | card content scales to 92%, blurs 6 pt and fades in 0.2 s; shape height collapses 0.28 s ease-in; width settles to wings with a small bounce 0.3 s; the terminal is activated at the 0.15 s mark so it rises behind | 0 | no | crossfade, activate at once |
 | Tab switch | pill glides 0.32 s with 20% overshoot; outgoing pane slides 70 pt and fades 0.2 s; incoming slides in 0.32 s ease-out; inner groups move at 40% speed; bars fill 0.5 s after landing | 0 | yes | crossfade |
-| Hover rim (hover-open only) | 2 pt rim light on the bottom edge, 0.18 s in, 0.25 s out, 12 px glow at 12% | after 250 ms at rest | yes | same, no glow |
+| Hover rim (click-to-open owners; 2026-09-28) | static 2 pt line at 50% white on the bottom edge and bottom corners, outside the black, fading up each corner; 0.18 s ease-out in, 0.25 s ease-in out; glow 4 pt wide, 2 pt drop, 6 pt blur (12 px CSS) at 12% | after 250 ms at rest | yes | same, no glow |
 | Button press | scale 0.97, 0.12 s ease-out, back on release | 0 | yes | none |
 
 Mechanisms, SwiftUI on macOS 14:

@@ -70,11 +70,11 @@ struct NotchShape: Shape {
     }
 }
 
-/// The outline of `NotchShape` below its ears, pushed `outset` points outside the black so a
-/// stroke of that width never touches the silhouette: down the left side from where the ear
-/// ends, around the bottom-left corner, along the bottom, around the bottom-right corner, and
-/// up the right side. Used for the hover rim light, so the light follows the shape's radius
-/// and sits where the camera housing cannot hide it.
+/// The bottom of `NotchShape`, pushed `outset` points outside the black so a stroke of twice
+/// that width runs from the silhouette outwards: from where the bottom-left corner leaves the
+/// left side, around that corner, along the bottom edge, and around the bottom-right corner to
+/// where it meets the right side. No sides, no top. Used for the hover rim light, so the light
+/// follows the shape's radius; the camera housing hides its centre 180 pt, the wings show it.
 struct NotchRimShape: Shape {
     var topRadius: CGFloat
     var bottomRadius: CGFloat
@@ -96,11 +96,10 @@ struct NotchRimShape: Shape {
         let right = rect.maxX - top + outset
         let floor = rect.maxY + outset
         let radius = max(0, bottom + outset)
-        // The sides start where the ear meets the body.
-        let sideTop = min(rect.minY + top, floor - radius)
+        let cornerTop = floor - radius
 
         var path = Path()
-        path.move(to: CGPoint(x: left, y: sideTop))
+        path.move(to: CGPoint(x: left, y: cornerTop))
         path.addArc(
             tangent1End: CGPoint(x: left, y: floor),
             tangent2End: CGPoint(x: left + radius, y: floor),
@@ -108,10 +107,10 @@ struct NotchRimShape: Shape {
         )
         path.addArc(
             tangent1End: CGPoint(x: right, y: floor),
-            tangent2End: CGPoint(x: right, y: floor - radius),
+            tangent2End: CGPoint(x: right, y: cornerTop),
             radius: radius
         )
-        path.addLine(to: CGPoint(x: right, y: sideTop))
+        path.addLine(to: CGPoint(x: right, y: cornerTop))
         return path
     }
 }

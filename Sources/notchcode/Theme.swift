@@ -195,10 +195,10 @@ enum Theme {
         static let groupHeaderName = inkSecondary
         static let groupHeaderCount = inkTertiary
 
-        /// Hover rim light on the closed and resting shape, and its soft glow. Both sit
-        /// outside the black silhouette.
-        static let rim = ink.opacity(0.55)
-        static let rimGlow = ink.opacity(0.22)
+        /// Hover rim light along the bottom edge of the closed and resting shape (50% white),
+        /// and its soft glow (12%). Both sit outside the black silhouette.
+        static let rim = ink.opacity(0.5)
+        static let rimGlow = ink.opacity(0.12)
         /// Clay bleed below the shape when attention arrives (scaled by the bleed opacity).
         static let attentionBleed = clay.opacity(0.35)
         /// The resting dot: green when the session finished, grey when idle.
@@ -415,15 +415,16 @@ enum Theme {
         static var usageBigTileHeight: CGFloat { (usageTileRowsHeight * usageBigTileShare).rounded(.down) }
         static var usageSmallTileHeight: CGFloat { usageTileRowsHeight - usageBigTileHeight }
 
-        // Hover rim light, drawn outside the silhouette (the camera hides anything inside).
+        // Hover rim light: a 2 pt line hugging the bottom edge and both bottom corners,
+        // just outside the silhouette (the camera hides anything inside). No sides, no top.
         static let rimLine: CGFloat = 2
-        /// The rim's path sits this far outside the shape's edge (its own line width), so
-        /// the stroke never touches the black.
-        static let rimOutset: CGFloat = 2
-        /// The glow: a wider stroke on the same path, blurred, spilling about 10 pt out
-        /// below and around the wings.
-        static let rimGlowLine: CGFloat = 6
-        static let rimGlowRadius: CGFloat = 8
+        /// Half the line width, so the stroke runs from the black's edge outwards.
+        static let rimOutset: CGFloat = rimLine / 2
+        /// The glow: the board's 12 px CSS blur (a 6 pt Gaussian radius) on a wider copy
+        /// of the line, dropped 2 pt, spilling below the shape and under the wings.
+        static let rimGlowLine: CGFloat = 4
+        static let rimGlowRadius: CGFloat = 6
+        static let rimGlowDrop: CGFloat = 2
 
         // Clay bleed below the attention shape. Wider than the whole shape so both wings
         // carry it, centred below the bottom edge so nothing relies on the camera area.
