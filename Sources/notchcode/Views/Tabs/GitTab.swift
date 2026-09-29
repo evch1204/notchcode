@@ -4,10 +4,11 @@
 // ("not published yet", "up to date with origin", "2 behind", "no remote"), and the white
 // Push (or Publish) pill with the count it would send and its P keycap ("Push 3  P"),
 // disabled when there is nothing to send.
-// P or the pill asks in the right pane: the diff or the clean note drops away, the question
-// rises in with Push (⏎) and Cancel (esc), and the header's Push pill glides down to become
-// the card's; ⏎ or the pill pushes, esc sends it all back. While git pushes the card's pill
-// pulses; the result ("Pushed 3 commits", or git's error in red) shows in the header's status.
+// P or the pill asks in the right pane: the diff or the clean note drops away and the
+// question rises in with "⏎ or Push again" and Cancel (esc), while the header's Push pill
+// stays put, pops once and shows ⏎; the pill or ⏎ pushes, esc cancels. While git pushes the
+// header pill pulses and the card says "Pushing to origin…"; the result shows in the
+// header's status.
 //
 // Below, the Files tool's split: on the left "Uncommitted", one row per changed file (name,
 // the five ± cells, the counts), then "Recent commits", the last five, the ones not on the
@@ -34,10 +35,9 @@ import SwiftUI
 struct GitTab: View {
     @ObservedObject var state: AppState
     /// The target pill and the repository pill share one frame across the swap.
-    /// The Push pill shares one frame between the header and the push confirm.
+    /// The target pill and the repository pill share one frame across the swap.
     @Namespace private var pillSpace
     static let pillID = "gitPill"
-    static let pushPillID = "gitPushPill"
 
     /// The content and the picker both stay in the tree; only their parts come and go, so
     /// each part's transition fires (a child's transition does not when its parent is inserted).
@@ -110,7 +110,7 @@ struct GitTab: View {
                     .frame(width: collapsed ? 0 : Theme.Size.hairline)
                     .padding(.trailing, collapsed ? 0 : Theme.Size.filesColumnGap)
 
-                GitDiffPane(state: state, snap: snap, pillSpace: pillSpace)
+                GitDiffPane(state: state, snap: snap)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .parallaxGroup()
             }
@@ -203,7 +203,6 @@ private struct GitFileRow: View {
 private struct GitDiffPane: View {
     @ObservedObject var state: AppState
     let snap: GitSnapshot
-    let pillSpace: Namespace.ID
     /// The diff row at the top of the pane, and how many rows the pane shows.
     @State private var topRow = 0
     @State private var visibleCount = 0
@@ -228,7 +227,7 @@ private struct GitDiffPane: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     .transition(Theme.Motion.paneSwapTransition)
                 }
-                GitPushConfirm(state: state, phase: phase, pillSpace: pillSpace)
+                GitPushConfirm(state: state, phase: phase)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
@@ -304,58 +303,52 @@ private struct GitCleanNote: View {
     }
 }
 
-/// The push confirm in the diff pane: "Push 3 commits to origin/seadevil?", then Push (⏎)
-/// and Cancel (esc). Stays in the tree with nothing in it outside the confirm, so its parts
-/// transition: the question and Cancel rise in and drop out, the Push pill arrives from the
-/// header (and goes back) through the shared frame. While git pushes the pill pulses in place
-/// and Cancel dims; the question stays.
+/// The push confirm in the diff pane: "Push 3 commits to origin/seadevil?", then "⏎ or
+/// Push again" and Cancel (esc). The Push pill itself stays in the header, under the pointer.
+/// Stays in the tree with nothing in it outside the confirm, so its parts transition: they
+/// rise in and drop out. While git pushes the question becomes "Pushing to origin/seadevil…"
+/// and the hint and Cancel fade out.
 @MainActor
 private struct GitPushConfirm: View {
     @ObservedObject var state: AppState
     let phase: GitPushPhase
-    let pillSpace: Namespace.ID
 
     var body: some View {
         let confirming = phase == .confirming
         let pushing = phase == .pushing
-        let asking = confirming || pushing
-        let verb = state.gitPushVerb
         VStack(spacing: Theme.Size.spaceM) {
-            if asking {
-                Text(state.gitConfirmText)
-                    .font(Theme.Fonts.bodyMedium)
-                    .foregroundStyle(Theme.Colors.ink)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .frame(maxWidth: Theme.Size.gitConfirmMaxWidth)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .transition(Theme.Motion.paneSwapTransition)
-            }
-            HStack(spacing: Theme.Size.spaceM) {
-                if confirming {
-                    ActionSegment(title: verb, key: Theme.Keys.enter, role: .allow, count: state.gitPushCount) {
-                        state.pressGitPill()
-                    }
-                    .matchedGeometryEffect(id: GitTab.pushPillID, in: pillSpace)
-                    .transition(.opacity)
-                }
-                if pushing {
-                    GitPushingPill(title: verb == "Publish" ? "Publishing" : "Pushing")
-                        .matchedGeometryEffect(id: GitTab.pushPillID, in: pillSpace)
+            if confirming || pushing {
+                ZStack {
+                    Text(pushing ? "Pushing to " + state.gitPushTarget + Theme.Glyphs.ellipsis : state.gitConfirmText)
+                        .font(Theme.Fonts.bodyMedium)
+                        .foregroundStyle(Theme.Colors.ink)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .frame(maxWidth: Theme.Size.gitConfirmMaxWidth)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .id(pushing)
                         .transition(.opacity)
                 }
-                if asking {
+                .transition(Theme.Motion.paneSwapTransition)
+            }
+            if confirming {
+                HStack(spacing: Theme.Size.spaceM) {
+                    HStack(spacing: Theme.Size.spaceS) {
+                        Keycap(Theme.Keys.enter)
+                        Text("or Push again")
+                            .font(Theme.Fonts.caption)
+                            .foregroundStyle(Theme.Colors.inkTertiary)
+                    }
+                    .fixedSize()
                     ActionSegment(title: "Cancel", key: Theme.Keys.escape, role: .neutral) {
                         state.cancelGitConfirm()
                     }
-                    .disabled(pushing)
-                    .opacity(pushing ? Theme.Opacity.disabled : 1)
-                    .transition(Theme.Motion.paneSwapTransition)
                 }
+                .transition(Theme.Motion.paneSwapTransition)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .allowsHitTesting(asking)
+        .allowsHitTesting(confirming)
     }
 }
 
@@ -501,8 +494,8 @@ private struct GitDiffBody: View {
 // MARK: - Header
 
 /// "notchcode › seadevil ▾ W   user-friendly-distribution-plan   [Push 3  P]", or a push's
-/// result in the status's place. While the push is asked or running the pill is down in the
-/// diff pane's confirm. A branch checked out nowhere:
+/// result in the status's place. While the push is asked the pill stays put, armed with ⏎
+/// (the question is in the diff pane); while it runs the pill pulses. A branch checked out nowhere:
 /// "notchcode › design/toolbar ▾ W   not checked out · 4 commits ahead of main".
 @MainActor
 private struct GitHeader: View {
@@ -582,21 +575,30 @@ private struct GitHeader: View {
         }
     }
 
-    /// The Push pill, only while no push is asked or running (then it is the confirm's).
-    @ViewBuilder
+    /// The Push pill, in the same place in every phase: "Push 3  P"; armed with ⏎ while the
+    /// push is asked (it pops once as it arms, the keycap crossfading); pulsing while git
+    /// pushes. The three overlap so each swap is a crossfade in place.
     private func pill(_ phase: GitPushPhase) -> some View {
         let verb = state.gitPushVerb
-        switch phase {
-        case .confirming, .pushing:
-            EmptyView()
-        case .idle, .pushed, .failed:
-            let enabled = state.gitCanPush
-            ActionSegment(title: verb, key: Theme.Keys.push, role: enabled ? .allow : .neutral, count: state.gitPushCount) { state.pressGitPill() }
-                .disabled(!enabled)
-                .opacity(enabled ? 1 : Theme.Opacity.disabled)
-                .help(enabled ? verb + " this branch (asks first)" : state.gitStatusText)
-                .matchedGeometryEffect(id: GitTab.pushPillID, in: pillSpace)
-                .transition(.opacity)
+        let enabled = state.gitCanPush
+        return ZStack(alignment: .trailing) {
+            if phase == .pushing {
+                GitPushingPill(title: verb == "Publish" ? "Publishing" : "Pushing")
+                    .transition(.opacity)
+            }
+            if phase == .confirming {
+                ActionSegment(title: verb, key: Theme.Keys.enter, role: .allow, count: state.gitPushCount) { state.pressGitPill() }
+                    .help(state.gitConfirmText)
+                    .popIn()
+                    .transition(.opacity)
+            }
+            if phase != .pushing && phase != .confirming {
+                ActionSegment(title: verb, key: Theme.Keys.push, role: enabled ? .allow : .neutral, count: state.gitPushCount) { state.pressGitPill() }
+                    .disabled(!enabled)
+                    .opacity(enabled ? 1 : Theme.Opacity.disabled)
+                    .help(enabled ? verb + " this branch (asks first)" : state.gitStatusText)
+                    .transition(.opacity)
+            }
         }
     }
 }
@@ -1014,7 +1016,7 @@ private struct GitBranchRow: View {
     }
 }
 
-/// The confirm's pill while git pushes: Claude's pulsing spark and "Pushing", not pressable.
+/// The pill while git pushes: Claude's pulsing spark and "Pushing", not pressable.
 @MainActor
 private struct GitPushingPill: View {
     let title: String

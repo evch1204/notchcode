@@ -858,9 +858,9 @@ enum Theme {
         @MainActor static var pickerHeadTransition: AnyTransition {
             reduceMotion ? rise(dy: 0, in: reduced, out: reduced) : contentTransition(rise: true)
         }
-        // Git push confirm: the diff pane's content drops away, the question and Cancel rise
-        // in (`paneSwapTransition`), and the header's Push pill glides into the card on the
-        // picker pill's spring, and back when the confirm or the push ends.
+        // Git push confirm: the diff pane's content drops away and the question, the hint and
+        // Cancel rise in (`paneSwapTransition`); the header's Push pill stays put and pops
+        // once (`PopIn`). The phase change runs on the picker pill's spring.
         @MainActor static var pushConfirm: Animation { pickerPill }
         /// The rows' block: nothing coming in (each row rises on its own), a fade going out.
         @MainActor static var pickerRowsTransition: AnyTransition {
