@@ -10,6 +10,13 @@
 import AppKit
 import SwiftUI
 
+/// A file preview as loaded for the pane, with the line count when RepoFiles capped it.
+struct LoadedPreview: Equatable {
+    var preview: FilePreview
+    /// Lines in the whole file, when the preview was truncated and the count is known.
+    var totalLines: Int?
+}
+
 /// One visible row of the tree.
 struct TreeRow: Identifiable, Equatable {
     var id: String { node.path }
@@ -258,21 +265,17 @@ extension AppState {
         setFilesTreeHidden(!filesTreeCollapsed)
     }
 
-    /// Session id -> a Markdown file shows its source instead of the rendered preview.
-    /// In memory only: every run starts on Preview.
-    private static var markdownSource: [String: Bool] = [:]
-
     static func isMarkdown(_ path: String) -> Bool {
         ["md", "markdown", "mdx"].contains((path as NSString).pathExtension.lowercased())
     }
 
     /// The focused session shows Markdown as source (Code) rather than rendered (Preview).
     var markdownShowsCode: Bool {
-        get { focusedSession.flatMap { Self.markdownSource[$0.id] } ?? false }
+        get { focusedSession.flatMap { markdownSource[$0.id] } ?? false }
         set {
             guard let sid = focusedSession?.id, markdownShowsCode != newValue else { return }
             objectWillChange.send()
-            Self.markdownSource[sid] = newValue
+            markdownSource[sid] = newValue
         }
     }
 
@@ -416,4 +419,3 @@ extension AppState {
         return n + delta
     }
 }
-

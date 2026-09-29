@@ -400,38 +400,6 @@ struct StatusSegment: View {
 }
 // MARK: - Action segments
 
-/// An action's part in a request: Allow (primary, white), Deny (red tint), or neutral.
-enum ActionRole { case allow, deny, neutral }
-
-/// One action of a request, as the strip, the attention row and the footer show it.
-struct RequestAction {
-    let title: String
-    let key: String?
-    let help: String
-    let role: ActionRole
-}
-
-extension PendingRequest.Kind {
-    /// Deny · middle · Allow for a permission (Deny · Always · Allow) or a commit
-    /// (Skip · Edit · Commit). The one table every surface reads.
-    var actions: (deny: RequestAction, middle: RequestAction, allow: RequestAction) {
-        switch self {
-        case .permission:
-            return (
-                RequestAction(title: "Deny", key: Theme.Keys.delete, help: "Deny (\(Theme.Keys.delete))", role: .deny),
-                RequestAction(title: "Always", key: Theme.Keys.always, help: "Allow and remember (\(Theme.Keys.always))", role: .neutral),
-                RequestAction(title: "Allow", key: Theme.Keys.enter, help: "Allow (\(Theme.Keys.enter))", role: .allow)
-            )
-        case .commit:
-            return (
-                RequestAction(title: "Skip", key: Theme.Keys.delete, help: "Skip this commit (\(Theme.Keys.delete))", role: .deny),
-                RequestAction(title: "Edit", key: Theme.Keys.edit, help: "Ask for a different message (\(Theme.Keys.edit))", role: .neutral),
-                RequestAction(title: "Commit", key: Theme.Keys.enter, help: "Commit (\(Theme.Keys.enter))", role: .allow)
-            )
-        }
-    }
-}
-
 /// One action segment. Allow carries the countdown draining along its bottom edge. `count`:
 /// a number right after the title in the same pill ("Push 3"), coloured like the keycap text.
 @MainActor

@@ -393,7 +393,6 @@ final class DemoScript {
                 ]),
             ]),
         ])
-        state.weekModelLimit = ModelLimit(model: "Opus", percent: 22, resetsAt: weekReset)
     }
 
     private func demoUsage() -> UsageSnapshot {
