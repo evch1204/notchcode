@@ -43,7 +43,7 @@ export function wantedHooks(cmd) {
       // Only `git commit` reaches the app; every other Bash call skips the hook entirely.
       hooks: [{ type: "command", if: "Bash(git commit *)", command: cmd("pre_tool"), timeout: 65 }],
     },
-    PostToolUse: { matcher: "Edit|Write|MultiEdit", hooks: [passive("post_tool")] },
+    PostToolUse: { matcher: "Edit|Write|MultiEdit|Bash", hooks: [passive("post_tool")] },
     Notification: { hooks: [passive("notification")] },
     Stop: { hooks: [passive("stop")] },
     SessionStart: { hooks: [passive("session_start")] },

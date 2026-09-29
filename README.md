@@ -110,7 +110,7 @@ Ways b and c follow the same rules. They back the file up first as `settings.jso
 |---|---|---|
 | `PermissionRequest` | all tools | until you answer, or 58 s pass |
 | `PreToolUse` | `Bash`, only `git commit …` | the same |
-| `PostToolUse` | `Edit`, `Write`, `MultiEdit` | no |
+| `PostToolUse` | `Edit`, `Write`, `MultiEdit`, `Bash` | no |
 | `Notification`, `Stop`, `UserPromptSubmit` | | no |
 | `SessionStart`, `SessionEnd`, `SubagentStart`, `SubagentStop` | | no |
 | `statusLine` | | no; chained in front of your existing one |

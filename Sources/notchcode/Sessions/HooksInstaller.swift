@@ -279,7 +279,7 @@ enum HooksInstaller {
         return [
             ("PermissionRequest", group(nil, handler("permission", timeout: 65, async: false))),
             ("PreToolUse", group("Bash", handler("pre_tool", timeout: 65, async: false, ifRule: "Bash(git commit *)"))),
-            ("PostToolUse", group("Edit|Write|MultiEdit", passive("post_tool"))),
+            ("PostToolUse", group("Edit|Write|MultiEdit|Bash", passive("post_tool"))),
             ("Notification", group(nil, passive("notification"))),
             ("Stop", group(nil, passive("stop"))),
             ("SessionStart", group(nil, passive("session_start"))),

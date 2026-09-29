@@ -249,6 +249,14 @@ struct FileRowLabel: View {
                 .opacity(hasDiff ? 1 : 0)
             HStack(spacing: Theme.Size.spaceM) {
                 PathLabel(path: file.path)
+                if file.kind == "shell" {
+                    // Changed by a Bash command: its diff is against HEAD, not the edit alone.
+                    Text(Theme.Glyphs.shellTag)
+                        .font(Theme.Fonts.caption)
+                        .foregroundStyle(Theme.Colors.inkTertiary)
+                        .fixedSize()
+                        .help("changed by a shell command" + Theme.Glyphs.separator + "diff against HEAD")
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: Theme.Size.spaceM) {

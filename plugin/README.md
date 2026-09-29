@@ -38,7 +38,7 @@ their old hooks until you restart them.
 |---|---|---|
 | `PermissionRequest` | all tools | yes, until you answer or 58 s pass |
 | `PreToolUse` | `Bash`, only `git commit *` | yes, same |
-| `PostToolUse` | `Edit\|Write\|MultiEdit` | no |
+| `PostToolUse` | `Edit\|Write\|MultiEdit\|Bash` | no |
 | `Notification`, `Stop`, `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `SubagentStart`, `SubagentStop` | all | no |
 
 ## Usage limits need one more step

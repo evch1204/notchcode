@@ -5,9 +5,13 @@
 # kind: permission pre_tool post_tool notification stop session_start session_end user_prompt
 #       subagent_start subagent_stop statusline
 #
-# Rules: no dependencies beyond macOS base (sh, nc, sed, tr, date, uuidgen); prints
-# nothing unless the app replied allow or deny to a blocking event; always exits 0,
+# Rules: no dependencies beyond macOS base (sh, nc, sed, tr, date, uuidgen, git, base64);
+# prints nothing unless the app replied allow or deny to a blocking event; always exits 0,
 # including when the app is not running. Wire format: see Contract.swift.
+#
+# For user_prompt, and for post_tool on Bash, the envelope also carries a working-tree
+# report ("tree"): git status and the diff against HEAD, base64, so the app can see files a
+# shell command changed. Read-only git (GIT_OPTIONAL_LOCKS=0), skipped outside a work tree.
 
 kind="$1"
 case "$kind" in
@@ -31,14 +35,78 @@ esc() {
   printf '%s' "$1" | tr -d '\r\n' | sed 's/\\/\\\\/g; s/"/\\"/g'
 }
 
+# The first "cwd" string in the payload, unescaped. Falls back to $PWD.
+payload_cwd() {
+  rest=${payload#*\"cwd\":\"}
+  [ "$rest" != "$payload" ] || rest=${payload#*\"cwd\": \"}
+  if [ "$rest" != "$payload" ]; then
+    printf '%s' "${rest%%\"*}" | sed 's/\\\//\//g; s/\\\\/\\/g'
+  else
+    printf '%s' "$PWD"
+  fi
+}
+
+# The diff against HEAD, then each untracked file (first 20) against /dev/null.
+# Paths are relative to $top. Exit 1 from `diff --no-index` is normal.
+tree_diff() {
+  git -C "$top" -c core.quotePath=false diff HEAD --no-color --no-ext-diff --no-renames --src-prefix=a/ --dst-prefix=b/ 2>/dev/null
+  printf '%s\n' "$status" | sed -n 's/^?? //p' | head -n 20 | while IFS= read -r f; do
+    # A quoted name: drop the quotes when nothing inside is escaped, else skip it.
+    case "$f" in
+      *\\*) continue ;;
+      '"'*'"') f=${f#\"}; f=${f%\"} ;;
+    esac
+    git -C "$top" -c core.quotePath=false diff --no-index --no-color --no-ext-diff --src-prefix=a/ --dst-prefix=b/ -- /dev/null "$f" 2>/dev/null
+  done
+}
+
+# ,"tree":{...} for the work tree holding $1, or nothing (and status 1) outside one.
+# The whole diff is capped at 256 KB (then "truncated":true).
+tree_report() {
+  GIT_OPTIONAL_LOCKS=0
+  export GIT_OPTIONAL_LOCKS
+  top=$(git -C "$1" rev-parse --show-toplevel 2>/dev/null) || return 1
+  [ -n "$top" ] || return 1
+  status=$(git -C "$top" -c core.quotePath=false status --porcelain=v1 --untracked-files=all 2>/dev/null) || return 1
+  head_sha=$(git -C "$top" rev-parse -q --verify HEAD 2>/dev/null)
+  cap=262144
+  diff=$(tree_diff | head -c $((cap + 1)))
+  truncated=false
+  if [ "$(printf '%s' "$diff" | wc -c)" -gt "$cap" ]; then
+    truncated=true
+    diff=$(printf '%s' "$diff" | head -c "$cap")
+  fi
+  printf ',"tree":{"root":"%s","head":"%s","status_b64":"%s","diff_b64":"%s","truncated":%s}' \
+    "$(esc "$top")" "$head_sha" \
+    "$(printf '%s' "$status" | /usr/bin/base64 | tr -d '\r\n')" \
+    "$(printf '%s' "$diff" | /usr/bin/base64 | tr -d '\r\n')" \
+    "$truncated"
+}
+
+# The tree report rides on a turn's start (the baseline) and on every Bash call.
+tree=""
+case "$kind" in
+  user_prompt) want_tree=1 ;;
+  post_tool)
+    case "$payload" in
+      *'"tool_name":"Bash"'*|*'"tool_name": "Bash"'*) want_tree=1 ;;
+      *) want_tree=0 ;;
+    esac
+    ;;
+  *) want_tree=0 ;;
+esac
+if [ "$want_tree" -eq 1 ] && command -v git >/dev/null 2>&1; then
+  tree=$(tree_report "$(payload_cwd)" 2>/dev/null) || tree=""
+fi
+
 id=$(uuidgen 2>/dev/null) || id=""
 [ -n "$id" ] || id="$$-$(date +%s)"
 ts=$(date +%s)
 pid=${PPID:-0}
 case "$pid" in ''|*[!0-9]*) pid=0 ;; esac
 
-envelope=$(printf '{"v":1,"kind":"%s","id":"%s","term_program":"%s","term_bundle_id":"%s","pid":%s,"ts":%s,"payload":%s}' \
-  "$kind" "$id" "$(esc "${TERM_PROGRAM:-}")" "$(esc "${__CFBundleIdentifier:-}")" "$pid" "$ts" "$payload")
+envelope=$(printf '{"v":1,"kind":"%s","id":"%s","term_program":"%s","term_bundle_id":"%s","pid":%s,"ts":%s,"payload":%s%s}' \
+  "$kind" "$id" "$(esc "${TERM_PROGRAM:-}")" "$(esc "${__CFBundleIdentifier:-}")" "$pid" "$ts" "$payload" "$tree")
 
 if [ "$blocking" -eq 0 ]; then
   printf '%s\n' "$envelope" | nc -U -w 1 "$sock" >/dev/null 2>&1

@@ -904,6 +904,8 @@ enum Theme {
         /// "~$1.42": an estimated cost.
         static let estimate = "~"
         static let emDash = "\u{2014}"
+        /// After a Changes file row's name when a Bash command changed the file.
+        static let shellTag = "shell"
     }
 
     // MARK: - Drawn glyphs

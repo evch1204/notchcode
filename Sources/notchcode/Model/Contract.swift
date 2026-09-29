@@ -20,12 +20,12 @@ import Foundation
 enum EventKind: String, Codable {
     case permission          // PermissionRequest hook. Blocking.
     case preTool = "pre_tool"      // PreToolUse hook (used for Bash git commit). Blocking.
-    case postTool = "post_tool"    // PostToolUse hook (Edit / Write / MultiEdit). Passive.
+    case postTool = "post_tool"    // PostToolUse hook (Edit / Write / MultiEdit / Bash). Passive. On Bash it carries `tree`.
     case notification        // Notification hook (idle_prompt, permission_prompt, agent_needs_input, ...). Passive.
     case stop                // Stop hook: Claude finished a turn. Passive.
     case sessionStart = "session_start"
     case sessionEnd = "session_end"
-    case userPrompt = "user_prompt"  // UserPromptSubmit: a new turn began.
+    case userPrompt = "user_prompt"  // UserPromptSubmit: a new turn began. Carries `tree` (the turn's baseline).
     case subagentStart = "subagent_start"  // SubagentStart hook: payload has agent_id, agent_type. Passive.
     case subagentStop = "subagent_stop"    // SubagentStop hook. Passive.
     case statusline                        // Claude Code's status line input, forwarded by our status line script. Passive.
@@ -37,6 +37,17 @@ enum EventKind: String, Codable {
 /// embedded verbatim. The hook script is plain sh with no JSON tooling, so it does not
 /// extract session_id / cwd / transcript_path itself: read them through the `resolved*`
 /// accessors, which fall back to the payload.
+///
+/// `tree` is present on `user_prompt`, and on `post_tool` when the tool was Bash, if the
+/// session's cwd is inside a git work tree:
+///
+///   "tree": { "root": "<git toplevel>", "head": "<HEAD sha, or empty>",
+///             "status_b64": base64 of `git status --porcelain=v1 --untracked-files=all`,
+///             "diff_b64":   base64 of `git diff HEAD` plus each untracked file (first 20)
+///                           diffed against /dev/null, capped at 256 KB,
+///             "truncated":  true when that cap cut the diff }
+///
+/// Paths inside both texts are relative to `root`.
 struct HookEnvelope: Codable {
     var v: Int = 1
     var kind: EventKind
@@ -49,9 +60,10 @@ struct HookEnvelope: Codable {
     var pid: Int?                   // the Claude Code process id (parent of the hook)
     var ts: Double                  // unix seconds
     var payload: JSONValue
+    var tree: TreeReport? = nil     // the working tree, see above
 
     enum CodingKeys: String, CodingKey {
-        case v, kind, id, cwd, ts, pid, payload
+        case v, kind, id, cwd, ts, pid, payload, tree
         case sessionId = "session_id"
         case transcriptPath = "transcript_path"
         case termProgram = "term_program"
@@ -62,6 +74,56 @@ struct HookEnvelope: Codable {
     var resolvedCWD: String { cwd ?? payload["cwd"]?.stringValue ?? "" }
     var resolvedTranscriptPath: String? { transcriptPath ?? payload["transcript_path"]?.stringValue }
     var isBlocking: Bool { kind == .permission || kind == .preTool }
+}
+
+/// The working-tree report a hook attaches to `user_prompt` and Bash `post_tool` envelopes,
+/// with the base64 texts decoded. Parsed into per-file entries by Sessions/UnifiedDiff.swift.
+struct TreeReport: Equatable, Codable {
+    var root: String                // git toplevel
+    var head: String?               // HEAD's sha; nil in a repository with no commit yet
+    var status: [String]            // `git status --porcelain=v1` lines: "XY path"
+    var diff: String                // unified diff against HEAD, untracked files as new
+    var truncated: Bool             // the hook's 256 KB cap cut `diff`
+
+    enum CodingKeys: String, CodingKey {
+        case root, head, truncated
+        case statusB64 = "status_b64"
+        case diffB64 = "diff_b64"
+    }
+
+    init(root: String, head: String?, status: [String], diff: String, truncated: Bool) {
+        self.root = root
+        self.head = head
+        self.status = status
+        self.diff = diff
+        self.truncated = truncated
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        root = try c.decode(String.self, forKey: .root)
+        let sha = try c.decodeIfPresent(String.self, forKey: .head) ?? ""
+        head = sha.isEmpty ? nil : sha
+        let statusText = Self.unbase64(try c.decodeIfPresent(String.self, forKey: .statusB64))
+        status = statusText.split(separator: "\n").map(String.init).filter { !$0.isEmpty }
+        diff = Self.unbase64(try c.decodeIfPresent(String.self, forKey: .diffB64))
+        truncated = try c.decodeIfPresent(Bool.self, forKey: .truncated) ?? false
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(root, forKey: .root)
+        try c.encode(head ?? "", forKey: .head)
+        try c.encode(Data((status.joined(separator: "\n")).utf8).base64EncodedString(), forKey: .statusB64)
+        try c.encode(Data(diff.utf8).base64EncodedString(), forKey: .diffB64)
+        try c.encode(truncated, forKey: .truncated)
+    }
+
+    /// Base64 to text. The 256 KB cap can split a UTF-8 sequence; that byte decodes to U+FFFD.
+    private static func unbase64(_ text: String?) -> String {
+        guard let text, let data = Data(base64Encoded: text, options: .ignoreUnknownCharacters) else { return "" }
+        return String(decoding: data, as: UTF8.self)
+    }
 }
 
 enum Decision: String, Codable {
@@ -166,7 +228,7 @@ struct FileChange: Identifiable, Equatable, Codable {
     var path: String                // relative to cwd when possible
     var added: Int
     var removed: Int
-    var kind: String                // "edit", "write", "new"
+    var kind: String                // "edit", "write", "new", or "shell" (a Bash command changed it; the diff is against HEAD)
     var snippet: [DiffLine] = []    // the first few lines, for peeks and small inline previews (< 8 lines)
     var patch: [DiffLine] = []      // the whole diff as Claude Code recorded it (structuredPatch), capped at 400 lines
     var patchTruncated: Bool = false

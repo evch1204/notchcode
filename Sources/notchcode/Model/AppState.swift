@@ -188,6 +188,10 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     /// cwd -> the session id of the most recently written transcript in that folder.
     @Published private(set) var newestSessionByCWD: [String: String] = [:]
     @Published var turnsBySession: [String: [TranscriptTurn]] = [:]
+    /// Files a Bash command changed, per session and turn id, in first-seen order. Built from
+    /// the hook's working-tree reports; `turns(for:)` merges them into each turn's files.
+    /// Held under `pendingTurnKey` until the transcript brings the turn they belong to.
+    @Published private(set) var shellFiles: [String: [String: [FileChange]]] = [:]
     @Published var selectedTab: CardTab = .sessions {
         didSet {
             guard selectedTab != oldValue else { return }
@@ -299,6 +303,12 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     private var turnFiles: [String: [String]] = [:]
     /// Lines added and removed in the current turn, per session, from PostToolUse.
     private var turnLineCounts: [String: (added: Int, removed: Int)] = [:]
+    /// Per session, the working tree as the last report left it: the baseline a Bash call's
+    /// report is compared against. Set at each prompt, moved on after each Bash call.
+    private var treeSnapshots: [String: TreeSnapshot] = [:]
+    /// Lines added and removed by shell-changed files this turn, per session and absolute path
+    /// (only files no Edit/Write/MultiEdit touched, so the done peek counts nothing twice).
+    private var turnShellCounts: [String: [String: (added: Int, removed: Int)]] = [:]
     /// External agent ids (hook agent_id or transcript tool_use id) -> the id stored in `agents`.
     private var agentKeys: [String: String] = [:]
     /// Stored agent ids that came from a hook and have not yet been matched to a transcript entry.
@@ -614,7 +624,16 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
 
     func turns(for sessionId: String?) -> [TranscriptTurn] {
         guard let sessionId else { return [] }
-        return (turnsBySession[sessionId] ?? []).sorted { $0.startedAt > $1.startedAt }
+        let shell = shellFiles[sessionId] ?? [:]
+        return (turnsBySession[sessionId] ?? []).map { turn in
+            guard let extra = shell[turn.id], !extra.isEmpty else { return turn }
+            // Transcript files win on the same path; shell files follow them.
+            var turn = turn
+            let known = Set(turn.files.map(\.path))
+            turn.files += extra.filter { !known.contains($0.path) }
+            return turn
+        }
+        .sorted { $0.startedAt > $1.startedAt }
     }
 
     /// The Changes tab's rows in display order: each turn's header, then its file rows when
@@ -776,6 +795,9 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
 
         case .postTool:
             handlePostTool(payload, sessionId: sid)
+            if payload["tool_name"]?.stringValue == "Bash" {
+                handleShellTree(envelope.tree, sessionId: sid, cwd: envelope.resolvedCWD)
+            }
             // Turns include subagent edits; the transcript may be the only record of them.
             reloadTurns(for: sid)
 
@@ -791,6 +813,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
             showPeek(donePeek(for: sid))
             turnFiles[sid] = []
             turnLineCounts[sid] = nil
+            turnShellCounts[sid] = nil
             reloadTurns(for: sid)
 
         case .userPrompt:
@@ -799,10 +822,21 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
                 $0.state = .working
                 $0.verb = "Thinking"
             }
+            // Shell changes still waiting for the previous turn: attach them now or never.
+            if let held = shellFiles[sid]?[Self.pendingTurnKey] {
+                shellFiles[sid]?[Self.pendingTurnKey] = nil
+                if let turnId = shellTurnId(for: sid, in: turnsBySession[sid] ?? []) {
+                    attachShellFiles(held, sessionId: sid, turnId: turnId)
+                }
+            }
             turnStarts[sid] = Date()
             turnTitles[sid] = prompt
             turnFiles[sid] = []
             turnLineCounts[sid] = nil
+            turnShellCounts[sid] = nil
+            // The turn's baseline: what a Bash call's report is compared against. No report
+            // (not a git work tree) means nothing to compare.
+            treeSnapshots[sid] = envelope.tree.map(UnifiedDiff.snapshot)
             if question?.sessionId == sid { question = nil }
             reloadTurns(for: sid)
 
@@ -1396,6 +1430,64 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         reloadTurns(for: sessionId)
     }
 
+    // MARK: Shell changes
+
+    /// Where shell changes wait while their turn is not in the transcript yet.
+    static let pendingTurnKey = "~pending"
+
+    /// A Bash call's working-tree report: every file that differs from the baseline is
+    /// attributed to the session's current turn as a "shell" change, then the report becomes
+    /// the new baseline. Silent: no peek. With no baseline yet (the app started mid-turn),
+    /// the report only becomes the baseline.
+    private func handleShellTree(_ report: TreeReport?, sessionId sid: String, cwd: String) {
+        guard let report else { return }
+        let now = UnifiedDiff.snapshot(report)
+        defer { treeSnapshots[sid] = now }
+        guard let baseline = treeSnapshots[sid], baseline.root == now.root else { return }
+        let changed = UnifiedDiff.changes(from: baseline, to: now, cwd: cwd)
+        guard !changed.isEmpty else { return }
+
+        var files = turnFiles[sid] ?? []
+        var counts = turnShellCounts[sid] ?? [:]
+        for file in changed {
+            let absolute = file.path.hasPrefix("/") ? file.path : UnifiedDiff.absolute(file.path, root: cwd)
+            if !files.contains(absolute) {
+                files.append(absolute)
+                counts[absolute] = (file.added, file.removed)
+            } else if counts[absolute] != nil {
+                counts[absolute] = (file.added, file.removed)
+            }
+        }
+        turnFiles[sid] = files
+        turnShellCounts[sid] = counts
+
+        attachShellFiles(changed, sessionId: sid,
+                         turnId: shellTurnId(for: sid, in: turnsBySession[sid] ?? []) ?? Self.pendingTurnKey)
+    }
+
+    /// The turn shell changes belong to: the newest turn, if it started with the current turn
+    /// (the transcript can lag the UserPromptSubmit hook). Nil while it has not arrived.
+    private func shellTurnId(for sid: String, in turns: [TranscriptTurn]) -> String? {
+        guard let newest = turns.max(by: { $0.startedAt < $1.startedAt }) else { return nil }
+        if let start = turnStarts[sid], newest.startedAt < start.addingTimeInterval(-Theme.Timing.turnMatchSlack) {
+            return nil
+        }
+        return newest.id
+    }
+
+    /// Adds `changed` to a turn's shell files: a path seen before is replaced in place, a new one appended.
+    private func attachShellFiles(_ changed: [FileChange], sessionId sid: String, turnId: String) {
+        var list = shellFiles[sid]?[turnId] ?? []
+        for file in changed {
+            if let index = list.firstIndex(where: { $0.path == file.path }) {
+                list[index] = file
+            } else {
+                list.append(file)
+            }
+        }
+        shellFiles[sid, default: [:]][turnId] = list
+    }
+
     private func handleNotification(_ payload: JSONValue, sessionId: String) {
         let type = payload["notification_type"]?.stringValue ?? ""
         let message = payload["message"]?.stringValue ?? ""
@@ -1533,6 +1625,8 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         turnStarts[sid] = nil
         turnFiles[sid] = nil
         turnLineCounts[sid] = nil
+        turnShellCounts[sid] = nil
+        treeSnapshots[sid] = nil
         clearNeedsYou(sid)
         openTurns.remove(sid)
         updateSession(sid) {
@@ -1554,6 +1648,9 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         turnTitles[sid] = nil
         turnFiles[sid] = nil
         turnLineCounts[sid] = nil
+        turnShellCounts[sid] = nil
+        treeSnapshots[sid] = nil
+        shellFiles[sid] = nil
         statusline[sid] = nil
         clearNeedsYou(sid)
         openTurns.remove(sid)
@@ -1631,6 +1728,11 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
 
     private func applyTurns(_ turns: [TranscriptTurn], for sid: String) {
         guard session(id: sid) != nil else { return }
+        // Shell changes seen before their turn reached the transcript: attach them now.
+        if let held = shellFiles[sid]?[Self.pendingTurnKey], let turnId = shellTurnId(for: sid, in: turns) {
+            shellFiles[sid]?[Self.pendingTurnKey] = nil
+            attachShellFiles(held, sessionId: sid, turnId: turnId)
+        }
         if turnsBySession[sid] != turns {
             turnsBySession[sid] = turns
             // New edits: the open preview's text and tints may have moved.
@@ -1949,8 +2051,9 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     private func donePeek(for sid: String) -> Peek {
         let name = session(id: sid)?.displayFull ?? ""
         var fileCount = turnFiles[sid]?.count ?? 0
-        var added = turnLineCounts[sid]?.added ?? 0
-        var removed = turnLineCounts[sid]?.removed ?? 0
+        let shell = turnShellCounts[sid]?.values
+        var added = (turnLineCounts[sid]?.added ?? 0) + (shell?.reduce(0) { $0 + $1.added } ?? 0)
+        var removed = (turnLineCounts[sid]?.removed ?? 0) + (shell?.reduce(0) { $0 + $1.removed } ?? 0)
         if fileCount == 0, let last = turns(for: sid).first,
            turnStarts[sid].map({ last.startedAt >= $0.addingTimeInterval(-Theme.Timing.turnMatchSlack) }) ?? true {
             fileCount = last.files.count

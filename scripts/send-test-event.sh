@@ -2,8 +2,12 @@
 # send-test-event.sh <event> ...
 #
 # Fires fake Claude Code hook events at the running notchcode app, without Claude Code.
-# events: permission  commit  stop  post_tool  notification  session_start  session_end  user_prompt
-#         subagent_start  subagent_stop  statusline  all
+# events: permission  commit  stop  post_tool  shell_tool  notification  session_start  session_end
+#         user_prompt  subagent_start  subagent_stop  statusline  all
+#
+# shell_tool is a Bash PostToolUse sent through hooks/notchcode-hook.sh, so it carries the
+# real working tree of this repo. The first one is the baseline; change a file and send it
+# again to see the change under the session's newest turn in Changes, tagged "shell".
 #
 # Blocking events (permission, commit) wait for your answer in the notch and print the
 # raw reply line. Set NOTCHCODE_SOCK to aim at another socket.
@@ -28,6 +32,8 @@ payload_for() {
       printf '{%s,"hook_event_name":"Stop","stop_hook_active":false,"last_assistant_message":"Tests pass. I wired the socket server into the app and added the hook script."}' "$common" ;;
     post_tool)
       printf '{%s,"hook_event_name":"PostToolUse","tool_name":"Edit","tool_input":{"file_path":"%s/Sources/notchcode/Theme.swift","old_string":"static let clay = Color(hex: 0xD97757)","new_string":"static let clay = Color(hex: 0xD97757)\\n    static let amber = Color(hex: 0xF5A524)","replace_all":false},"tool_use_id":"toolu_test_edit","tool_response":{"filePath":"%s/Sources/notchcode/Theme.swift","success":true}}' "$common" "$cwd" "$cwd" ;;
+    shell_tool)
+      printf '{%s,"hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"perl -pi -e s/clay/amber/ Sources/notchcode/Theme.swift","description":"Rename the colour"},"tool_use_id":"toolu_test_shell","tool_response":{"stdout":"","stderr":"","interrupted":false,"isImage":false}}' "$common" ;;
     notification)
       printf '{%s,"hook_event_name":"Notification","message":"Claude is waiting for your input","notification_type":"idle_prompt"}' "$common" ;;
     session_start)
@@ -58,6 +64,12 @@ send() {
     *)          kind="$name";    wait=0 ;;
   esac
   payload=$(payload_for "$name") || { echo "unknown event: $name" >&2; return 1; }
+  if [ "$name" = shell_tool ]; then
+    # The hook script adds the working-tree report; it prints nothing and needs no reply.
+    printf '%s' "$payload" | NOTCHCODE_SOCK="$sock" sh "$root/hooks/notchcode-hook.sh" post_tool
+    echo "$name: sent through hooks/notchcode-hook.sh"
+    return 0
+  fi
   envelope=$(printf '{"v":1,"kind":"%s","id":"%s","term_program":"%s","term_bundle_id":"%s","pid":%s,"ts":%s,"payload":%s}' \
     "$kind" "$(uuidgen)" "$(esc "${TERM_PROGRAM:-}")" "$(esc "${__CFBundleIdentifier:-}")" "$$" "$(date +%s)" "$payload")
   if [ "$wait" -eq 1 ]; then
@@ -71,7 +83,7 @@ send() {
 }
 
 if [ $# -eq 0 ]; then
-  sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
   exit 1
 fi
 if [ ! -S "$sock" ]; then
