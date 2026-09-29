@@ -16,7 +16,7 @@ enum CardTab: Hashable {
     case changes, files, usage, git, sessions, settings
 
     /// The tabs the owner can move between with 1-5 and tab, left to right.
-    static let browsable: [CardTab] = [.sessions, .changes, .files, .usage, .git]
+    static let browsable: [CardTab] = [.sessions, .changes, .files, .git, .usage]
 
     var label: String {
         switch self {

@@ -994,8 +994,8 @@ enum Theme {
         // The tools in the strip.
         static let sessions = "rectangle.stack"
         static let changes = "plusminus.circle"
-        static let usage = "gauge.with.needle"
         static let git = "arrow.triangle.branch"
+        static let usage = "gauge.with.needle"
         /// Before "worktree seadevil" on a branch picker row.
         static let gitWorktree = "macwindow"
 
