@@ -1,14 +1,14 @@
 // GitHeader.swift
 // The Git tool's header row: the target pill, the branch, where it stands against its
-// upstream, and the Push pill (pulsing while git pushes).
+// upstream, and the sync pill (Publish, Pull, Push or Fetch; pulsing while git writes).
 
 import SwiftUI
 
 // MARK: - Header
 
-/// "notchcode › seadevil ▾ W   user-friendly-distribution-plan   [Push 3  P]", or a push's
-/// result in the status's place. While the push is asked the pill stays put, armed with ⏎
-/// (the question is in the diff pane); while it runs the pill pulses. A branch checked out nowhere:
+/// "notchcode › seadevil ▾ W   user-friendly-distribution-plan   [Push 3  P]", or a write's
+/// result in the status's place. While a sync is asked the pill stays put, armed with ⏎
+/// (the question is in the diff pane); while any write runs the pill pulses. A branch checked out nowhere:
 /// "notchcode › design/toolbar ▾ W   not checked out · 4 commits ahead of main".
 @MainActor
 struct GitHeader: View {
@@ -36,7 +36,7 @@ struct GitHeader: View {
         .frame(height: Theme.Size.gitHeaderHeight)
     }
 
-    /// The branch, the status and the Push pill.
+    /// The branch, the status and the sync pill.
     private var rest: some View {
         let phase = state.gitPhase
         return HStack(spacing: Theme.Size.spaceM) {
@@ -64,16 +64,21 @@ struct GitHeader: View {
     }
 
     @ViewBuilder
-    private func status(_ phase: GitPushPhase) -> some View {
+    private func status(_ phase: GitPhase) -> some View {
         switch phase {
-        case .idle, .confirming, .pushing:
+        case .idle, .confirming, .running:
             // The confirm asks in the diff pane; the status stays what it was.
             line(state.gitStatusText, font: Theme.Fonts.caption, color: Theme.Colors.gitStatus)
-        case .pushed(let message):
+        case .done(_, let message):
             line(message, font: Theme.Fonts.captionMedium, color: Theme.Colors.gitPushed)
-        case .failed(let message):
-            line(message, font: Theme.Fonts.caption, color: Theme.Colors.gitError)
-                .help(message)
+        case .failed(let op, let message):
+            if op == .commit && state.gitDraft.composing {
+                // The form says why, next to its Commit pill.
+                line(state.gitStatusText, font: Theme.Fonts.caption, color: Theme.Colors.gitStatus)
+            } else {
+                line(message, font: Theme.Fonts.caption, color: Theme.Colors.gitError)
+                    .help(message)
+            }
         }
     }
 
@@ -88,37 +93,57 @@ struct GitHeader: View {
         }
     }
 
-    /// The Push pill, in the same place in every phase: "Push 3  P"; armed with ⏎ while the
-    /// push is asked (it pops once as it arms, the keycap crossfading); pulsing while git
-    /// pushes; a check and "Pushed" while the result holds, so it cannot ask again for the
-    /// commits just sent. The four overlap so each swap is a crossfade in place.
-    private func pill(_ phase: GitPushPhase) -> some View {
-        let verb = state.gitPushVerb
-        let enabled = state.gitCanPush
-        var pushed = false
-        if case .pushed = phase { pushed = true }
+    /// The sync pill, in the same place in every phase: "Push 3  P", "Pull 2  P", "Publish 4
+    /// P" in white, "Fetch  P" dark; armed with ⏎ while a publish, push or pull is asked (it
+    /// pops once as it arms, the keycap crossfading); pulsing while any write runs; a check
+    /// and "Pushed" while a sync's result holds, so it cannot ask again for the commits just
+    /// sent. After a commit or an undo the plain pill stays. The four overlap so each swap is
+    /// a crossfade in place.
+    private func pill(_ phase: GitPhase) -> some View {
+        let op = state.gitSyncOp
+        let verb = state.gitSyncVerb
+        let enabled = state.gitCanSync
+        let role: ActionRole = enabled && op != .fetch ? .allow : .neutral
+        var running: GitOp?
+        var done: GitOp?
+        var confirming = false
+        switch phase {
+        case .running(let o): running = o
+        case .done(let o, _) where o != .commit && o != .undo: done = o
+        case .confirming: confirming = true
+        case .idle, .done, .failed: break
+        }
         return ZStack(alignment: .trailing) {
-            if phase == .pushing {
-                GitPushingPill(title: verb == "Publish" ? "Publishing" : "Pushing")
+            if let running {
+                GitRunningPill(title: running.runningTitle)
                     .transition(.opacity)
             }
-            if case .pushed(let message) = phase {
-                GitPushedPill(title: message.hasPrefix("Published") ? "Published" : "Pushed")
+            if let done {
+                GitDonePill(title: done.doneTitle)
                     .transition(.opacity)
             }
-            if phase == .confirming {
-                ActionSegment(title: verb, key: Theme.Keys.enter, role: .allow, count: state.gitPushCount) { state.pressGitPill() }
+            if confirming {
+                ActionSegment(title: phase.op?.verb ?? verb, key: Theme.Keys.enter, role: .allow, count: state.gitSyncCount) { state.pressGitPill() }
                     .help(state.gitConfirmText)
                     .popIn()
                     .transition(.opacity)
             }
-            if phase != .pushing && phase != .confirming && !pushed {
-                ActionSegment(title: verb, key: Theme.Keys.push, role: enabled ? .allow : .neutral, count: state.gitPushCount) { state.pressGitPill() }
+            if running == nil && done == nil && !confirming {
+                ActionSegment(title: verb, key: Theme.Keys.push, role: role, count: state.gitSyncCount) { state.pressGitPill() }
                     .disabled(!enabled)
                     .opacity(enabled ? 1 : Theme.Opacity.disabled)
-                    .help(enabled ? verb + " this branch (asks first)" : state.gitStatusText)
+                    .help(enabled ? help(op) : state.gitStatusText)
                     .transition(.opacity)
             }
+        }
+    }
+
+    private func help(_ op: GitOp?) -> String {
+        let remote = snap.remote ?? ""
+        switch op {
+        case .fetch?: return "Fetch from " + remote
+        case .pull?: return "Pull from " + (snap.upstream ?? remote) + " (asks first)"
+        default: return (op ?? .push).verb + " this branch (asks first)"
         }
     }
 }
@@ -166,9 +191,10 @@ private struct GitTargetPill: View {
     }
 }
 
-/// The pill while git pushes: Claude's pulsing spark and "Pushing", not pressable.
+/// The pill while git writes: Claude's pulsing spark and "Pushing", "Pulling", "Committing",
+/// not pressable. The commit form's Commit pill turns into it too.
 @MainActor
-private struct GitPushingPill: View {
+struct GitRunningPill: View {
     let title: String
 
     var body: some View {
@@ -189,10 +215,10 @@ private struct GitPushingPill: View {
     }
 }
 
-/// The pill while a push's result holds: the green check drawing itself and "Pushed", not
-/// pressable. After the hold it crossfades to the plain pill, disabled with nothing to send.
+/// The pill while a sync's result holds: the green check drawing itself and "Pushed",
+/// "Pulled", "Fetched", not pressable. After the hold it crossfades to the plain pill.
 @MainActor
-private struct GitPushedPill: View {
+private struct GitDonePill: View {
     let title: String
 
     var body: some View {

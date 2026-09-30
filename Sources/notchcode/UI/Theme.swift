@@ -236,6 +236,12 @@ enum Theme {
         static let gitRepoMenuStroke = hairline
         static let gitRepoMenuName = ink
         static let gitRepoMenuOther = inkSecondary
+        /// The commit checkboxes: a tertiary edge, white when on with a dark mark (the white
+        /// pill's keycap text); an unchecked file's name dims.
+        static let gitCheckStroke = inkTertiary
+        static let gitCheckFill = ink
+        static let gitCheckMark = keycapTextOnLight
+        static let gitUnchecked = inkTertiary
 
         /// A session's permission mode, as a word in its Sessions row and the open card's status
         /// line: bypass in clay (the dangerous one), plan in blue, the rest tertiary.
@@ -302,6 +308,8 @@ enum Theme {
         static let row: CGFloat = 10
         static let keycap: CGFloat = 4
         static let chip: CGFloat = 6
+        /// The Git tool's commit checkboxes.
+        static let gitCheckbox: CGFloat = 3
         static let diffCell: CGFloat = 1
         static let diffMinimap: CGFloat = 2
         static let diffMinimapViewport: CGFloat = 3
@@ -375,6 +383,19 @@ enum Theme {
         static let gitRepoMenuRowHeight: CGFloat = 26
         static let gitRepoMenuPadding: CGFloat = 4
         static let gitPickerPathMaxWidth: CGFloat = 260
+        /// The commit checkboxes and their gap to the file name.
+        static let gitCheckbox: CGFloat = 12
+        static let gitCheckboxGap: CGFloat = 6
+        /// The mark inside a checkbox.
+        static let gitCheckMark: CGFloat = 8
+        static let gitCheckboxStroke: CGFloat = 1
+        /// The commit form: the summary box, its side padding, the description's least height,
+        /// and the text view's own inset that its "Description" prompt lines up with.
+        static let gitFieldHeight: CGFloat = 26
+        static let gitFieldHPadding: CGFloat = 8
+        static let gitFieldVPadding: CGFloat = 6
+        static let gitDescriptionMinHeight: CGFloat = 60
+        static let gitDescriptionTextInset: CGFloat = 5
         static let cardFooterHeight: CGFloat = 20
         static let requestCardHeight: CGFloat = 310
         /// A permission or commit card with its diff open. Keeps the panel clear of the notch row plus shadow.
@@ -857,9 +878,9 @@ enum Theme {
         @MainActor static var pickerHeadTransition: AnyTransition {
             reduceMotion ? rise(dy: 0, in: reduced, out: reduced) : contentTransition(rise: true)
         }
-        // Git push confirm: the diff pane's content drops away and the question, the hint and
-        // Cancel rise in (`paneSwapTransition`); the header's Push pill stays put and pops
-        // once (`PopIn`). The phase change runs on the picker pill's spring.
+        // Git confirm and commit form: the diff pane's content drops away and the question,
+        // the hint and Cancel (or the form) rise in (`paneSwapTransition`); the header's sync
+        // pill stays put and pops once (`PopIn`). The change runs on the picker pill's spring.
         @MainActor static var pushConfirm: Animation { pickerPill }
         /// The rows' block: nothing coming in (each row rises on its own), a fade going out.
         @MainActor static var pickerRowsTransition: AnyTransition {
@@ -946,11 +967,16 @@ enum Theme {
         static let clockTick: Double = 1
         /// The Git tool re-reads the worktree this often while it shows.
         static let gitRefreshInterval: Double = 5
-        /// "Pushed 3 commits" stays this long, then the tool re-reads.
-        static let gitPushedHold: Double = 3
-        /// A read command (status, diff, log) or a push is stopped after this long.
+        /// "Pushed 3 commits", "Committed 3 files" stay this long, then the tool re-reads.
+        static let gitResultHold: Double = 3
+        /// A read command (status, diff, log), a push or pull, a fetch, or a commit (its hooks
+        /// may run) is stopped after this long.
         static let gitReadTimeout: Double = 10
-        static let gitPushTimeout: Double = 90
+        static let gitSyncTimeout: Double = 90
+        static let gitFetchTimeout: Double = 30
+        static let gitCommitTimeout: Double = 60
+        /// The tool fetches the target's remote quietly when it opens, at most this often.
+        static let gitAutoFetchInterval: Double = 300
         /// After a timed-out git is sent SIGTERM, this long before SIGKILL.
         static let gitKillGrace: Double = 2
     }
@@ -985,6 +1011,15 @@ enum Theme {
         static let gitPickerFilterMin: Int = 8
         /// Files whose length is counted for the minimap, per read.
         static let gitLineCountFiles: Int = 60
+        /// The commit summary shows its length past the first and turns red past the second.
+        static let gitSummaryIdeal: Int = 50
+        static let gitSummaryMax: Int = 72
+        /// "Undid "…"" keeps this many characters of the subject.
+        static let gitUndoSubject: Int = 40
+        /// A commit hook's line in "A commit hook said no · …" keeps this many characters.
+        static let gitHookLine: Int = 80
+        /// The Git footer adds "⇥ next tool" only while it has at most this many hints.
+        static let gitFooterHints: Int = 5
         /// Word highlights skip a line pair with more tokens than this on either side.
         static let wordDiffMaxTokens: Int = 200
     }
@@ -1062,6 +1097,9 @@ enum Theme {
         static let usage = "gauge.with.needle"
         /// Before "worktree seadevil" on a branch picker row.
         static let gitWorktree = "macwindow"
+        /// Inside the commit checkboxes: all in, or some in.
+        static let gitCheck = done
+        static let gitMixed = "minus"
 
         static func tool(_ tab: CardTab) -> String {
             switch tab {
@@ -1101,8 +1139,16 @@ enum Theme {
         static let toggleTree = "⌘B"
         /// Files: a Markdown file's Preview · Code switch.
         static let markdownMode = "P"
-        /// Git: push the branch (or publish it), after a confirm.
+        /// Git: the sync pill (publish, pull, push, fetch); the first three ask first.
         static let push = "P"
+        /// Git: open the commit form.
+        static let commit = "C"
+        /// Git: undo the newest unpushed commit.
+        static let undo = "U"
+        /// Git: put the cursor's file in or out of the commit.
+        static let toggle = space
+        /// Git: commit from the description.
+        static let commandEnter = "⌘⏎"
         /// Git: the branch picker.
         static let worktree = "W"
         /// Git: the picker's repository dropdown.

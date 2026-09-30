@@ -35,6 +35,7 @@ final class KeyboardController {
         if flags.contains(.command) && Int(event.keyCode) == kVK_ANSI_Comma { return .settings }
         if flags.contains(.command) && Int(event.keyCode) == kVK_ANSI_Q { return .quit }
         if flags.contains(.command) && Int(event.keyCode) == kVK_ANSI_B { return .toggleTree }
+        if flags.contains(.command) && [kVK_Return, kVK_ANSI_KeypadEnter].contains(Int(event.keyCode)) { return .submit }
         if flags.contains(.command) || flags.contains(.control) { return nil }
         let option = flags.contains(.option)
         let shift = flags.contains(.shift)
@@ -46,6 +47,8 @@ final class KeyboardController {
             return .deny
         case kVK_Escape:
             return .escape
+        case kVK_Space:
+            return option || shift ? nil : .toggle
         case kVK_Tab:
             return shift ? .previousTab : .nextTab
         case kVK_UpArrow:
@@ -79,6 +82,8 @@ final class KeyboardController {
         case "p": return .markdownMode
         case "w": return .worktree
         case "r": return .repository
+        case "c": return .commit
+        case "u": return .undo
         default: return nil
         }
     }

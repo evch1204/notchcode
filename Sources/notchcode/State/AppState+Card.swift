@@ -207,8 +207,17 @@ extension AppState {
             default: return false
             }
         }
+        if gitShown, !gitPanel.pickerOpen, gitDraft.composing, gitDraft.focus != nil {
+            // A commit field has the keys: typing, arrows, ⇥, space and ⏎ (the summary's
+            // onSubmit commits) go to it; only esc and ⌘⏎ stay with the card.
+            switch key {
+            case .escape, .submit: break
+            default: return false
+            }
+        }
         // Esc in the Git tool closes the repository dropdown, then clears the branch filter,
-        // then leaves the picker, then cancels the push confirm, before it closes the card.
+        // then leaves the picker, then the commit form, then cancels the confirm, before it
+        // closes the card.
         if key == .escape, gitShown, gitEscape() { return true }
         if key == .escape {
             guard isCardOpen else { return false }

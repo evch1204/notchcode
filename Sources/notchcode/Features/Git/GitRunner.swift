@@ -1,7 +1,8 @@
 // GitRunner.swift
 // Runs `/usr/bin/git` for the Git tool and parses what it prints: status, ahead and behind,
-// recent commits, branches and worktrees, and the push. Off the main thread, with
-// GIT_OPTIONAL_LOCKS=0; read-only except `git push` after the owner confirmed it.
+// recent commits, branches and worktrees, and the writes: push, pull, fetch, commit and the
+// undo's reset. Off the main thread, with GIT_OPTIONAL_LOCKS=0; the writes run only from
+// `AppState`'s explicit presses (and the quiet fetch), never from a read.
 
 import Foundation
 
@@ -166,6 +167,8 @@ enum GitRunner {
         }
 
         snap.commits = await recentCommits([], unpushed: snap.unpushed, root: root)
+        // Undo resets to HEAD~1, which the root commit does not have.
+        snap.headHasParent = await run(["rev-parse", "--verify", "--quiet", "HEAD~1"], cwd: root).status == 0
         return snap
     }
 
@@ -407,15 +410,42 @@ enum GitRunner {
         return entries
     }
 
-    /// The first useful line of a failed push, for the header. Credential failures say so
-    /// and point at the terminal, where a prompt can be answered.
-    static func errorLine(_ result: Result, remote: String) -> String {
-        if result.timedOut { return "git push took too long" + Theme.Glyphs.separator + "push from the terminal" }
-        let all = lines(result.err).map(trimmed)
+    /// The first useful line of a failed write, for the header (a commit's: the form).
+    /// Credential failures say so and point at the terminal, where a prompt can be answered;
+    /// a pull that cannot fast-forward, a missing identity and a commit hook say what to do.
+    static func errorLine(_ result: Result, remote: String, op: GitOp) -> String {
+        let command = op.command
+        let terminal = Theme.Glyphs.separator + command + " from the terminal"
+        if result.timedOut { return "git " + command + " took too long" + terminal }
+        // A commit hook may print to either stream.
+        let all = (lines(result.err) + (op == .commit ? lines(result.out) : [])).map(trimmed)
         let credentials = ["could not read Username", "terminal prompts disabled", "Permission denied",
                            "Authentication failed", "Host key verification failed", "could not read Password"]
-        if all.contains(where: { line in credentials.contains { line.contains($0) } }) {
-            return "No credentials for " + remote + " here" + Theme.Glyphs.separator + "push from the terminal"
+        if op != .commit, all.contains(where: { line in credentials.contains { line.contains($0) } }) {
+            return "No credentials for " + remote + " here" + terminal
+        }
+        switch op {
+        case .pull:
+            if all.contains(where: { $0.contains("would be overwritten") }) {
+                return "Uncommitted changes in the way" + terminal
+            }
+            if all.contains(where: { $0.contains("Not possible to fast-forward") || $0.contains("diverged") }) {
+                return "Pull needs a merge" + terminal
+            }
+        case .commit:
+            if all.contains(where: { $0.contains("Please tell me who you are") || $0.contains("empty ident") }) {
+                return "No git identity" + Theme.Glyphs.separator + "set user.name and user.email in the terminal"
+            }
+            let hook = all.first { line in
+                let lower = line.lowercased()
+                return lower.hasPrefix("husky") || lower.contains("pre-commit hook")
+                    || (lower.contains("hook") && lower.contains("failed"))
+            }
+            if let hook {
+                return "A commit hook said no" + Theme.Glyphs.separator + String(hook.prefix(Theme.Limits.gitHookLine))
+            }
+        case .publish, .push, .fetch, .undo:
+            break
         }
         let marked = all.first { line in
             ["fatal:", "error:", "! [rejected]", "! [remote rejected]", "remote: error"].contains { line.contains($0) }
@@ -423,6 +453,6 @@ enum GitRunner {
         let line = marked ?? all.first { !$0.hasPrefix("hint:") && !$0.hasPrefix("To ") } ?? ""
         var text = line
         for prefix in ["fatal: ", "error: "] where text.hasPrefix(prefix) { text = String(text.dropFirst(prefix.count)) }
-        return text.isEmpty ? "git push failed" : text
+        return text.isEmpty ? "git " + command + " failed" : text
     }
 }

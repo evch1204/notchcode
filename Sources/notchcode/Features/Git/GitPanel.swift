@@ -1,6 +1,7 @@
 // GitPanel.swift
 // The Git tool's model: what is uncommitted in the target checkout, how far the branch is
-// ahead of its upstream, the last five commits, and the push with its confirm. The target
+// ahead of and behind its upstream, the last five commits, the commit draft, and the writes
+// (sync, commit, undo; GitWrites.swift) with their one phase. The target
 // is the focused session's worktree until the owner picks a branch in the branch picker (W):
 // one repository at a time (R opens the repository dropdown), every local branch in it,
 // each saying where it lives. A branch checked out nowhere gets a read-only page: its
@@ -8,8 +9,9 @@
 //
 // The one place the app runs a command itself (PLAN.md, "Git tool"): `/usr/bin/git` and
 // nothing else, off the main thread, with GIT_OPTIONAL_LOCKS=0. Read-only commands for the
-// page; `git push` only after the owner pressed Push (or P) and then confirmed with ⏎.
-// Never commits, stages, fetches or switches branches.
+// page; on an explicit press a push or publish or a fast-forward pull (each confirmed with
+// ⏎), a fetch, a commit of the checked files, or a mixed reset of the newest unpushed commit;
+// a quiet fetch when the tool opens. Never switches, merges, rebases, stashes or discards.
 
 import AppKit
 import SwiftUI
@@ -72,19 +74,108 @@ struct GitSnapshot: Equatable {
     var commits: [GitCommit] = []
     /// Path -> lines in the file as the branch has it, for the diff's minimap.
     var lineCounts: [String: Int] = [:]
+    /// HEAD has a parent, so undo can reset to it. False on the root commit and on a branch page.
+    var headHasParent = false
 }
 
-/// The push, from the press to its result. Belongs to one target (`GitPanelState.phaseCwd`).
-enum GitPushPhase: Equatable {
-    case idle
-    /// "Push 3 commits to origin/seadevil?": ⏎ pushes, esc cancels.
-    case confirming
-    case pushing
-    /// "Pushed 3 commits", for `Theme.Timing.gitPushedHold`.
-    case pushed(String)
-    /// The first useful line of git's error output; stays until a refresh other than the poll.
-    case failed(String)
+/// A write git runs for the owner. Two never run at once on a target: they share one phase.
+enum GitOp: String, Equatable {
+    case publish, push, pull, fetch, commit, undo
+
+    /// git's own word, for "git pull failed" and "pull from the terminal".
+    var command: String {
+        switch self {
+        case .publish: return "push"
+        case .undo: return "reset"
+        case .push, .pull, .fetch, .commit: return rawValue
+        }
+    }
+
+    /// The sync pill's word: "Publish", "Pull", "Push", "Fetch".
+    var verb: String { rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
+
+    /// The pill while git runs: "Publishing", "Pulling", "Committing", "Undoing".
+    var runningTitle: String {
+        switch self {
+        case .publish: return "Publishing"
+        case .push: return "Pushing"
+        case .pull: return "Pulling"
+        case .fetch: return "Fetching"
+        case .commit: return "Committing"
+        case .undo: return "Undoing"
+        }
+    }
+
+    /// The pill while a sync's result holds: "Published", "Pulled".
+    var doneTitle: String {
+        switch self {
+        case .publish: return "Published"
+        case .push: return "Pushed"
+        case .pull: return "Pulled"
+        case .fetch: return "Fetched"
+        case .commit: return "Committed"
+        case .undo: return "Undone"
+        }
+    }
+
+    /// Asks first in the right pane: publish, push and pull. A fetch runs at once; a commit
+    /// has its form; an undo loses nothing.
+    var confirms: Bool { self == .publish || self == .push || self == .pull }
 }
+
+/// Every write, from the press to its result. Belongs to one target (`GitPanelState.phaseCwd`).
+enum GitPhase: Equatable {
+    case idle
+    /// A confirm is up in the right pane (push, publish, pull). ⏎ runs it, esc cancels.
+    case confirming(GitOp)
+    case running(GitOp)
+    /// "Pushed 3 commits", "Pulled 2 commits", "Committed 3 files", "Undid the last commit";
+    /// holds `Theme.Timing.gitResultHold`.
+    case done(GitOp, String)
+    /// git's first useful line; stays until a refresh other than the poll.
+    case failed(GitOp, String)
+
+    var op: GitOp? {
+        switch self {
+        case .idle: return nil
+        case .confirming(let op), .running(let op), .done(let op, _), .failed(let op, _): return op
+        }
+    }
+
+    /// A write runs or its result holds: nothing else may start, and the snapshot may still
+    /// count what was just sent or committed.
+    var isBusy: Bool {
+        switch self {
+        case .running, .done: return true
+        case .idle, .confirming, .failed: return false
+        }
+    }
+
+    /// The sync pill waits: any write runs, or a sync's result holds (the snapshot may still
+    /// count what was just sent). A commit's or an undo's result does not block it: the
+    /// refresh ran as it finished, so the counts are fresh and P can push at once.
+    var blocksSync: Bool {
+        switch self {
+        case .running: return true
+        case .done(let op, _): return op != .commit && op != .undo
+        case .idle, .confirming, .failed: return false
+        }
+    }
+}
+
+/// What the owner is writing for the target, kept until committed or the card closes.
+struct GitDraft: Equatable {
+    var summary = ""
+    var description = ""
+    /// Paths left out of the commit; every file is in by default, new files included.
+    var unchecked: Set<String> = []
+    /// The form is up in the right pane.
+    var composing = false
+    /// Which field has the keys: nil, summary, or description.
+    var focus: GitDraftFocus? = nil
+}
+
+enum GitDraftFocus: Hashable { case summary, description }
 
 /// One local branch, as the picker lists it.
 struct GitBranch: Identifiable, Equatable {
@@ -132,8 +223,14 @@ struct GitPanelState: Equatable {
     var snapshots: [String: GitSnapshot] = [:]
     /// Keys being read right now.
     var loading: Set<String> = []
-    var phase: GitPushPhase = .idle
+    var phase: GitPhase = .idle
     var phaseCwd: String?
+    /// Target key -> the commit being written for it. Cleared when the card closes.
+    var drafts: [String: GitDraft] = [:]
+    /// Work tree root -> when its remote was last fetched (by hand or quietly).
+    var lastFetch: [String: Date] = [:]
+    /// Roots with a quiet fetch in flight; never two at once for one root.
+    var fetching: Set<String> = []
     /// The branch picked by hand; nil follows the focused session. Cleared when the card closes.
     var picked: GitTarget?
     /// The picker replaces the tool's content while this is true.
@@ -173,7 +270,7 @@ extension AppState {
 
     var gitPanel: GitPanelState { gitStore }
 
-    private func updateGit(_ change: (inout GitPanelState) -> Void) {
+    func updateGit(_ change: (inout GitPanelState) -> Void) {
         var next = gitStore
         change(&next)
         guard next != gitStore else { return }
@@ -232,8 +329,8 @@ extension AppState {
         gitCwd.flatMap { gitPanel.snapshots[$0] }
     }
 
-    /// The push phase of the target.
-    var gitPhase: GitPushPhase {
+    /// The write phase of the target.
+    var gitPhase: GitPhase {
         guard let cwd = gitCwd, gitPanel.phaseCwd == cwd else { return .idle }
         return gitPanel.phase
     }
@@ -272,35 +369,39 @@ extension AppState {
         if let index = gitRows.firstIndex(where: { $0.key == key }) { rowCursor = index }
     }
 
-    /// Push or Publish is possible: a branch, a remote, and something to send (a branch
-    /// with no upstream can always be published). Never while a push runs or its result
-    /// holds: the snapshot may still count the commits just sent.
-    var gitCanPush: Bool {
-        switch gitPhase {
-        case .pushing, .pushed: return false
-        case .idle, .confirming, .failed: break
-        }
-        guard let snap = focusedGit, snap.isRepo, snap.branch != nil, snap.remote != nil else { return false }
-        return snap.upstream == nil || snap.ahead > 0
+    /// What the header's pill offers, first match wins, in GitHub Desktop's order: nothing
+    /// without a branch or a remote; Publish without an upstream; Pull when behind (a checkout
+    /// only: a branch page never pulls); Push when ahead; else Fetch.
+    var gitSyncOp: GitOp? {
+        guard let snap = focusedGit, snap.isRepo, snap.branch != nil, snap.remote != nil else { return nil }
+        if snap.upstream == nil { return .publish }
+        if snap.checkedOut, snap.behind > 0 { return .pull }
+        if snap.ahead > 0 { return .push }
+        return .fetch
     }
 
-    /// "Publish" for a branch with no upstream, else "Push".
-    var gitPushVerb: String {
-        guard let snap = focusedGit, snap.remote != nil, snap.branch != nil else { return "Push" }
-        return snap.upstream == nil ? "Publish" : "Push"
+    /// The pill can be pressed: it offers something, and no write runs or holds a sync's
+    /// result (`GitPhase.blocksSync`).
+    var gitCanSync: Bool {
+        !gitPhase.blocksSync && gitSyncOp != nil
     }
 
-    /// The commits a push would send, for the pill's "Push 3" or "Publish 4"; nil when none
-    /// or unknown. A branch page counts them too (`GitRunner.readBranch` fills `unpushed`).
-    /// Nil while a push runs or its result holds, as the count may be the one just sent.
-    var gitPushCount: Int? {
-        switch gitPhase {
-        case .pushing, .pushed: return nil
-        case .idle, .confirming, .failed: break
+    /// "Publish", "Pull", "Push", "Fetch"; "Push" on the disabled pill.
+    var gitSyncVerb: String {
+        (gitSyncOp ?? .push).verb
+    }
+
+    /// The count in the pill: the commits a push or publish would send, or a pull would bring.
+    /// Nil for a fetch, when none, and while a write runs or holds a sync's result.
+    var gitSyncCount: Int? {
+        guard !gitPhase.blocksSync, let op = gitSyncOp, let snap = focusedGit else { return nil }
+        let count: Int
+        switch op {
+        case .push, .publish: count = snap.unpushed
+        case .pull: count = snap.behind
+        case .fetch, .commit, .undo: return nil
         }
-        guard let snap = focusedGit, snap.isRepo, snap.branch != nil, snap.remote != nil,
-              snap.unpushed > 0 else { return nil }
-        return snap.unpushed
+        return count > 0 ? count : nil
     }
 
     /// "not published yet", "up to date with origin", "2 behind origin", "no remote"; with
@@ -318,26 +419,36 @@ extension AppState {
         guard let remote = snap.remote else { return "no remote" }
         guard snap.upstream != nil else { return "not published yet" }
         if snap.ahead > 0 {
-            return snap.behind > 0 ? "\(snap.behind) behind" : ""
+            // Behind as well: the pill pulls, so the status names what waits to be pushed.
+            return snap.behind > 0 && snap.checkedOut ? "\(snap.ahead) ahead" + Theme.Glyphs.separator + "\(snap.behind) behind" : ""
         }
         if snap.behind > 0 { return Self.commits(snap.behind) + " behind " + remote }
         return "up to date with " + remote
     }
 
-    /// "Push 3 commits to origin/seadevil?" or "Publish seadevil to origin?". Names exactly
-    /// the remote and branch `runGitPush` passes to git.
+    /// "Push 3 commits to origin/seadevil?", "Publish seadevil to origin?" or "Pull 2 commits
+    /// from origin/main?". Names exactly the remote and branch `runGitSync` passes to git.
     var gitConfirmText: String {
         guard let snap = focusedGit, let branch = snap.branch, let remote = snap.remote else { return "" }
-        if snap.upstream != nil {
-            return "Push " + Self.commits(snap.ahead) + " to " + Self.pushDestination(snap) + "?"
+        switch gitPhase.op ?? gitSyncOp {
+        case .publish?: return "Publish " + branch + " to " + remote + "?"
+        case .push?: return "Push " + Self.commits(snap.ahead) + " to " + Self.pushDestination(snap) + "?"
+        case .pull?: return "Pull " + Self.commits(snap.behind) + " from " + (snap.upstream ?? Self.pushDestination(snap)) + "?"
+        case .fetch?, .commit?, .undo?, nil: return ""
         }
-        return "Publish " + branch + " to " + remote + "?"
     }
 
-    /// Where a running push goes, for "Pushing to origin/seadevil…".
-    var gitPushTarget: String {
-        guard let snap = focusedGit else { return "" }
-        return snap.upstream != nil ? Self.pushDestination(snap) : snap.remote ?? ""
+    /// The confirm's line while git runs: "Pushing to origin/seadevil…", "Publishing seadevil
+    /// to origin…", "Pulling from origin/main…".
+    var gitRunningText: String {
+        guard let snap = focusedGit, case .running(let op) = gitPhase else { return "" }
+        let remote = snap.remote ?? ""
+        switch op {
+        case .publish: return "Publishing " + (snap.branch ?? "") + " to " + remote + Theme.Glyphs.ellipsis
+        case .push: return "Pushing to " + Self.pushDestination(snap) + Theme.Glyphs.ellipsis
+        case .pull: return "Pulling from " + (snap.upstream ?? Self.pushDestination(snap)) + Theme.Glyphs.ellipsis
+        case .fetch, .commit, .undo: return op.runningTitle + Theme.Glyphs.ellipsis
+        }
     }
 
     /// "origin/seadevil": the remote and its branch a push to the upstream updates.
@@ -368,7 +479,8 @@ extension AppState {
     func gitToolShown() {
         cancelGitConfirm()
         closeGitPicker()
-        refreshGit()
+        refreshGit(thenFetch: true)
+        gitAutoFetchIfDue()
         startGitPolling()
     }
 
@@ -388,6 +500,7 @@ extension AppState {
         updateGit {
             $0.picked = nil
             $0.resetPicker()
+            $0.drafts = [:]
         }
     }
 
@@ -412,9 +525,9 @@ extension AppState {
         }
     }
 
-    /// Reads the target in the background. A poll keeps a push error on screen; any other
-    /// refresh clears it.
-    func refreshGit(poll: Bool = false) {
+    /// Reads the target in the background. A poll keeps a write's error on screen; any other
+    /// refresh clears it. `thenFetch`: once read, fetch its remote quietly if it is due.
+    func refreshGit(poll: Bool = false, thenFetch: Bool = false) {
         guard readsLocalFiles, let target = gitTarget else { return }
         let key = target.key
         if !poll, gitPanel.phaseCwd == key, case .failed = gitPanel.phase {
@@ -428,11 +541,11 @@ extension AppState {
             case .folder(let cwd): snapshot = await GitRunner.read(cwd: cwd)
             case .branch(let repo, let name): snapshot = await GitRunner.readBranch(repo: repo, name: name, key: key)
             }
-            await self?.applyGit(snapshot)
+            await self?.applyGit(snapshot, thenFetch: thenFetch)
         }
     }
 
-    private func applyGit(_ snapshot: GitSnapshot) {
+    private func applyGit(_ snapshot: GitSnapshot, thenFetch: Bool) {
         updateGit {
             $0.loading.remove(snapshot.cwd)
             $0.snapshots[snapshot.cwd] = snapshot
@@ -443,14 +556,17 @@ extension AppState {
             let count = snapshot.files.count
             if rowCursor >= count { rowCursor = max(0, count - 1) }
         }
-        // Nothing left to push while the confirm was up (pushed from the terminal): drop it.
-        if gitPhase == .confirming, !gitCanPush { updateGit { $0.phase = .idle } }
+        // The pill offers something else now (pushed from the terminal, or a fetch found
+        // commits to pull while a push was asked): drop the confirm.
+        if case .confirming(let op) = gitPhase, !gitCanSync || op != gitSyncOp { updateGit { $0.phase = .idle } }
+        if thenFetch { gitAutoFetchIfDue() }
     }
 
     // MARK: Keys
 
     /// Esc in the Git tool, one layer at a time: the repository dropdown, then the picker's
-    /// filter, then the picker, then the push confirm. False: nothing left, the card closes.
+    /// filter, then the picker, then the commit form, then the confirm. False: nothing left,
+    /// the card closes.
     func gitEscape() -> Bool {
         if gitPanel.pickerOpen {
             if gitPanel.repoMenuOpen {
@@ -463,13 +579,13 @@ extension AppState {
                 return true
             }
         }
-        return closeGitPicker() || cancelGitConfirm()
+        return closeGitPicker() || cancelGitCommitForm() || cancelGitConfirm()
     }
 
     /// What esc does next, for the footer: "close" the dropdown, "clear" the filter, "back"
-    /// out of the picker; nil when it closes the card.
+    /// out of the picker or the commit form; nil when it closes the card.
     var gitEscapeLabel: String? {
-        guard gitPanel.pickerOpen else { return nil }
+        guard gitPanel.pickerOpen else { return gitDraft.composing ? "back" : nil }
         if gitPanel.repoMenuOpen { return "close" }
         if gitPanel.filterFocused || !gitPanel.filter.isEmpty { return "clear" }
         return "back"
@@ -533,11 +649,30 @@ extension AppState {
             openGitPicker()
             return true
         case .markdownMode:     // P
-            pressGitPush()
+            pressGitSync()
+            return true
+        case .commit:           // C
+            openGitCommitForm()
+            return true
+        case .undo:             // U
+            guard gitCanUndo else { return nil }
+            runGitUndo()
+            return true
+        case .toggle:           // space
+            guard focusedGit?.checkedOut == true, let file = gitSelectedFile else { return nil }
+            toggleGitFile(path: file.path)
+            return true
+        case .submit:           // ⌘⏎
+            if gitDraft.composing { runGitCommit() }
             return true
         case .primary:
-            // The selected file's diff already shows; ⏎ only confirms a push.
-            if gitPhase == .confirming { runGitPush() }
+            // The selected file's diff already shows; ⏎ confirms a sync, or commits from the
+            // form when no field has the keys (the summary's own ⏎ commits through onSubmit).
+            if case .confirming = gitPhase {
+                runGitSync()
+            } else if gitDraft.composing {
+                runGitCommit()
+            }
             return true
         case .toggleTree:       // ⌘B
             toggleGitList()
@@ -548,6 +683,8 @@ extension AppState {
             let count = gitRows.count
             guard count > 0 else { return false }
             if gitListCollapsed { setFilesTreeHidden(false) }
+            // As a click on a row: the pane shows the diff, the draft keeps its text.
+            if gitDraft.composing { setGitComposing(false) }
             rowCursor = max(0, min(count - 1, rowCursor + (key == .up ? -1 : 1)))
             return true
         default:
@@ -600,6 +737,7 @@ extension AppState {
     func openGitPicker() {
         guard readsLocalFiles else { return }
         cancelGitConfirm()
+        if gitDraft.focus != nil { setGitDraftFocus(nil) }
         updateGit { $0.resetPicker(open: true) }
         placeGitPickerOnTarget()
         refreshGitWorktrees()
@@ -688,7 +826,7 @@ extension AppState {
         }
         rowCursor = 0
         debugLog("git target picked: \(target.key)")
-        refreshGit()
+        refreshGit(thenFetch: true)
     }
 
     /// Lists every repository a session runs in, with its local branches, in the background.
@@ -741,99 +879,5 @@ extension AppState {
                 return "\(branch.name)@\(place) u=\(branch.uncommitted.map(String.init) ?? "-") a=\(branch.ahead.map(String.init) ?? "-")"
             }.joined(separator: ", ") + "]"
         }.joined(separator: " "))
-    }
-
-    // MARK: Push
-
-    /// P or the pill: show the confirm line. Never pushes by itself. Nothing while a push
-    /// runs or its result holds: re-arming then would ask again for the commits just sent.
-    func pressGitPush() {
-        guard let cwd = gitCwd, gitCanPush else { return }
-        switch gitPhase {
-        case .confirming, .pushing, .pushed:
-            return
-        case .idle, .failed:
-            updateGit {
-                $0.phase = .confirming
-                $0.phaseCwd = cwd
-            }
-        }
-    }
-
-    /// The pill while the confirm shows: the same as ⏎.
-    func pressGitPill() {
-        if gitPhase == .confirming { runGitPush() } else { pressGitPush() }
-    }
-
-    /// Esc while the confirm shows. False when there was nothing to cancel.
-    @discardableResult
-    func cancelGitConfirm() -> Bool {
-        guard gitPhase == .confirming else { return false }
-        updateGit { $0.phase = .idle }
-        return true
-    }
-
-    /// ⏎ on the confirm: `git push -- <remote> <src>:refs/heads/<upstream branch>`, or
-    /// `git push -u -- <remote> refs/heads/<b>:refs/heads/<b>` for an unpublished branch.
-    /// Full refs on both sides: a plain `git push` follows push.default and pushRemote (it can
-    /// go elsewhere, or push several branches), and a bare name is ambiguous with a tag.
-    func runGitPush() {
-        guard gitPhase == .confirming, gitCanPush, let cwd = gitCwd, let snap = focusedGit,
-              let branch = snap.branch, let remote = snap.remote else { return }
-        let publishing = snap.upstream == nil
-        let local = "refs/heads/" + branch
-        let args: [String]
-        if publishing {
-            args = ["push", "-u", "--", remote, local + ":" + local]
-        } else {
-            let source = snap.checkedOut ? "HEAD" : local
-            args = ["push", "--", remote, source + ":refs/heads/" + (snap.upstreamBranch ?? branch)]
-        }
-        let count = snap.unpushed
-        updateGit { $0.phase = .pushing }
-        debugLog("git push in \(snap.root): \(args.joined(separator: " "))")
-        Task.detached(priority: .userInitiated) { [weak self] in
-            let result = await GitRunner.run(args, cwd: snap.root, timeout: Theme.Timing.gitPushTimeout)
-            let message: String
-            if result.status == 0 {
-                message = publishing
-                    ? "Published " + branch + " to " + remote
-                    : "Pushed " + AppState.commits(count)
-            } else {
-                message = GitRunner.errorLine(result, remote: remote)
-            }
-            await self?.finishGitPush(ok: result.status == 0, message: message, cwd: cwd)
-        }
-    }
-
-    private func finishGitPush(ok: Bool, message: String, cwd: String) {
-        debugLog("git push \(ok ? "ok" : "failed"): \(message)")
-        // Another target armed its own confirm while this push ran: leave that one alone.
-        if gitPanel.phaseCwd != cwd {
-            refreshGit(poll: true)
-            return
-        }
-        updateGit {
-            $0.phase = ok ? .pushed(message) : .failed(message)
-            $0.phaseCwd = cwd
-        }
-        guard ok else {
-            // The counts may have moved (a partial push); the error stays.
-            refreshGit(poll: true)
-            return
-        }
-        // Read at once so the pill and the counts stop offering the commits just sent.
-        refreshGit()
-        // After the hold, "Pushed 3 commits" gives way to the status; the second read is a
-        // safety net for when the first was skipped because a poll's read was in flight.
-        gitHoldTask?.cancel()
-        gitHoldTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(Theme.Timing.gitPushedHold))
-            guard let self, !Task.isCancelled else { return }
-            if self.gitPanel.phaseCwd == cwd, case .pushed = self.gitPanel.phase {
-                self.updateGit { $0.phase = .idle }
-            }
-            self.refreshGit()
-        }
     }
 }

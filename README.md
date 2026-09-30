@@ -33,14 +33,14 @@ Press the notch at any time and a card opens with five tools. `1`–`5` or `⇥`
 | Sessions | every live session by repository, one row per worktree: branch, model, permission mode (`bypass` in clay, `plan` in blue; nothing for default), state, current prompt, a lane per subagent. `⏎` opens its Changes. |
 | Changes | each turn you sent, the files it changed (subagent edits too), and the full diff under any file. |
 | Files | the repository tree, changed files badged, and a preview with changed lines tinted; `⌘B` folds the tree away, and Markdown renders with a Preview · Code switch. |
-| Git | the focused session's worktree, or any local branch of a repository a session runs in (`W` opens the picker: each branch with where it lives, "worktree harbor", "main checkout" or "not checked out"). Uncommitted files and the last five commits on the left, the selected file's diff on the right with line numbers, changed words lit and a minimap. A branch checked out nowhere shows its changes against main, read-only. Push (or Publish) asks before it pushes. |
+| Git | the focused session's worktree, or any local branch of a repository a session runs in (`W` opens the picker: each branch with where it lives, "worktree harbor", "main checkout" or "not checked out"). Uncommitted files and the last five commits on the left, the selected file's diff on the right with line numbers, changed words lit and a minimap. A branch checked out nowhere shows its changes against main, read-only. Commit the files you check, pull, push, fetch, or undo the last unpushed commit. |
 | Usage | 5-hour and weekly limits with reset times, context used, tokens for the session and today, an estimated cost, and today's Fable share. |
 
 ### Git without leaving the notch
 
-The Git tool shows what is uncommitted in the worktree you are looking at, and the diff of each file. `P` pushes the branch, after a `⏎` confirm. It never commits; that stays with Claude and the commit request.
+The Git tool shows what is uncommitted in the worktree you are looking at, and the diff of each file. Tick the files you want, write a message, and `C` commits them. One pill on `P` publishes, pulls, pushes or fetches, and `U` undoes the last commit you have not pushed. Claude's own commits still go through the commit request, as before.
 
-<p align="center"><img src="docs/readme/card-git.svg" width="720" alt="The Git tool: two uncommitted files and three recent commits on the left, the diff of Cart.tsx with line numbers and a minimap on the right, a Push button in the header"></p>
+<p align="center"><img src="docs/readme/card-git.svg" width="720" alt="The Git tool: two uncommitted files and three recent commits on the left, the diff of Cart.tsx with line numbers and a minimap on the right, the sync pill in the header"></p>
 
 With nothing to commit, the two panes stay and the right one says so.
 
@@ -121,7 +121,10 @@ While the card is open the notch takes the keyboard; the moment it closes, focus
 | `y` | copy `path:line` of the first changed line |
 | `/` | filter the Files tree, or the Git branch picker past eight branches |
 | `⌘B` | hide or show the Files tree, or the Git file list (one switch for both) |
-| `P` | switch a Markdown file between Preview and Code (Files); push or publish the branch, after a `⏎` confirm (Git) |
+| `P` | switch a Markdown file between Preview and Code (Files); the sync pill: publish, pull or push after a `⏎` confirm, or fetch at once (Git) |
+| `C` | open the commit form: `⏎` or `⌘⏎` commits the checked files, `esc` backs out (Git) |
+| `space` | put the selected file in or out of the commit (Git) |
+| `U` | undo the newest unpushed commit; its changes and message come back (Git) |
 | `W` | the Git branch picker: every local branch of a repository (`↑` `↓`, `⏎` shows that branch, `esc` goes back) |
 | `R` | in the Git branch picker, the repository dropdown (`↑` `↓`, `⏎` picks, `esc` closes) |
 | `⌥⏎` | jump to the session's terminal |
@@ -155,7 +158,7 @@ It is the sibling of [sidecar-pane](https://github.com/evch1204/sidecar-pane), w
 
 ### What it touches
 
-The app never edits your project and makes no network requests of its own. The one command it runs is `git`, for the Git tool: read-only commands to show the worktree, and `git push` only when you press Push and confirm. The only file it writes outside its own folder is `~/.claude/settings.json`. It adds or removes only its own entries there, after a backup named `settings.json.notchcode-backup-<time>` (the newest five are kept), and only when you press Connect or Disconnect.
+The app never edits your project and makes no network requests of its own beyond what `git` does when you push, pull or fetch. The one command it runs is `git`, for the Git tool. Read-only commands show the worktree. The writes are: push, pull (fast-forward only), fetch, a commit of the files you checked, and a mixed reset for Undo. Each runs only when you press it, except one quiet fetch when the tool opens (at most every 5 minutes per repository). Nothing else, and never from a hook. The only file it writes outside its own folder is `~/.claude/settings.json`. It adds or removes only its own entries there, after a backup named `settings.json.notchcode-backup-<time>` (the newest five are kept), and only when you press Connect or Disconnect.
 
 ## Settings
 

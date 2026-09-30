@@ -47,12 +47,20 @@ enum NotchKey: Equatable {
     case filter
     /// ⌘B: hide or show the Files tool's tree.
     case toggleTree
-    /// "P": Preview or Code for a Markdown file in the Files tool; Push in the Git tool.
+    /// "P": Preview or Code for a Markdown file in the Files tool; the sync pill in the Git tool.
     case markdownMode
     /// "W": the Git tool's branch picker.
     case worktree
     /// "R": the branch picker's repository dropdown.
     case repository
+    /// "C": the Git tool's commit form.
+    case commit
+    /// "U": undo the newest unpushed commit in the Git tool.
+    case undo
+    /// Space: put the Git tool's cursor file in or out of the commit.
+    case toggle
+    /// ⌘⏎: commit from the Git tool's commit form, also from its description.
+    case submit
     case number(Int)
 }
 

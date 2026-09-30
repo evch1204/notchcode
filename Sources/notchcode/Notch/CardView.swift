@@ -205,13 +205,22 @@ struct CardView: View {
                 if state.gitPickerShowsFilter && !state.gitPanel.filterFocused { hints.append(KeyHint(Theme.Keys.slash, "filter")) }
                 return hints
             }
-            return [
-                KeyHint(Theme.Keys.up + Theme.Keys.down, "file"),
-                KeyHint(Theme.Keys.worktree, "branch"),
-                KeyHint(Theme.Keys.toggleTree, "list"),
-                KeyHint(Theme.Keys.push, state.gitPushVerb.lowercased()),
-                KeyHint(Theme.Keys.tab, "next tool"),
-            ]
+            if state.gitDraft.composing {
+                let submit = state.gitDraft.focus == .description ? Theme.Keys.commandEnter : Theme.Keys.enter
+                return [KeyHint(submit, "commit")]
+            }
+            var hints = [KeyHint(Theme.Keys.up + Theme.Keys.down, "file")]
+            if state.focusedGit?.checkedOut == true, !state.gitRows.isEmpty {
+                hints.append(KeyHint(Theme.Keys.toggle, "include"))
+                hints.append(KeyHint(Theme.Keys.commit, "commit"))
+            }
+            if state.gitCanUndo { hints.append(KeyHint(Theme.Keys.undo, "undo")) }
+            hints.append(KeyHint(Theme.Keys.worktree, "branch"))
+            hints.append(KeyHint(Theme.Keys.toggleTree, "list"))
+            hints.append(KeyHint(Theme.Keys.push, state.gitSyncVerb.lowercased()))
+            // Past six the row would crowd the meter; ⇥ is taught by every other tool.
+            if hints.count <= Theme.Limits.gitFooterHints { hints.append(KeyHint(Theme.Keys.tab, "next tool")) }
+            return hints
         case .question, .tool(.usage), .tool(.settings):
             return [KeyHint(Theme.Keys.tab, "next tool")]
         }

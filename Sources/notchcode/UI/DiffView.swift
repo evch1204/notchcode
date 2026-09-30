@@ -557,11 +557,12 @@ extension View {
 @MainActor
 struct PathLabel: View {
     let path: String
+    var color: Color = Theme.Colors.ink
 
     var body: some View {
         Text(Format.fileName(path))
             .font(Theme.Fonts.monoCaption)
-            .foregroundStyle(Theme.Colors.ink)
+            .foregroundStyle(color)
             .lineLimit(1)
             .truncationMode(.middle)
             .help(path)
