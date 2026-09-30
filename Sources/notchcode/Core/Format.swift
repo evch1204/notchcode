@@ -230,3 +230,5 @@ extension Optional where Wrapped == Session {
     /// The session's full name, or the app's when there is no session.
     var displayOrApp: String { self?.displayFull ?? "notchcode" }
 }
+
+// Test change for the commit form: delete this line.
