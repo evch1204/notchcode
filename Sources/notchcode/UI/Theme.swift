@@ -238,7 +238,9 @@ enum Theme {
         static let gitCheckMark = keycapTextOnLight
         static let gitUnchecked = inkTertiary
         /// Where a travelling pill or the dock's field left from: an empty outline.
-        static let gitGhost = hairline
+        static let gitGhost = ink.opacity(0.22)
+        /// The ring on the commit form's focused field.
+        static let gitFieldFocusRing = ink.opacity(0.24)
         /// The dock after a commit: "Committed · …" with Undo, quiet (it is not a field).
         static let gitReceiptFill = quietFill
         /// The rail's checked-files totals ("+38 −6") and the dock's pen.
@@ -421,6 +423,11 @@ enum Theme {
         static let gitFieldVPadding: CGFloat = 6
         static let gitDescriptionMinHeight: CGFloat = 60
         static let gitDescriptionTextInset: CGFloat = 5
+        /// The dashed outline a travelling box or pill leaves behind.
+        static let gitGhostStroke: CGFloat = 1
+        static let gitGhostDash: [CGFloat] = [3, 3]
+        /// The commit form's focus ring.
+        static let gitFieldFocusStroke: CGFloat = 1
         static let cardFooterHeight: CGFloat = 20
         static let requestCardHeight: CGFloat = 310
         /// A permission or commit card with its diff open. Keeps the panel clear of the notch row plus shadow.
@@ -921,12 +928,40 @@ enum Theme {
         /// The dock's field travelling into the stage and back: the same spring as every
         /// stage swap, so the box and the content it replaces arrive together.
         @MainActor static var dockTravel: Animation { stageSwap }
-        /// The form's parts after the summary box: the description at 120 ms, the co-author
-        /// and bottom rows 40 ms later (`index` 1); out with the pane swap's drop.
-        @MainActor static func stageRise(_ index: Int) -> AnyTransition {
+        /// What travels (the dock's box, the sync pill), both ends: the arriving copy is
+        /// whole from the first frame, the departing one gone within `travelDepartShare` of
+        /// the spring (about 50 ms), so one box glides. Never `.identity`: that removes the
+        /// departing copy at once and the box jumps.
+        static let travelDepartShare: Double = 0.25
+        @MainActor static var travelTransition: AnyTransition {
+            .asymmetric(
+                insertion: .modifier(active: TravelFade(progress: 0, share: 0), identity: TravelFade(progress: 1, share: 0)),
+                removal: .modifier(active: TravelFade(progress: 0, share: travelDepartShare), identity: TravelFade(progress: 1, share: travelDepartShare))
+            )
+        }
+        /// P: the question rises in once the diff has dropped away, Cancel after it, while the
+        /// pill is still travelling (it lands at about 0.32 s).
+        static let confirmQuestionDelay: Double = 0.12
+        static let confirmCancelDelay: Double = 0.18
+        @MainActor static func confirmRise(delay: Double) -> AnyTransition {
             if reduceMotion { return rise(dy: 0, in: reduced, out: reduced) }
             return .asymmetric(
-                insertion: AnyTransition.opacity.combined(with: .offset(y: contentRise)).animation(rowIn(index)),
+                insertion: AnyTransition.opacity.combined(with: .offset(y: contentRise))
+                    .animation(.easeOut(duration: contentFadeDuration).delay(delay)),
+                removal: AnyTransition.opacity.combined(with: .offset(y: pickerPaneDrop)).animation(contentOut)
+            )
+        }
+        /// The form's parts wait for the summary box to land (its spring is about 0.32 s): the
+        /// description (`index` 0), the co-author row (1), the bottom row (2), then rise.
+        static let stageRiseDelays: [Double] = [0.18, 0.22, 0.26]
+        /// The form's parts after the summary box, on `stageRiseDelays`; out at once with the
+        /// pane swap's drop, so esc feels instant.
+        @MainActor static func stageRise(_ index: Int) -> AnyTransition {
+            if reduceMotion { return rise(dy: 0, in: reduced, out: reduced) }
+            let delay = stageRiseDelays[min(max(index, 0), stageRiseDelays.count - 1)]
+            return .asymmetric(
+                insertion: AnyTransition.opacity.combined(with: .offset(y: contentRise))
+                    .animation(.easeOut(duration: contentFadeDuration).delay(delay)),
                 removal: AnyTransition.opacity.combined(with: .offset(y: pickerPaneDrop)).animation(contentOut)
             )
         }
@@ -955,7 +990,7 @@ enum Theme {
         @MainActor static var checkUntick: Animation { reduceMotion ? reduced : .easeIn(duration: checkUntickDuration) }
         /// The row's name and cells dimming or coming back as its box changes.
         static let checkDimDuration: Double = 0.12
-        static var checkDim: Animation { .easeInOut(duration: checkDimDuration) }
+        @MainActor static var checkDim: Animation { reduceMotion ? reduced : .easeInOut(duration: checkDimDuration) }
         /// The header's box ticks every row, this far apart top down, capped at `rowStaggerCap`.
         static let checkStagger: Double = 0.02
         /// How long a header tick keeps the rows staggered.
@@ -968,7 +1003,7 @@ enum Theme {
         /// A count changing (the rail header's, the sync pill's): the digits roll
         /// (`.numericText()`) and the pill pops (`PopIn`'s curve, without its delay).
         @MainActor static var countPop: Animation { reduceMotion ? reduced : .spring(response: pickerPillResponse, dampingFraction: pickerPillDamping) }
-        static var countPopRise: Animation { .easeOut(duration: actionPopDuration * actionPopRiseShare) }
+        @MainActor static var countPopRise: Animation { reduceMotion ? reduced : .easeOut(duration: actionPopDuration * actionPopRiseShare) }
         /// The rows' block: nothing coming in (each row rises on its own), a fade going out.
         @MainActor static var pickerRowsTransition: AnyTransition {
             .asymmetric(insertion: .identity, removal: AnyTransition.opacity.animation(reduceMotion ? reduced : contentOut))
@@ -1185,7 +1220,7 @@ enum Theme {
         /// Before "worktree seadevil" on a branch picker row.
         static let gitWorktree = "macwindow"
         /// The dock's field, before the summary or its prompt.
-        static let gitPen = "pencil"
+        static let gitPen = "pencil.line"
     }
 
     // MARK: - Key labels for keycaps

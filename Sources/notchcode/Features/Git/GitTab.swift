@@ -88,7 +88,9 @@ struct GitTab: View {
 
     private func content(_ snap: GitSnapshot, open: Bool) -> some View {
         VStack(alignment: .leading, spacing: Theme.Size.spaceS) {
+            // Over the panes, so the sync pill coming home from the confirm draws on top.
             GitHeader(state: state, snap: snap, open: open, pillSpace: pillSpace, stageSpace: stageSpace)
+                .zIndex(state.gitPhase.isConfirming ? 0 : 1)
             if !open {
                 panes(snap)
                     .transition(Theme.Motion.pickerPanesTransition)
@@ -107,17 +109,18 @@ struct GitTab: View {
 
     /// Rail, hairline, stage. The rail takes `fileTreeShare` of the width, or folded (⌘B, the
     /// Files tree's switch) its checkbox column: its content keeps its width and is clipped,
-    /// so the boxes stay put while the width springs and everything else fades.
+    /// so the boxes stay put while the width springs and everything else fades. The stage
+    /// draws over the rail, so the dock's box travelling in lands on top.
     private func panes(_ snap: GitSnapshot) -> some View {
         GeometryReader { geo in
             let railWidth = (geo.size.width * Theme.Size.fileTreeShare).rounded(.down)
             let folded = state.gitListCollapsed
             HStack(alignment: .top, spacing: 0) {
-                rail(snap, folded: folded)
-                    .frame(width: railWidth)
-                    .frame(width: folded ? Theme.Size.gitRailFolded : railWidth, alignment: .leading)
-                    .clipped()
+                // The box draws over the region it is travelling to: the stage while the form
+                // is up, the rail on the way back.
+                rail(snap, folded: folded, railWidth: railWidth)
                     .padding(.trailing, Theme.Size.filesColumnGap)
+                    .zIndex(state.gitDraft.composing ? 0 : 2)
 
                 Rectangle()
                     .fill(Theme.Colors.paneDivider)
@@ -127,25 +130,37 @@ struct GitTab: View {
                 GitDiffPane(state: state, snap: snap, stageSpace: stageSpace)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .parallaxGroup()
+                    .zIndex(1)
             }
             .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
             .animation(Theme.Motion.railFold, value: folded)
         }
     }
 
-    /// The rail header, the rows (they scroll), and the dock pinned to the foot (checkouts only).
-    private func rail(_ snap: GitSnapshot, folded: Bool) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Size.spaceXS) {
-            GitRailHeader(state: state, snap: snap, folded: folded) { toggleAll() }
-            rows(snap, folded: folded)
+    /// The rail header and the rows (they scroll), clipped to the rail's width, then the dock
+    /// pinned to the foot (checkouts only), outside the clip so its box can leave whole.
+    private func rail(_ snap: GitSnapshot, folded: Bool, railWidth: CGFloat) -> some View {
+        let width = folded ? Theme.Size.gitRailFolded : railWidth
+        return VStack(alignment: .leading, spacing: Theme.Size.spaceXS) {
+            VStack(alignment: .leading, spacing: Theme.Size.spaceXS) {
+                GitRailHeader(state: state, snap: snap, folded: folded) { toggleAll() }
+                rows(snap, folded: folded)
+            }
+            .frame(width: railWidth)
+            .frame(width: width, alignment: .leading)
+            .clipped()
             if snap.checkedOut {
                 GitDock(state: state, snap: snap, stageSpace: stageSpace)
+                    .frame(width: railWidth)
+                    .frame(width: width, alignment: .leading)
                     .padding(.top, Theme.Size.spaceS)
                     .opacity(folded ? 0 : 1)
                     .allowsHitTesting(!folded)
                     .animation(Theme.Motion.railFade, value: folded)
+                    .zIndex(2)
             }
         }
+        .frame(width: width, alignment: .leading)
     }
 
     /// The header's box: every row ticks, 20 ms apart top down, for a moment.
@@ -161,6 +176,9 @@ struct GitTab: View {
         let rows = state.gitRows
         let selected = state.gitCursorRowKey
         let unchecked = state.gitDraft.unchecked
+        // A commit folds the checked rows away top down: each one's place among them.
+        var checkedIndex: [String: Int] = [:]
+        for item in rows where !unchecked.contains(item.file.path) { checkedIndex[item.key] = checkedIndex.count }
         return ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: Theme.Size.spaceXS) {
@@ -183,7 +201,8 @@ struct GitTab: View {
                             onSelect: { state.selectGitRow(key: item.key) }
                         )
                         .id(item.key)
-                        .transition(Theme.Motion.railRowCollapse(outIndex: index, inIndex: rows.count - 1 - index))
+                        .zIndex(item.key == selected ? 1 : 0)
+                        .transition(Theme.Motion.railRowCollapse(outIndex: checkedIndex[item.key] ?? 0, inIndex: rows.count - 1 - index))
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -301,10 +320,12 @@ private struct GitFileRow: View {
         }
         .padding(.horizontal, Theme.Size.treeRowHPadding)
         .frame(height: Theme.Size.treeRowHeight)
-        .background {
+        .background(alignment: .leading) {
+            // Folded, the fill is the checkbox column's width, not the row's.
             if isSelected {
                 RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
                     .fill(Theme.Colors.treeOpened)
+                    .frame(width: folded ? Theme.Size.gitRailFolded : nil)
                     .matchedGeometryEffect(id: GitTab.cursorID, in: railSpace)
             }
         }
@@ -338,7 +359,7 @@ struct GitCheckbox: View {
                     .trim(from: 0, to: value == .all ? 1 : 0)
                     .stroke(Theme.Colors.gitCheckMark, style: StrokeStyle(lineWidth: Theme.Size.gitCheckLine, lineCap: .round, lineJoin: .round))
                     .frame(width: Theme.Size.gitCheckMark, height: Theme.Size.gitCheckMark)
-                    .opacity(value == .all ? 1 : 0)
+                    .opacity(value == .mixed ? 0 : 1)
                     .animation(Theme.Motion.checkStroke.delay(delay), value: value)
                 Capsule(style: .continuous)
                     .fill(Theme.Colors.gitCheckMark)
@@ -362,23 +383,31 @@ private struct GitDock: View {
     @ObservedObject var state: AppState
     let snap: GitSnapshot
     let stageSpace: Namespace.ID
+    @State private var hovering = false
 
+    /// The box leaves the rail the moment the form's summary arrives (the same update) and
+    /// fades out in the first 50 ms of the travel (`travelTransition`), so one box glides;
+    /// its text fades in wherever it lands.
     var body: some View {
         let draft = state.gitDraft
         let receipt = state.gitReceipt
         ZStack {
             if draft.composing {
+                // Shows once the box has gone, not under it.
                 RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
-                    .strokeBorder(Theme.Colors.gitGhost, lineWidth: Theme.Size.hairline)
-                    .transition(.opacity)
+                    .strokeBorder(Theme.Colors.gitGhost, style: StrokeStyle(lineWidth: Theme.Size.gitGhostStroke, dash: Theme.Size.gitGhostDash))
+                    .transition(.asymmetric(
+                        insertion: .opacity.animation(Theme.Motion.railFade.delay(Theme.Motion.contentFadeDelay)),
+                        removal: .opacity.animation(Theme.Motion.railFade)
+                    ))
             } else if let receipt {
                 receiptBox(receipt)
                     .matchedGeometryEffect(id: GitTab.summaryID, in: stageSpace)
-                    .transition(.opacity)
+                    .transition(Theme.Motion.travelTransition)
             } else {
                 field(draft)
                     .matchedGeometryEffect(id: GitTab.summaryID, in: stageSpace)
-                    .transition(.opacity)
+                    .transition(Theme.Motion.travelTransition)
             }
         }
         .frame(maxWidth: .infinity)
@@ -392,7 +421,7 @@ private struct GitDock: View {
         return Button { state.openGitCommitForm() } label: {
             HStack(spacing: Theme.Size.spaceS) {
                 Image(systemName: Theme.Symbols.gitPen)
-                    .font(Theme.Fonts.symbol(Theme.Fonts.tinySize))
+                    .font(Theme.Fonts.symbol(Theme.Fonts.captionSize))
                     .foregroundStyle(Theme.Colors.gitRailTotals)
                 Text(text)
                     .font(Theme.Fonts.caption)
@@ -402,16 +431,20 @@ private struct GitDock: View {
                 Spacer(minLength: Theme.Size.spaceS)
                 if enabled { InlineKeycap(Theme.Keys.commit) }
             }
+            .fadeIn()
             .padding(.horizontal, Theme.Size.gitFieldHPadding)
             .frame(maxWidth: .infinity)
             .frame(height: Theme.Size.gitDockHeight)
             .background(
+                // A hover darkens it: it is pressable.
                 RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
-                    .fill(Theme.Colors.filterFill)
+                    .fill(enabled && hovering ? Theme.Colors.quietFill : Theme.Colors.filterFill)
+                    .animation(Theme.Motion.railFade, value: hovering)
             )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .onHover { hovering = $0 }
         .disabled(!enabled)
         .opacity(enabled ? 1 : Theme.Opacity.disabled)
         .help(enabled ? "Write the commit message (\(Theme.Keys.commit))" : "Nothing to commit")
@@ -433,6 +466,7 @@ private struct GitDock: View {
                 .opacity(canUndo ? 1 : Theme.Opacity.disabled)
                 .help("Undo this commit: its changes come back to the rail and its message to the form")
         }
+        .fadeIn()
         .padding(.leading, Theme.Size.gitFieldHPadding)
         .padding(.trailing, Theme.Size.gitDockPillInset)
         .frame(maxWidth: .infinity)

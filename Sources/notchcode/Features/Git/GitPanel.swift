@@ -147,6 +147,12 @@ enum GitPhase: Equatable {
         }
     }
 
+    /// A publish, push or pull waits for ⏎ in the stage.
+    var isConfirming: Bool {
+        if case .confirming = self { return true }
+        return false
+    }
+
     /// A write runs or its result holds: nothing else may start, and the snapshot may still
     /// count what was just sent or committed.
     var isBusy: Bool {

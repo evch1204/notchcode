@@ -208,11 +208,13 @@ struct CardView: View {
             if state.gitDraft.composing {
                 switch state.gitDraft.focus {
                 case .description?:
-                    return [KeyHint(Theme.Keys.commandEnter, "commit"), KeyHint(Theme.Keys.tab, "next field")]
+                    return state.gitDraft.coauthorsShown
+                        ? [KeyHint(Theme.Keys.commandEnter, "commit"), KeyHint(Theme.Keys.tab, "co-author")]
+                        : [KeyHint(Theme.Keys.commandEnter, "commit")]
                 case .coauthor?:
                     return [KeyHint(Theme.Keys.enter, "add"), KeyHint(Theme.Keys.delete, "remove"), KeyHint(Theme.Keys.commandEnter, "commit")]
                 case .summary?, nil:
-                    return [KeyHint(Theme.Keys.enter, "commit"), KeyHint(Theme.Keys.commandEnter, "commit"), KeyHint(Theme.Keys.tab, "description")]
+                    return [KeyHint(Theme.Keys.enter, "commit"), KeyHint(Theme.Keys.tab, "description")]
                 }
             }
             if case .confirming(let op) = state.gitPhase {

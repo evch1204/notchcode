@@ -83,6 +83,7 @@ struct GitDiffPane: View {
             TreeTogglePill(collapsed: state.gitListCollapsed, enabled: state.gitSelectedFile != nil, subject: "rail") {
                 state.toggleGitList()
             }
+            // Each look in its own `if`, so the old one drops out before the new one rises in.
             ZStack(alignment: .leading) {
                 if composing {
                     HStack(spacing: Theme.Size.spaceS) {
@@ -96,8 +97,9 @@ struct GitDiffPane: View {
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }
-                    .transition(.opacity)
-                } else if let file {
+                    .transition(Theme.Motion.paneSwapTransition)
+                }
+                if !composing, let file {
                     HStack(spacing: Theme.Size.spaceM) {
                         PathLabel(path: file.path)
                             .layoutPriority(1)
@@ -106,7 +108,7 @@ struct GitDiffPane: View {
                             .fixedSize()
                     }
                     .id(file.path)
-                    .transition(.opacity)
+                    .transition(Theme.Motion.paneSwapTransition)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -172,7 +174,7 @@ private struct GitConfirm: View {
                             .id(running)
                             .transition(.opacity)
                     }
-                    .transition(Theme.Motion.paneSwapTransition)
+                    .transition(Theme.Motion.confirmRise(delay: Theme.Motion.confirmQuestionDelay))
                 }
                 if confirming, let op = phase.op {
                     ActionSegment(title: op.verb, key: Theme.Keys.enter, role: .allow, count: state.gitSyncCount) {
@@ -180,12 +182,11 @@ private struct GitConfirm: View {
                     }
                     .help(state.gitConfirmText)
                     .matchedGeometryEffect(id: GitTab.syncPillID, in: stageSpace)
-                    .popIn()
-                    .transition(.opacity)
+                    .transition(Theme.Motion.travelTransition)
                     ActionSegment(title: "Cancel", key: Theme.Keys.escape, role: .neutral) {
                         state.cancelGitConfirm()
                     }
-                    .transition(Theme.Motion.stageRise(1))
+                    .transition(Theme.Motion.confirmRise(delay: Theme.Motion.confirmCancelDelay))
                 }
             }
             .position(x: geo.size.width / 2, y: geo.size.height * Theme.Size.gitConfirmCentre)
@@ -199,8 +200,8 @@ private struct GitConfirm: View {
 /// The commit form, GitHub Desktop's: the summary (its length past 50, red past 72; the
 /// one-file prefill as its prompt), whose box is the dock's field arrived from the rail; the
 /// description filling the stage; the co-authors when shown (chips, a field, the "recent"
-/// suggestions); git's error when the commit failed; then "Commit 3 files to main ⏎", the
-/// hint, "@ Co-author" and Cancel (esc). Always in the tree, its parts come and go with
+/// suggestions); git's error when the commit failed; then "Commit 3 ⏎" (the header names the
+/// branch, the footer the keys), "@ Co-author" and Cancel (esc). Always in the tree, its parts come and go with
 /// `shown`, so each rises in on its own beat. Its fields' focus is the draft's, both ways.
 @MainActor
 private struct GitCommitForm: View {
@@ -215,9 +216,10 @@ private struct GitCommitForm: View {
         if case .failed(.commit, let message) = state.gitPhase { failure = message }
         return VStack(alignment: .leading, spacing: Theme.Size.spaceM) {
             if shown {
+                // The dock's box, arrived: whole from the first frame, so one box travels.
                 summary
                     .matchedGeometryEffect(id: GitTab.summaryID, in: stageSpace)
-                    .transition(.opacity)
+                    .transition(Theme.Motion.travelTransition)
                 description
                     .transition(Theme.Motion.stageRise(0))
                 if draft.coauthorsShown {
@@ -233,24 +235,27 @@ private struct GitCommitForm: View {
                         .transition(Theme.Motion.paneSwapTransition)
                 }
                 bottom
-                    .transition(Theme.Motion.stageRise(1))
+                    .transition(Theme.Motion.stageRise(2))
             }
         }
         .padding(.horizontal, Theme.Size.previewHPadding)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        // The fields are AppKit text views: under the light appearance they draw typed text
+        // black whatever the style says; dark makes them take the ink.
+        .environment(\.colorScheme, .dark)
         .allowsHitTesting(shown)
         .animation(Theme.Motion.stageSwap, value: draft.coauthorsShown)
         .onChange(of: focus) { _, value in
             if shown, state.gitDraft.focus != value { state.setGitDraftFocus(value) }
         }
-        .onChange(of: state.gitDraft.focus, initial: true) { _, value in
+        .onChange(of: state.gitDraft.focus) { _, value in
             if focus != value { focus = value }
         }
         .onChange(of: shown) { _, now in
-            // The box arrives in the same update as the draft's focus: the summary takes the
+            // The box arrives in the same update as the draft's focus: the field takes the
             // keys once it is in.
             guard now else { return }
-            DispatchQueue.main.async { focus = .summary }
+            DispatchQueue.main.async { focus = state.gitDraft.focus ?? .summary }
         }
         .onChange(of: draft.coauthorsShown) { _, now in
             // The same for the co-author field when the pill shows it.
@@ -264,6 +269,15 @@ private struct GitCommitForm: View {
         return false
     }
 
+    /// A field's box: the quiet fill, and a ring while `field` has the keys.
+    private func fieldBox(_ field: GitDraftFocus) -> some View {
+        let shape = RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+        return shape
+            .fill(Theme.Colors.filterFill)
+            .overlay(shape.strokeBorder(focus == field ? Theme.Colors.gitFieldFocusRing : .clear, lineWidth: Theme.Size.gitFieldFocusStroke))
+            .animation(Theme.Motion.railFade, value: focus)
+    }
+
     private var summary: some View {
         let count = state.gitDraft.summary.count
         return HStack(spacing: Theme.Size.spaceS) {
@@ -274,7 +288,7 @@ private struct GitCommitForm: View {
             )
             .textFieldStyle(.plain)
             .font(Theme.Fonts.body)
-            .foregroundStyle(Theme.Colors.ink)
+            .foregroundColor(Theme.Colors.ink)
             .focused($focus, equals: .summary)
             .onSubmit {
                 guard Self.returnPressed else { return }
@@ -287,15 +301,13 @@ private struct GitCommitForm: View {
                     .fixedSize()
             }
         }
+        .fadeIn()
         .disabled(committing)
         .opacity(committing ? Theme.Opacity.gitLocked : 1)
         .padding(.horizontal, Theme.Size.gitFieldHPadding)
         .frame(maxWidth: .infinity)
         .frame(height: Theme.Size.gitFieldHeight)
-        .background(
-            RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
-                .fill(Theme.Colors.filterFill)
-        )
+        .background(fieldBox(.summary))
     }
 
     /// Return itself, not the field losing focus on ⇥.
@@ -311,7 +323,8 @@ private struct GitCommitForm: View {
             TextEditor(text: Binding(get: { state.gitDraft.description }, set: { state.setGitDescription($0) }))
                 .scrollContentBackground(.hidden)
                 .font(Theme.Fonts.body)
-                .foregroundStyle(Theme.Colors.ink)
+                .foregroundColor(Theme.Colors.ink)
+                .tint(Theme.Colors.ink)
                 .focused($focus, equals: .description)
             if state.gitDraft.description.isEmpty {
                 Text("Description")
@@ -326,10 +339,8 @@ private struct GitCommitForm: View {
         .padding(.horizontal, Theme.Size.gitFieldHPadding - Theme.Size.gitDescriptionTextInset)
         .padding(.vertical, Theme.Size.gitFieldVPadding)
         .frame(minHeight: Theme.Size.gitDescriptionMinHeight, maxHeight: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
-                .fill(Theme.Colors.filterFill)
-        )
+        .background(fieldBox(.description))
+        .animation(Theme.Motion.stageSwap, value: state.gitDraft.coauthorsShown)
     }
 
     /// "@ [Ada <ada@x.dev> ×] [Co-author · name <email>]  ⏎ adds", then "recent" and up to six
@@ -353,7 +364,7 @@ private struct GitCommitForm: View {
                 )
                 .textFieldStyle(.plain)
                 .font(Theme.Fonts.caption)
-                .foregroundStyle(Theme.Colors.ink)
+                .foregroundColor(Theme.Colors.ink)
                 .focused($focus, equals: .coauthor)
                 .onSubmit {
                     guard Self.returnPressed else { return }
@@ -366,10 +377,7 @@ private struct GitCommitForm: View {
             }
             .padding(.horizontal, Theme.Size.gitFieldHPadding)
             .frame(height: Theme.Size.gitFieldHeight)
-            .background(
-                RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
-                    .fill(Theme.Colors.filterFill)
-            )
+            .background(fieldBox(.coauthor))
             .shake(trigger: draft.coauthorRejects == 0 ? nil : draft.coauthorRejects)
             .disabled(committing)
             .opacity(committing ? Theme.Opacity.gitLocked : 1)
@@ -405,25 +413,17 @@ private struct GitCommitForm: View {
                     GitRunningPill(title: GitOp.commit.runningTitle)
                         .transition(.opacity)
                 } else {
-                    ActionSegment(title: state.gitCommitButtonTitle, key: Theme.Keys.enter, role: .allow) {
+                    // The stage header already says "Commit to main"; the footer says how.
+                    ActionSegment(title: "Commit", key: Theme.Keys.enter, role: .allow, count: state.gitCheckedFiles.count) {
                         state.runGitCommit()
                     }
                     .disabled(!enabled)
                     .opacity(enabled ? 1 : Theme.Opacity.disabled)
+                    .help(state.gitCommitButtonTitle)
                     .transition(.opacity)
                 }
             }
-            // Only while it fits: the pills come first.
-            ViewThatFits(in: .horizontal) {
-                Text(focus == .description
-                     ? Theme.Keys.commandEnter + " from the description"
-                     : Theme.Keys.enter + " commits")
-                    .font(Theme.Fonts.caption)
-                    .foregroundStyle(Theme.Colors.inkTertiary)
-                    .lineLimit(1)
-                    .fixedSize()
-                Color.clear.frame(width: 0, height: 0)
-            }
+            .layoutPriority(1)
             Spacer(minLength: Theme.Size.spaceM)
             ActionSegment(title: coauthorTitle, role: .neutral) {
                 state.toggleGitCoauthors()
@@ -432,6 +432,7 @@ private struct GitCommitForm: View {
             ActionSegment(title: "Cancel", key: Theme.Keys.escape, role: .neutral) {
                 state.cancelGitCommitForm()
             }
+            .fixedSize()
         }
         .animation(Theme.Motion.stageSwap, value: committing)
     }

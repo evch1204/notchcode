@@ -178,6 +178,7 @@ Useful commands:
 xcodebuild -scheme notchcode build          # the check before a commit
 scripts/send-test-event.sh permission       # fire a fake event at the running app
 scripts/send-test-event.sh all
+open build/DerivedData/Build/Products/Debug/notchcode.app --args --debug-keys open,c,2,esc   # drive the Git tool without touching the keys: open, then each key 1.2 s apart (a number sleeps)
 scripts/sync-plugin.sh --check              # plugin in step with hooks/
 ```
 

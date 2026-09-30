@@ -108,7 +108,7 @@ struct GitHeader: View {
     /// here); pulsing while any write runs; a check and "Pushed" while a sync's result holds,
     /// so it cannot ask again for the commits just sent. After a commit or an undo the plain
     /// pill stays. Each look carries the travel id, so the one here is the one that travels;
-    /// the looks overlap so each swap in place is a crossfade. Its count pops as it moves; a
+    /// the running and done looks crossfade in place; the plain pill travels (`travelTransition`), so only one copy shows. Its count pops as it moves; a
     /// failed sync shakes it once.
     private func pill(_ phase: GitPhase) -> some View {
         let op = state.gitSyncOp
@@ -137,7 +137,7 @@ struct GitHeader: View {
             }
             if confirming {
                 RoundedRectangle(cornerRadius: Theme.Radius.segment, style: .continuous)
-                    .strokeBorder(Theme.Colors.gitGhost, lineWidth: Theme.Size.hairline)
+                    .strokeBorder(Theme.Colors.gitGhost, style: StrokeStyle(lineWidth: Theme.Size.gitGhostStroke, dash: Theme.Size.gitGhostDash))
                     .frame(width: pillWidth, height: Theme.Size.actionHeight)
                     .transition(.opacity)
             }
@@ -149,7 +149,7 @@ struct GitHeader: View {
                     .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pillWidth = $0 }
                     .countPop(state.gitSyncCount)
                     .matchedGeometryEffect(id: GitTab.syncPillID, in: stageSpace)
-                    .transition(.opacity)
+                    .transition(Theme.Motion.travelTransition)
             }
         }
         .shake(trigger: syncFailure(phase))

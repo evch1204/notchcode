@@ -1,5 +1,5 @@
 // MotionModifiers.swift
-// Motion shared by the surfaces: pane parallax, rise-in, the wings' unfold, the Git rail's row
+// Motion shared by the surfaces: pane parallax, rise-in, fade-in, the wings' unfold, the Git rail's row
 // collapse, a shake and a count's pop. Curves come from Theme.
 
 import SwiftUI
@@ -63,6 +63,39 @@ struct RiseIn: ViewModifier {
                     : Theme.Motion.rowIn(min(index, cap))
                 withAnimation(animation) { shown = true }
             }
+    }
+}
+
+/// Fades a view's content in once it appears (`Theme.Motion.contentIn`), no rise: the text
+/// inside a box that travels, so only the arriving copy shows. Reduce Motion: `reduced`.
+struct FadeIn: ViewModifier {
+    @State private var shown = false
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(shown ? 1 : 0)
+            .onAppear {
+                withAnimation(Theme.Motion.reduceMotion ? Theme.Motion.reduced : Theme.Motion.contentIn) { shown = true }
+            }
+    }
+}
+
+/// One end of a box that travels (`matchedGeometryEffect`): the arriving copy at full opacity
+/// throughout (`share` 0), the departing one gone within the first `share` of the travel.
+/// A real, animated transition on both ends: with `.identity` the departing copy leaves the
+/// tree at once, nothing is left to match, and the box jumps instead of gliding.
+struct TravelFade: ViewModifier, Animatable {
+    /// 1 in place, 0 fully transitioned.
+    var progress: Double
+    let share: Double
+
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        content.opacity(share <= 0 ? 1 : min(1, max(0, (progress - (1 - share)) / share)))
     }
 }
 
@@ -150,6 +183,7 @@ struct CountPop<T: Equatable>: ViewModifier {
 extension View {
     func shake<T: Equatable>(trigger: T?) -> some View { modifier(Shake(trigger: trigger)) }
     func countPop<T: Equatable>(_ value: T?) -> some View { modifier(CountPop(value: value)) }
+    func fadeIn() -> some View { modifier(FadeIn()) }
     func riseIn(_ index: Int, cap: Int = .max) -> some View { modifier(RiseIn(index: index, cap: cap)) }
     func parallaxGroup() -> some View { modifier(ParallaxGroup()) }
     /// Left wing: segments counted from the camera outward, sliding out to the left.

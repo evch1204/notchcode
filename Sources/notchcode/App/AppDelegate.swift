@@ -66,6 +66,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.watcher = watcher
             watcher.start()
         }
+        runDebugKeys()
+    }
+
+    /// `--debug-keys open,c,1.5,esc`: after three seconds, each name in turn with 1.2 s
+    /// between them: "open" opens the card on the Git tool, a number sleeps that many
+    /// seconds, anything else is a key (esc, enter, cmdenter, cmdb, space, up, down, c, p,
+    /// u, w, r, 1 to 5). For screenshots of the tool's states while nobody is at the keys.
+    private func runDebugKeys() {
+        let args = CommandLine.arguments
+        guard let index = args.firstIndex(of: "--debug-keys"), index + 1 < args.count else { return }
+        let names = args[index + 1].split(separator: ",").map(String.init)
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            for name in names {
+                guard let self else { return }
+                if let seconds = Double(name) {
+                    try? await Task.sleep(for: .seconds(seconds))
+                    continue
+                }
+                debugLog("debug key \(name)")
+                if name == "open" {
+                    self.state.openCard(tab: .git)
+                } else if let key = Self.debugKey(name) {
+                    _ = self.state.handleKey(key)
+                }
+                try? await Task.sleep(for: .seconds(1.2))
+            }
+        }
+    }
+
+    private static func debugKey(_ name: String) -> NotchKey? {
+        switch name {
+        case "esc": return .escape
+        case "enter": return .primary
+        case "cmdenter": return .submit
+        case "cmdb": return .toggleTree
+        case "space": return .toggle
+        case "up": return .up
+        case "down": return .down
+        case "c": return .commit
+        case "p": return .markdownMode
+        case "u": return .undo
+        case "w": return .worktree
+        case "r": return .repository
+        case "1", "2", "3", "4", "5": return .number(Int(name)!)
+        default: return nil
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
