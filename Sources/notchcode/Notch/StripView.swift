@@ -100,8 +100,7 @@ struct ToolButton: View {
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: Theme.Symbols.tool(tab))
-                .font(Theme.Fonts.symbol(Theme.Size.toolIcon))
+            ToolGlyph(tab: tab)
                 .foregroundStyle(selected ? Theme.Colors.segmentIconSelected : Theme.Colors.segmentIcon)
                 .frame(width: width, height: Theme.Size.toolHeight)
                 .overlay(alignment: .topTrailing) {

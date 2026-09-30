@@ -455,6 +455,10 @@ enum Theme {
         static let toolHeight: CGFloat = 22
         static let toolGap: CGFloat = 2
         static let toolIcon: CGFloat = 11
+        /// A tool icon's stroke as a share of its size: the canvas draws 2.4 in a 24 box.
+        static let toolStrokeRatio: CGFloat = 2.4 / 24
+        /// The gear's stroke, a little finer: 2.2 in the canvas's 24 box.
+        static let gearStrokeRatio: CGFloat = 2.2 / 24
         /// The collapsed strip's tools on hover: narrower, so all five fit the resting wing.
         static let compactToolWidth: CGFloat = 20
         static let compactToolGap: CGFloat = 1
@@ -1082,35 +1086,18 @@ enum Theme {
         static let done = "checkmark"
         static let teleport = "arrow.up.right"
         static let chevron = "chevron.right"
-        static let settings = "gearshape"
         static let diff = "plusminus"
         static let back = "chevron.left"
         static let filter = "line.3.horizontal.decrease"
-        static let folder = "folder"
         /// The Files tool's collapse-the-tree pill.
         static let sidebar = "sidebar.left"
 
-        // The tools in the strip.
-        static let sessions = "rectangle.stack"
-        static let changes = "plusminus.circle"
-        static let git = "arrow.triangle.branch"
-        static let usage = "gauge.with.needle"
+        // The Git tool (the strip's own icons are drawn: ToolShapes in Glyphs.swift).
         /// Before "worktree seadevil" on a branch picker row.
         static let gitWorktree = "macwindow"
         /// Inside the commit checkboxes: all in, or some in.
         static let gitCheck = done
         static let gitMixed = "minus"
-
-        static func tool(_ tab: CardTab) -> String {
-            switch tab {
-            case .sessions: return sessions
-            case .changes: return changes
-            case .files: return folder
-            case .usage: return usage
-            case .git: return git
-            case .settings: return settings
-            }
-        }
     }
 
     // MARK: - Key labels for keycaps
