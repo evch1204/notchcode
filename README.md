@@ -33,14 +33,14 @@ Press the notch at any time and a card opens with five tools. `1`–`5` or `⇥`
 | Sessions | every live session by repository, one row per worktree: branch, model, permission mode (`bypass` in clay, `plan` in blue; nothing for default), state, current prompt, a lane per subagent. `⏎` opens its Changes. |
 | Changes | each turn you sent, the files it changed (subagent edits too), and the full diff under any file. |
 | Files | the repository tree, changed files badged, and a preview with changed lines tinted; `⌘B` folds the tree away, and Markdown renders with a Preview · Code switch. |
-| Git | the focused session's worktree, or any local branch of a repository a session runs in (`W` opens the picker: each branch with where it lives, "worktree harbor", "main checkout" or "not checked out"). Uncommitted files and the last five commits on the left, the selected file's diff on the right with line numbers, changed words lit and a minimap. A branch checked out nowhere shows its changes against main, read-only. Commit the files you check, pull, push, fetch, or undo the last unpushed commit. |
+| Git | the focused session's worktree, or any local branch of a repository a session runs in (`W` opens the picker: each branch with where it lives, "worktree harbor", "main checkout" or "not checked out"). A checklist of the uncommitted files on the left with the commit's summary field docked under it, the selected file's diff on the right with line numbers, changed words lit and a minimap. A branch checked out nowhere shows its changes against main, read-only. Commit the files you check, pull, push, fetch, or undo the last unpushed commit. |
 | Usage | 5-hour and weekly limits with reset times, context used, tokens for the session and today, an estimated cost, and today's Fable share. |
 
 ### Git without leaving the notch
 
-The Git tool shows what is uncommitted in the worktree you are looking at, and the diff of each file. Tick the files you want, write a message, and `C` commits them. One pill on `P` publishes, pulls, pushes or fetches, and `U` undoes the last commit you have not pushed. Claude's own commits still go through the commit request, as before.
+The Git tool shows what is uncommitted in the worktree you are looking at, and the diff of each file. Tick the files you want, press `C` and the summary field docked under the list slides up into a full commit form, and `⏎` commits them. Add co-authors with the "@ Co-author" pill: it suggests the people your recent commits credited and writes GitHub's Co-authored-by trailers. One pill on `P` publishes, pulls, pushes or fetches, and after a commit the field shows it with an Undo (`U`) until you push. Claude's own commits still go through the commit request, as before.
 
-<p align="center"><img src="docs/readme/card-git.svg" width="720" alt="The Git tool: two uncommitted files and three recent commits on the left, the diff of Cart.tsx with line numbers and a minimap on the right, the sync pill in the header"></p>
+<p align="center"><img src="docs/readme/card-git.svg" width="720" alt="The Git tool: two uncommitted files and the checklist on the left, the diff of Cart.tsx with line numbers and a minimap on the right, the sync pill in the header"></p>
 
 With nothing to commit, the two panes stay and the right one says so.
 

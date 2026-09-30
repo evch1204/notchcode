@@ -1,6 +1,6 @@
 // GitRunner.swift
 // Runs `/usr/bin/git` for the Git tool and parses what it prints: status, ahead and behind,
-// recent commits, branches and worktrees, and the writes: push, pull, fetch, commit and the
+// the newest commit, recent co-authors, branches and worktrees, and the writes: push, pull, fetch, commit and the
 // undo's reset. Off the main thread, with GIT_OPTIONAL_LOCKS=0; the writes run only from
 // `AppState`'s explicit presses (and the quiet fetch), never from a read.
 
@@ -169,7 +169,26 @@ enum GitRunner {
         snap.commits = await recentCommits([], unpushed: snap.unpushed, root: root)
         // Undo resets to HEAD~1, which the root commit does not have.
         snap.headHasParent = await run(["rev-parse", "--verify", "--quiet", "HEAD~1"], cwd: root).status == 0
+        snap.recentCoauthors = await recentCoauthors(root: root)
         return snap
+    }
+
+    /// The co-author suggestions: every Co-authored-by trailer value of the last
+    /// `gitCoauthorLog` commits, trimmed, newest first, each once (case-insensitively), at most
+    /// `gitCoauthorHistory`.
+    private static func recentCoauthors(root: String) async -> [String] {
+        let log = await run(["log", "-\(Theme.Limits.gitCoauthorLog)",
+                             "--format=%(trailers:key=Co-authored-by,valueonly,separator=%x1f)"], cwd: root)
+        guard log.status == 0 else { return [] }
+        var seen = Set<String>()
+        var names: [String] = []
+        for part in log.out.split(whereSeparator: { $0 == "\u{1f}" || $0 == "\n" }) {
+            let value = trimmed(String(part))
+            guard !value.isEmpty, seen.insert(value.lowercased()).inserted else { continue }
+            names.append(value)
+            if names.count == Theme.Limits.gitCoauthorHistory { break }
+        }
+        return names
     }
 
     /// The upstream `spec` names ("@{u}", or "<branch>@{u}") and the remote a push goes to:

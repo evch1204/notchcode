@@ -209,9 +209,13 @@ extension AppState {
         }
         if gitShown, !gitPanel.pickerOpen, gitDraft.composing, gitDraft.focus != nil {
             // A commit field has the keys: typing, arrows, ⇥, space and ⏎ (the summary's
-            // onSubmit commits) go to it; only esc and ⌘⏎ stay with the card.
+            // onSubmit commits, the co-author field's adds) go to it; only esc and ⌘⏎ stay
+            // with the card, and ⌫ in the empty co-author field, which takes the last chip.
             switch key {
             case .escape, .submit: break
+            case .deny where gitDraft.focus == .coauthor && gitDraft.coauthorText.isEmpty && !gitDraft.coauthors.isEmpty:
+                removeLastGitCoauthor()
+                return true
             default: return false
             }
         }

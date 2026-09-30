@@ -1,7 +1,9 @@
 // GitPanel.swift
 // The Git tool's model: what is uncommitted in the target checkout, how far the branch is
-// ahead of and behind its upstream, the last five commits, the commit draft, and the writes
-// (sync, commit, undo; GitWrites.swift) with their one phase. The target
+// ahead of and behind its upstream, the newest commit (for undo and the dock's receipt), the
+// co-authors its recent commits named, the commit draft (summary, description, co-authors,
+// checks, the receipt), and the writes (sync, commit, undo; GitWrites.swift) with their one
+// phase. The target
 // is the focused session's worktree until the owner picks a branch in the branch picker (W):
 // one repository at a time (R opens the repository dropdown), every local branch in it,
 // each saying where it lives. A branch checked out nowhere gets a read-only page: its
@@ -16,7 +18,7 @@
 import AppKit
 import SwiftUI
 
-/// One line of "Recent commits".
+/// The target's newest commit: what undo resets and the dock's receipt names.
 struct GitCommit: Identifiable, Equatable {
     var id: String { sha }
     var sha: String
@@ -76,6 +78,9 @@ struct GitSnapshot: Equatable {
     var lineCounts: [String: Int] = [:]
     /// HEAD has a parent, so undo can reset to it. False on the root commit and on a branch page.
     var headHasParent = false
+    /// "Name <email>" from the Co-authored-by trailers of the recent commits, newest first,
+    /// each once: the co-author suggestions. Empty on a branch page.
+    var recentCoauthors: [String] = []
 }
 
 /// A write git runs for the owner. Two never run at once on a target: they share one phase.
@@ -129,8 +134,8 @@ enum GitPhase: Equatable {
     /// A confirm is up in the right pane (push, publish, pull). ⏎ runs it, esc cancels.
     case confirming(GitOp)
     case running(GitOp)
-    /// "Pushed 3 commits", "Pulled 2 commits", "Committed 3 files", "Undid the last commit";
-    /// holds `Theme.Timing.gitResultHold`.
+    /// "Pushed 3 commits", "Pulled 2 commits", "Committed 3 files", "Undid "…"" in the
+    /// header's status; holds `Theme.Timing.gitResultHold`.
     case done(GitOp, String)
     /// git's first useful line; stays until a refresh other than the poll.
     case failed(GitOp, String)
@@ -169,13 +174,30 @@ struct GitDraft: Equatable {
     var description = ""
     /// Paths left out of the commit; every file is in by default, new files included.
     var unchecked: Set<String> = []
-    /// The form is up in the right pane.
+    /// The form is up in the stage (the dock's field has travelled there).
     var composing = false
-    /// Which field has the keys: nil, summary, or description.
+    /// Which field has the keys: nil, summary, description, or the co-author field.
     var focus: GitDraftFocus? = nil
+    /// "Name <email>", each a Co-authored-by trailer of the commit.
+    var coauthors: [String] = []
+    /// What is typed in the co-author field, not yet a chip.
+    var coauthorText = ""
+    /// The co-author field and its suggestions show (the "@ Co-author" pill).
+    var coauthorsShown = false
+    /// Counts the entries the co-author field refused: each one shakes the field.
+    var coauthorRejects = 0
+    /// The commit the card just made, shown in the dock with Undo until it is pushed, another
+    /// commit lands, or the form opens again.
+    var receipt: GitReceipt? = nil
 }
 
-enum GitDraftFocus: Hashable { case summary, description }
+enum GitDraftFocus: Hashable { case summary, description, coauthor }
+
+/// "Committed · Fix the Push pill" in the dock: the commit's short sha and subject.
+struct GitReceipt: Equatable {
+    var sha: String
+    var subject: String
+}
 
 /// One local branch, as the picker lists it.
 struct GitBranch: Identifiable, Equatable {
@@ -353,8 +375,8 @@ extension AppState {
         return rows.indices.contains(rowCursor) ? rows[rowCursor].file : nil
     }
 
-    /// The file list is hidden (⌘B). One preference with the Files tree: the left column of
-    /// both tools. Only while a diff shows, as Files needs an open file.
+    /// The rail is folded to its checkbox column (⌘B). One preference with the Files tree: the
+    /// left column of both tools. Only while there is a file, as Files needs an open file.
     var gitListCollapsed: Bool {
         prefs.filesTreeHidden && gitSelectedFile != nil
     }
@@ -459,13 +481,6 @@ extension AppState {
 
     nonisolated static func commits(_ count: Int) -> String {
         count == 1 ? "1 commit" : "\(count) commits"
-    }
-
-    /// "now", "12m ago", "2h ago", "3d ago".
-    static func gitAgo(_ date: Date, now: Date = Date()) -> String {
-        let seconds = now.timeIntervalSince(date)
-        if seconds < 86_400 { return Format.ago(date, now: now) }
-        return "\(Int(seconds / 86_400))d ago"
     }
 
     // MARK: Refresh triggers
@@ -583,9 +598,13 @@ extension AppState {
     }
 
     /// What esc does next, for the footer: "close" the dropdown, "clear" the filter, "back"
-    /// out of the picker or the commit form; nil when it closes the card.
+    /// out of the picker or the commit form, "cancel" the confirm; nil when it closes the card.
     var gitEscapeLabel: String? {
-        guard gitPanel.pickerOpen else { return gitDraft.composing ? "back" : nil }
+        guard gitPanel.pickerOpen else {
+            if gitDraft.composing { return "back" }
+            if case .confirming = gitPhase { return "cancel" }
+            return nil
+        }
         if gitPanel.repoMenuOpen { return "close" }
         if gitPanel.filterFocused || !gitPanel.filter.isEmpty { return "clear" }
         return "back"
@@ -654,8 +673,8 @@ extension AppState {
         case .commit:           // C
             openGitCommitForm()
             return true
-        case .undo:             // U
-            guard gitCanUndo else { return nil }
+        case .undo:             // U: not while composing (the refill would replace the draft)
+            guard gitCanUndo, !gitDraft.composing else { return nil }
             runGitUndo()
             return true
         case .toggle:           // space
@@ -680,11 +699,13 @@ extension AppState {
         case .up, .down:
             // Selecting shows that file's diff at once. The list comes back first, as the
             // Files tree does.
+            // The rail stays folded: the stage header names the file.
             let count = gitRows.count
             guard count > 0 else { return false }
-            if gitListCollapsed { setFilesTreeHidden(false) }
-            // As a click on a row: the pane shows the diff, the draft keeps its text.
+            // As a click on a row: the stage shows the diff, the draft keeps its text, a
+            // confirm is dropped.
             if gitDraft.composing { setGitComposing(false) }
+            cancelGitConfirm()
             rowCursor = max(0, min(count - 1, rowCursor + (key == .up ? -1 : 1)))
             return true
         default:

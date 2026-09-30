@@ -1,5 +1,6 @@
 // MotionModifiers.swift
-// Motion shared by the surfaces: pane parallax, rise-in, the wings' unfold. Curves come from Theme.
+// Motion shared by the surfaces: pane parallax, rise-in, the wings' unfold, the Git rail's row
+// collapse, a shake and a count's pop. Curves come from Theme.
 
 import SwiftUI
 
@@ -84,7 +85,71 @@ struct Unfold: ViewModifier {
     }
 }
 
+/// A Git rail row folding its height away (a commit took the file) or unfolding back (an
+/// undo): `fraction` 0 is gone, 1 is the whole 20 pt row. Drives `Theme.Motion.railRowCollapse`.
+struct RowCollapse: ViewModifier, Animatable {
+    var fraction: CGFloat
+
+    var animatableData: CGFloat {
+        get { fraction }
+        set { fraction = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .frame(height: Theme.Size.treeRowHeight * fraction, alignment: .top)
+            .clipped()
+            .opacity(Double(fraction))
+    }
+}
+
+/// One horizontal shake whenever `trigger` changes to a value (nil never shakes): out
+/// `pillShakeDistance`, back past the middle, home, `pillShakeHalf` each. Reduce Motion: none.
+struct Shake<T: Equatable>: ViewModifier {
+    let trigger: T?
+    @State private var x: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        content
+            .offset(x: x)
+            .onChange(of: trigger) { _, value in
+                guard value != nil, !Theme.Motion.reduceMotion else { return }
+                let half = Theme.Motion.pillShakeHalf
+                let distance = Theme.Motion.pillShakeDistance
+                withAnimation(Theme.Motion.pillShake) { x = distance }
+                DispatchQueue.main.asyncAfter(deadline: .now() + half) {
+                    withAnimation(Theme.Motion.pillShake) { x = -distance }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + half) {
+                        withAnimation(Theme.Motion.pillShake) { x = 0 }
+                    }
+                }
+            }
+    }
+}
+
+/// Pops once (1 → `actionPopOvershoot` → 1) whenever `value` changes to a non-nil value: a
+/// count that just moved. Two plain animations, as `PopIn`. Reduce Motion: nothing.
+struct CountPop<T: Equatable>: ViewModifier {
+    let value: T?
+    @State private var scale: CGFloat = 1
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(scale)
+            .onChange(of: value) { _, new in
+                guard new != nil, !Theme.Motion.reduceMotion else { return }
+                withAnimation(Theme.Motion.countPopRise) { scale = Theme.Motion.actionPopOvershoot }
+                let rise = Theme.Motion.actionPopDuration * Theme.Motion.actionPopRiseShare
+                DispatchQueue.main.asyncAfter(deadline: .now() + rise) {
+                    withAnimation(Theme.Motion.actionPopSettle) { scale = 1 }
+                }
+            }
+    }
+}
+
 extension View {
+    func shake<T: Equatable>(trigger: T?) -> some View { modifier(Shake(trigger: trigger)) }
+    func countPop<T: Equatable>(_ value: T?) -> some View { modifier(CountPop(value: value)) }
     func riseIn(_ index: Int, cap: Int = .max) -> some View { modifier(RiseIn(index: index, cap: cap)) }
     func parallaxGroup() -> some View { modifier(ParallaxGroup()) }
     /// Left wing: segments counted from the camera outward, sliding out to the left.

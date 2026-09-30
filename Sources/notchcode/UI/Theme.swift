@@ -205,11 +205,6 @@ enum Theme {
         // Git tool.
         static let gitBranch = ink
         static let gitStatus = inkSecondary
-        static let gitSha = inkTertiary
-        static let gitSubject = inkSecondary
-        static let gitTime = inkTertiary
-        static let gitTagFill = badgeFill
-        static let gitTagText = inkSecondary
         static let gitPushed = green
         static let gitError = red
         static let gitSection = groupHeaderName
@@ -242,6 +237,16 @@ enum Theme {
         static let gitCheckFill = ink
         static let gitCheckMark = keycapTextOnLight
         static let gitUnchecked = inkTertiary
+        /// Where a travelling pill or the dock's field left from: an empty outline.
+        static let gitGhost = hairline
+        /// The dock after a commit: "Committed · …" with Undo, quiet (it is not a field).
+        static let gitReceiptFill = quietFill
+        /// The rail's checked-files totals ("+38 −6") and the dock's pen.
+        static let gitRailTotals = inkTertiary
+        /// The commit form's co-author chips and the ring on the suggestion ⏎ adds.
+        static let gitCoauthorChipFill = quietFill
+        static let gitCoauthorChipText = inkSecondary
+        static let gitSuggestionRing = inkSecondary
 
         /// A session's permission mode, as a word in its Sessions row and the open card's status
         /// line: bypass in clay (the dangerous one), plan in blue, the rest tertiary.
@@ -360,11 +365,27 @@ enum Theme {
         static let filesCardHeight: CGFloat = 440
         static let usageCardHeight: CGFloat = 380
         static let gitCardHeight: CGFloat = 424
-        /// The Git tool: the header row (branch, status, the Push pill) and the short-sha column.
+        /// The Git tool: the header row (branch, status, the sync pill).
         static let gitHeaderHeight: CGFloat = 26
-        static let gitShaWidth: CGFloat = 60
-        static let gitSectionTopPadding: CGFloat = 8
         static let gitPushingGlyph: CGFloat = 10
+        /// The rail: its header row ("Uncommitted · 4"), and its width folded (⌘B), the
+        /// checkbox column only.
+        static let gitRailHeaderHeight: CGFloat = treeRowHeight
+        static let gitRailFolded: CGFloat = 22
+        /// The stage's header row (the ⌘B pill, then the file, "Commit to main", or nothing).
+        static let gitStageHeaderHeight: CGFloat = treeRowHeight
+        /// The dock at the rail's foot: the summary field's box, the same height as the form's.
+        static let gitDockHeight: CGFloat = gitFieldHeight
+        /// Between the dock's box and the Undo pill inside it ((26 − 22) / 2).
+        static let gitDockPillInset: CGFloat = (gitFieldHeight - actionHeight) / 2
+        /// The confirm's question sits with its centre at this share of the stage's height.
+        static let gitConfirmCentre: CGFloat = 0.4
+        /// Co-author chips: their padding, the "recent" suggestion row, the ring on the first.
+        static let gitChipVPadding: CGFloat = 2
+        static let gitChipHPadding: CGFloat = 6
+        static let gitChipGap: CGFloat = 4
+        static let gitSuggestionRowHeight: CGFloat = 20
+        static let gitSuggestionRing: CGFloat = 1
         /// The green check before "Nothing to commit · up to date" in the empty diff pane.
         static let gitCleanCircle: CGFloat = 22
         /// The target pill never takes more than this; the place truncates in the middle.
@@ -386,9 +407,13 @@ enum Theme {
         /// The commit checkboxes and their gap to the file name.
         static let gitCheckbox: CGFloat = 12
         static let gitCheckboxGap: CGFloat = 6
-        /// The mark inside a checkbox.
+        /// The mark inside a checkbox: the drawn check's box and stroke, the mixed state's dash.
         static let gitCheckMark: CGFloat = 8
+        static let gitCheckLine: CGFloat = 1.6
+        static let gitCheckDash: CGFloat = 6
         static let gitCheckboxStroke: CGFloat = 1
+        /// Unticking: the box's fill shrinks to this scale as it fades.
+        static let gitUntickScale: CGFloat = 0.6
         /// The commit form: the summary box, its side padding, the description's least height,
         /// and the text view's own inset that its "Description" prompt lines up with.
         static let gitFieldHeight: CGFloat = 26
@@ -666,6 +691,10 @@ enum Theme {
         static let well: Double = 0.045
         /// Finished agents keep their colour, dimmed.
         static let agentFinished: Double = 0.45
+        /// An unchecked Git file's cells.
+        static let gitUncheckedCells: Double = disabled
+        /// The commit form's fields while git commits.
+        static let gitLocked: Double = 0.6
     }
 
     // MARK: - Motion
@@ -883,10 +912,63 @@ enum Theme {
         @MainActor static var pickerHeadTransition: AnyTransition {
             reduceMotion ? rise(dy: 0, in: reduced, out: reduced) : contentTransition(rise: true)
         }
-        // Git confirm and commit form: the diff pane's content drops away and the question,
-        // the hint and Cancel (or the form) rise in (`paneSwapTransition`); the header's sync
-        // pill stays put and pops once (`PopIn`). The change runs on the picker pill's spring.
-        @MainActor static var pushConfirm: Animation { pickerPill }
+        // Git stage (Direction F): the stage swaps between the diff, the commit form and the
+        // confirm, its content dropping away and the next rising in (`paneSwapTransition`),
+        // while the thing pressed travels there (`matchedGeometryEffect`): the dock's summary
+        // box from the rail's foot to the top of the form, the sync pill from the header to
+        // the confirm. Swap and travel run together on the picker pill's spring.
+        @MainActor static var stageSwap: Animation { pickerPill }
+        /// The dock's field travelling into the stage and back: the same spring as every
+        /// stage swap, so the box and the content it replaces arrive together.
+        @MainActor static var dockTravel: Animation { stageSwap }
+        /// The form's parts after the summary box: the description at 120 ms, the co-author
+        /// and bottom rows 40 ms later (`index` 1); out with the pane swap's drop.
+        @MainActor static func stageRise(_ index: Int) -> AnyTransition {
+            if reduceMotion { return rise(dy: 0, in: reduced, out: reduced) }
+            return .asymmetric(
+                insertion: AnyTransition.opacity.combined(with: .offset(y: contentRise)).animation(rowIn(index)),
+                removal: AnyTransition.opacity.combined(with: .offset(y: pickerPaneDrop)).animation(contentOut)
+            )
+        }
+        /// A rail row leaving (a commit took it) or coming back (an undo): its 20 pt height
+        /// to 0 and a fade on the picker pill's spring, 40 ms apart, capped at 8; leaving top
+        /// down (`outIndex`), coming back bottom up (`inIndex`).
+        @MainActor static func railRowCollapse(outIndex: Int, inIndex: Int) -> AnyTransition {
+            let collapsed = AnyTransition.modifier(active: RowCollapse(fraction: 0), identity: RowCollapse(fraction: 1))
+            if reduceMotion { return collapsed.animation(reduced) }
+            func staggered(_ index: Int) -> Animation {
+                pickerPill.delay(rowStagger * Double(min(index, rowStaggerCap)))
+            }
+            return .asymmetric(insertion: collapsed.animation(staggered(inIndex)), removal: collapsed.animation(staggered(outIndex)))
+        }
+        /// The rows closing the gap a leaving row left.
+        @MainActor static var railRows: Animation { pickerPill }
+        /// ⌘B: the rail springs between its width and the checkbox column; names and cells fade.
+        @MainActor static var railFold: Animation { pickerPill }
+        static let railFadeDuration: Double = 0.08
+        @MainActor static var railFade: Animation { reduceMotion ? reduced : .easeOut(duration: railFadeDuration) }
+        /// A checkbox ticking: the check draws itself as a stroke.
+        static let checkStrokeDuration: Double = 0.09
+        @MainActor static var checkStroke: Animation { reduceMotion ? reduced : .easeOut(duration: checkStrokeDuration) }
+        /// Unticking: the box's fill shrinks to `Size.gitUntickScale` and fades.
+        static let checkUntickDuration: Double = 0.08
+        @MainActor static var checkUntick: Animation { reduceMotion ? reduced : .easeIn(duration: checkUntickDuration) }
+        /// The row's name and cells dimming or coming back as its box changes.
+        static let checkDimDuration: Double = 0.12
+        static var checkDim: Animation { .easeInOut(duration: checkDimDuration) }
+        /// The header's box ticks every row, this far apart top down, capped at `rowStaggerCap`.
+        static let checkStagger: Double = 0.02
+        /// How long a header tick keeps the rows staggered.
+        static let checkStaggerWindow: Double = 0.3
+        /// One horizontal shake (a failed sync's pill, an invalid co-author): ±3 pt, two
+        /// half-cycles of 60 ms. Reduce Motion: none.
+        static let pillShakeDistance: CGFloat = 3
+        static let pillShakeHalf: Double = 0.06
+        static var pillShake: Animation { .easeInOut(duration: pillShakeHalf) }
+        /// A count changing (the rail header's, the sync pill's): the digits roll
+        /// (`.numericText()`) and the pill pops (`PopIn`'s curve, without its delay).
+        @MainActor static var countPop: Animation { reduceMotion ? reduced : .spring(response: pickerPillResponse, dampingFraction: pickerPillDamping) }
+        static var countPopRise: Animation { .easeOut(duration: actionPopDuration * actionPopRiseShare) }
         /// The rows' block: nothing coming in (each row rises on its own), a fade going out.
         @MainActor static var pickerRowsTransition: AnyTransition {
             .asymmetric(insertion: .identity, removal: AnyTransition.opacity.animation(reduceMotion ? reduced : contentOut))
@@ -1006,8 +1088,9 @@ enum Theme {
         /// Children beyond this index rise in together, so a big folder never trickles in.
         static let maxStaggeredChildren: Int = 12
         static let maxStatusAgents: Int = 3
-        /// The Git tool: commits under "Recent commits", untracked files diffed, bytes read per command.
-        static let gitRecentCommits: Int = 5
+        /// The Git tool: commits read per snapshot (only the newest is used: undo and the dock's
+        /// receipt need its sha and whether it is pushed), untracked files diffed, bytes read per command.
+        static let gitRecentCommits: Int = 1
         static let gitUntrackedDiffs: Int = 20
         static let gitOutputBytes: Int = 2_000_000
         /// The branch picker lists this many local branches, newest commit first (and every
@@ -1023,6 +1106,11 @@ enum Theme {
         static let gitUndoSubject: Int = 40
         /// A commit hook's line in "A commit hook said no · …" keeps this many characters.
         static let gitHookLine: Int = 80
+        /// Co-author suggestions: the "recent" row shows this many, from this many distinct
+        /// names found in the trailers of the last `gitCoauthorLog` commits.
+        static let gitCoauthorSuggestions: Int = 6
+        static let gitCoauthorHistory: Int = 12
+        static let gitCoauthorLog: Int = 100
         /// The Git footer adds "⇥ next tool" only while it has at most this many hints.
         static let gitFooterHints: Int = 5
         /// Word highlights skip a line pair with more tokens than this on either side.
@@ -1096,9 +1184,8 @@ enum Theme {
         // The Git tool (the strip's own icons are drawn: ToolShapes in Glyphs.swift).
         /// Before "worktree seadevil" on a branch picker row.
         static let gitWorktree = "macwindow"
-        /// Inside the commit checkboxes: all in, or some in.
-        static let gitCheck = done
-        static let gitMixed = "minus"
+        /// The dock's field, before the summary or its prompt.
+        static let gitPen = "pencil"
     }
 
     // MARK: - Key labels for keycaps
@@ -1137,6 +1224,8 @@ enum Theme {
         static let toggle = space
         /// Git: commit from the description.
         static let commandEnter = "⌘⏎"
+        /// Git: the commit form's co-author pill (a label, no key).
+        static let coauthor = "@"
         /// Git: the branch picker.
         static let worktree = "W"
         /// Git: the picker's repository dropdown.
@@ -1167,6 +1256,8 @@ enum Theme {
         static let bullet = "\u{2022}"
         /// After a Changes file row's name when a Bash command changed the file.
         static let shellTag = "shell"
+        /// Removes a Git co-author chip.
+        static let remove = "\u{00D7}"
     }
 
     // MARK: - Drawn glyphs

@@ -206,8 +206,17 @@ struct CardView: View {
                 return hints
             }
             if state.gitDraft.composing {
-                let submit = state.gitDraft.focus == .description ? Theme.Keys.commandEnter : Theme.Keys.enter
-                return [KeyHint(submit, "commit")]
+                switch state.gitDraft.focus {
+                case .description?:
+                    return [KeyHint(Theme.Keys.commandEnter, "commit"), KeyHint(Theme.Keys.tab, "next field")]
+                case .coauthor?:
+                    return [KeyHint(Theme.Keys.enter, "add"), KeyHint(Theme.Keys.delete, "remove"), KeyHint(Theme.Keys.commandEnter, "commit")]
+                case .summary?, nil:
+                    return [KeyHint(Theme.Keys.enter, "commit"), KeyHint(Theme.Keys.commandEnter, "commit"), KeyHint(Theme.Keys.tab, "description")]
+                }
+            }
+            if case .confirming(let op) = state.gitPhase {
+                return [KeyHint(Theme.Keys.enter, op.verb.lowercased())]
             }
             var hints = [KeyHint(Theme.Keys.up + Theme.Keys.down, "file")]
             if state.focusedGit?.checkedOut == true, !state.gitRows.isEmpty {
@@ -216,7 +225,7 @@ struct CardView: View {
             }
             if state.gitCanUndo { hints.append(KeyHint(Theme.Keys.undo, "undo")) }
             hints.append(KeyHint(Theme.Keys.worktree, "branch"))
-            hints.append(KeyHint(Theme.Keys.toggleTree, "list"))
+            hints.append(KeyHint(Theme.Keys.toggleTree, "rail"))
             hints.append(KeyHint(Theme.Keys.push, state.gitSyncVerb.lowercased()))
             // Past six the row would crowd the meter; ⇥ is taught by every other tool.
             if hints.count <= Theme.Limits.gitFooterHints { hints.append(KeyHint(Theme.Keys.tab, "next tool")) }

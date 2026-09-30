@@ -1,38 +1,38 @@
 // GitTab.swift
-// The Git tool. A header row: the target pill ("notchcode › seadevil ▾  W", the repository
-// dim, the worktree in ink), the branch (mono), where it stands against its upstream
-// ("not published yet", "up to date with origin", "2 behind", "no remote"), and the sync
-// pill with its P keycap, GitHub Desktop's order: "Publish 4" without an upstream, "Pull 2"
-// when behind, "Push 3" when ahead, else a dark "Fetch" (the tool also fetches quietly when
-// it opens, at most every five minutes).
-// P or the pill asks in the right pane for a publish, push or pull: the diff or the clean
-// note drops away and the question rises in with "⏎ or Push again" and Cancel (esc), while
-// the header's pill stays put, pops once and shows ⏎; the pill or ⏎ runs it, esc cancels.
-// A fetch runs at once. While git runs the header pill pulses; the result shows in the
-// header's status.
+// The Git tool, Direction F (Dock and Stage): three fixed regions, header, rail and stage,
+// where nothing appears from nowhere; the thing pressed travels to where the next step is.
 //
-// Below, the Files tool's split: on the left "Uncommitted · 4", its tri-state box and the
-// Commit pill (C), one row per changed file (a checkbox, all in by default, space toggles
-// the cursor's; name, the five ± cells, the counts), then "Recent commits", the last five,
-// the ones not on the remote tagged, the newest with Undo (U) when it is not pushed; on the
-// right the reviewer diff of the selected file, or the commit form (summary, description,
-// "Commit 3 files to main"; ⏎ or ⌘⏎ commits the checked files, esc backs out with the draft
-// kept until the card closes). A click or ↑↓ selects
-// and shows the diff at once, the first file by default; ⌘B hides the list (the Files
-// tree's switch). The diff keeps both line-number columns, scrolls both ways (lines never
-// wrap), tints the words that changed inside paired −/+ lines, and has a 6 pt minimap of
-// the whole file pinned to its right edge. Its header stays on top: name, M/A/D, counts.
-// With nothing to commit the split stays: the list keeps its headers and recent commits,
-// and the right pane shows a green check with "Nothing to commit · up to date".
+// The header row: the target pill ("notchcode › seadevil ▾  W", the repository dim, the
+// worktree in ink), the branch (mono), the status ("not published yet", "up to date with
+// origin", "2 behind", "no remote"), which is also the one place every result lands
+// ("Committed 3 files", "Pushed 3 commits", git's error in red), and the sync pill with its P
+// keycap, GitHub Desktop's order: "Publish 4", "Pull 2", "Push 3", else a dark "Fetch" (the
+// tool also fetches quietly when it opens, at most every five minutes).
+//
+// The rail (left, the Files tree's share): "Uncommitted · 4" (or "3 of 4") with a tri-state
+// box and the checked files' totals, one row per changed file (a checkbox, all in by
+// default, space toggles the cursor's; name, the five ± cells, the counts), the cursor's fill
+// gliding between rows, and at its foot the dock: the commit's summary field, always there.
+// No commit list: the sync pill's count is the unpushed count. ⌘B folds the rail to its
+// checkbox column. A branch checked out nowhere shows "Changes vs main · 6": no boxes, no dock.
+//
+// The stage (right): a header (the ⌘B pill, then the file, "Commit to main", or nothing for a
+// confirm) over one of the reviewer diff, the commit form, the confirm, or the clean note,
+// which trade places with a drop and a rise. C or a click on the dock sends the dock's field
+// up into the stage, where it becomes the form's summary, the description and the
+// co-authors rise under it, and the dock stays behind as an outline; esc sends it back with
+// the text kept. A commit sends it back as a receipt, "Committed · <subject>" with Undo (U),
+// which stays until the commit is pushed; the committed rows fold away. P sends the sync pill
+// from the header into the stage as the confirm's button ("Push 3 ⏎"), an outline standing
+// in for it; ⏎ or the pill runs it and the pill goes home pulsing. A fetch runs in place.
 //
 // W (or the pill) replaces the content with the branch picker: the repository pill
 // ("notchcode ▾", R opens the dropdown of repositories), its folder, then one row per local
 // branch, newest commit first: the branch in mono, where it lives under it, "session" and
 // "current" tags, the counts on the right. Past eight branches a filter field shows (/).
-// A branch checked out nowhere opens a read-only page: "not checked out · 4 commits ahead
-// of main", "Changes vs main", the commits main..branch, and Push. The target pill stays put
-// and morphs into the repository pill, the branch, status and Push slide right and fade, the
-// panes drop away, and the rows unfold top down; closing is a plain fade and the reverse.
+// The target pill stays put and morphs into the repository pill, the branch, status and
+// sync pill slide right and fade, the panes drop away, and the rows unfold top down; closing
+// is a plain fade and the reverse.
 
 import SwiftUI
 
@@ -41,7 +41,16 @@ struct GitTab: View {
     @ObservedObject var state: AppState
     /// The target pill and the repository pill share one frame across the swap.
     @Namespace private var pillSpace
+    /// The rail's cursor fill glides from row to row.
+    @Namespace private var railSpace
+    /// What travels between regions: the dock's summary box, the sync pill.
+    @Namespace private var stageSpace
     static let pillID = "gitPill"
+    static let cursorID = "gitRowCursor"
+    static let summaryID = "gitSummary"
+    static let syncPillID = "gitSyncPill"
+    /// The header's box ticked every row: for a moment the rows tick one after another.
+    @State private var bulkTick = false
 
     /// The content and the picker both stay in the tree; only their parts come and go, so
     /// each part's transition fires (a child's transition does not when its parent is inserted).
@@ -56,7 +65,9 @@ struct GitTab: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .animation(Theme.Motion.pickerSwap, value: open)
-            .animation(Theme.Motion.pushConfirm, value: state.gitPhase)
+            .animation(Theme.Motion.stageSwap, value: state.gitPhase)
+            .animation(Theme.Motion.dockTravel, value: state.gitDraft.composing)
+            .animation(Theme.Motion.dockTravel, value: state.gitReceipt)
         }
     }
 
@@ -77,7 +88,7 @@ struct GitTab: View {
 
     private func content(_ snap: GitSnapshot, open: Bool) -> some View {
         VStack(alignment: .leading, spacing: Theme.Size.spaceS) {
-            GitHeader(state: state, snap: snap, open: open, pillSpace: pillSpace)
+            GitHeader(state: state, snap: snap, open: open, pillSpace: pillSpace, stageSpace: stageSpace)
             if !open {
                 panes(snap)
                     .transition(Theme.Motion.pickerPanesTransition)
@@ -85,7 +96,7 @@ struct GitTab: View {
         }
     }
 
-    /// The right pane's line when there is no file to show, after the green check.
+    /// The stage's line when there is no file to show, after the green check.
     static func emptyText(_ snap: GitSnapshot) -> String {
         if !snap.checkedOut {
             return snap.base.map { "Nothing ahead of " + $0 } ?? "Nothing to compare"
@@ -94,85 +105,92 @@ struct GitTab: View {
         return upToDate ? "Nothing to commit" + Theme.Glyphs.separator + "up to date" : "Nothing to commit"
     }
 
-    /// The Files tool's split: the list at `fileTreeShare` of the width (hidden with ⌘B, the
-    /// same switch as the Files tree), a hairline, the selected file's diff.
+    /// Rail, hairline, stage. The rail takes `fileTreeShare` of the width, or folded (⌘B, the
+    /// Files tree's switch) its checkbox column: its content keeps its width and is clipped,
+    /// so the boxes stay put while the width springs and everything else fades.
     private func panes(_ snap: GitSnapshot) -> some View {
         GeometryReader { geo in
-            let listWidth = (geo.size.width * Theme.Size.fileTreeShare).rounded(.down)
-            let collapsed = state.gitListCollapsed
+            let railWidth = (geo.size.width * Theme.Size.fileTreeShare).rounded(.down)
+            let folded = state.gitListCollapsed
             HStack(alignment: .top, spacing: 0) {
-                list(snap)
-                    .frame(width: listWidth)
-                    .padding(.trailing, Theme.Size.filesColumnGap)
-                    .frame(width: collapsed ? 0 : listWidth + Theme.Size.filesColumnGap, alignment: .trailing)
+                rail(snap, folded: folded)
+                    .frame(width: railWidth)
+                    .frame(width: folded ? Theme.Size.gitRailFolded : railWidth, alignment: .leading)
                     .clipped()
-                    .opacity(collapsed ? 0 : 1)
-                    .allowsHitTesting(!collapsed)
+                    .padding(.trailing, Theme.Size.filesColumnGap)
 
                 Rectangle()
                     .fill(Theme.Colors.paneDivider)
-                    .frame(width: collapsed ? 0 : Theme.Size.hairline)
-                    .padding(.trailing, collapsed ? 0 : Theme.Size.filesColumnGap)
+                    .frame(width: Theme.Size.hairline)
+                    .padding(.trailing, Theme.Size.filesColumnGap)
 
-                GitDiffPane(state: state, snap: snap)
+                GitDiffPane(state: state, snap: snap, stageSpace: stageSpace)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .parallaxGroup()
             }
             .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
+            .animation(Theme.Motion.railFold, value: folded)
         }
     }
 
-    /// "Uncommitted" (a branch page: "Changes vs main"): one row per file, a click or ↑↓
-    /// selects it; then "Recent commits" (a branch page: "main..design/toolbar").
-    private func list(_ snap: GitSnapshot) -> some View {
+    /// The rail header, the rows (they scroll), and the dock pinned to the foot (checkouts only).
+    private func rail(_ snap: GitSnapshot, folded: Bool) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Size.spaceXS) {
+            GitRailHeader(state: state, snap: snap, folded: folded) { toggleAll() }
+            rows(snap, folded: folded)
+            if snap.checkedOut {
+                GitDock(state: state, snap: snap, stageSpace: stageSpace)
+                    .padding(.top, Theme.Size.spaceS)
+                    .opacity(folded ? 0 : 1)
+                    .allowsHitTesting(!folded)
+                    .animation(Theme.Motion.railFade, value: folded)
+            }
+        }
+    }
+
+    /// The header's box: every row ticks, 20 ms apart top down, for a moment.
+    private func toggleAll() {
+        bulkTick = true
+        state.toggleAllGitFiles()
+        DispatchQueue.main.asyncAfter(deadline: .now() + Theme.Motion.checkStaggerWindow) { bulkTick = false }
+    }
+
+    /// One row per file. A plain VStack, not a lazy one: rows leave (a commit) and come back
+    /// (an undo) with staggered height transitions, which a lazy stack does not run reliably.
+    private func rows(_ snap: GitSnapshot, folded: Bool) -> some View {
         let rows = state.gitRows
         let selected = state.gitCursorRowKey
-        let base = snap.base ?? ""
+        let unchecked = state.gitDraft.unchecked
         return ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: false) {
-                LazyVStack(alignment: .leading, spacing: Theme.Size.spaceXS) {
-                    if snap.checkedOut && !rows.isEmpty {
-                        GitUncommittedHeader(state: state, total: rows.count)
-                    } else {
-                        GitSectionHeader(
-                            title: snap.checkedOut ? "Uncommitted" : "Changes vs " + base,
-                            count: rows.isEmpty ? nil : Format.files(rows.count)
-                        )
-                    }
+                VStack(alignment: .leading, spacing: Theme.Size.spaceXS) {
                     if rows.isEmpty {
                         Text(snap.checkedOut ? "No changed files" : "No changes")
                             .font(Theme.Fonts.caption)
                             .foregroundStyle(Theme.Colors.inkTertiary)
-                            .padding(.horizontal, Theme.Size.rowHPadding)
+                            .padding(.horizontal, Theme.Size.treeRowHPadding)
+                            .opacity(folded ? 0 : 1)
                     }
-                    let unchecked = state.gitDraft.unchecked
-                    ForEach(rows) { item in
+                    ForEach(Array(rows.enumerated()), id: \.element.key) { index, item in
                         GitFileRow(
                             file: item.file,
                             isSelected: item.key == selected,
                             checked: snap.checkedOut ? !unchecked.contains(item.file.path) : nil,
+                            folded: folded,
+                            tickDelay: bulkTick ? Theme.Motion.checkStagger * Double(min(index, Theme.Motion.rowStaggerCap)) : 0,
+                            railSpace: railSpace,
                             onToggle: { state.toggleGitFile(path: item.file.path) },
                             onSelect: { state.selectGitRow(key: item.key) }
                         )
                         .id(item.key)
-                    }
-                    if !snap.commits.isEmpty {
-                        GitSectionHeader(
-                            title: snap.checkedOut ? "Recent commits" : base + ".." + (snap.branch ?? ""),
-                            count: snap.checkedOut ? nil : AppState.commits(snap.baseAhead)
-                        )
-                        .padding(.top, Theme.Size.gitSectionTopPadding)
-                        let canUndo = state.gitCanUndo
-                        ForEach(snap.commits) { commit in
-                            GitCommitRow(
-                                commit: commit,
-                                undo: canUndo && commit.id == snap.commits.first?.id ? { state.runGitUndo() } : nil
-                            )
-                        }
+                        .transition(Theme.Motion.railRowCollapse(outIndex: index, inIndex: rows.count - 1 - index))
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .animation(Theme.Motion.railRows, value: rows.map(\.key))
+                .animation(Theme.Motion.pickerPill, value: selected)
             }
+            .frame(maxHeight: .infinity, alignment: .top)
             .onChange(of: state.rowCursor) { _, _ in
                 guard let key = state.gitCursorRowKey else { return }
                 withAnimation(Theme.Motion.tap) { proxy.scrollTo(key) }
@@ -181,24 +199,84 @@ struct GitTab: View {
     }
 }
 
+/// "☑ Uncommitted · 4 ········ +38 −6": the box puts every file in or takes every one out (a
+/// dash when some are in), the count reads "3 of 4" when some are left out and rolls as it
+/// changes, the totals are the checked files'. A branch page: "Changes vs main · 6", no box,
+/// no totals. Folded, only the box stays.
+@MainActor
+private struct GitRailHeader: View {
+    @ObservedObject var state: AppState
+    let snap: GitSnapshot
+    let folded: Bool
+    let onToggleAll: () -> Void
+
+    var body: some View {
+        let total = state.gitRows.count
+        let checkedFiles = state.gitCheckedFiles
+        let checked = checkedFiles.count
+        let boxed = snap.checkedOut && total > 0
+        let value: GitCheckbox.Value = checked == total ? .all : checked == 0 ? .none : .mixed
+        let title = snap.checkedOut ? "Uncommitted" : "Changes vs " + (snap.base ?? "base")
+        let count = total == 0 ? nil : !snap.checkedOut || checked == total ? "\(total)" : "\(checked) of \(total)"
+        HStack(spacing: Theme.Size.gitCheckboxGap) {
+            if boxed {
+                GitCheckbox(value: value, action: onToggleAll)
+                    .help(value == .all ? "Leave every file out" : "Put every file in")
+            }
+            HStack(spacing: Theme.Size.spaceM) {
+                HStack(spacing: 0) {
+                    Text(title + (count == nil ? "" : Theme.Glyphs.separator))
+                    if let count {
+                        Text(count)
+                            .contentTransition(.numericText())
+                            .countPop(count)
+                    }
+                }
+                .font(Theme.Fonts.groupHeader)
+                .foregroundStyle(Theme.Colors.gitSection)
+                .lineLimit(1)
+                .animation(Theme.Motion.countPop, value: count)
+                Spacer(minLength: Theme.Size.spaceS)
+                if boxed && checked > 0 {
+                    Text("+\(checkedFiles.reduce(0) { $0 + $1.added }) " + Theme.Glyphs.minus + "\(checkedFiles.reduce(0) { $0 + $1.removed })")
+                        .font(Theme.Fonts.tiny)
+                        .foregroundStyle(Theme.Colors.gitRailTotals)
+                        .lineLimit(1)
+                        .fixedSize()
+                        .contentTransition(.numericText())
+                        .animation(Theme.Motion.countPop, value: checked)
+                }
+            }
+            .opacity(folded ? 0 : 1)
+            .animation(Theme.Motion.railFade, value: folded)
+        }
+        .padding(.horizontal, Theme.Size.treeRowHPadding)
+        .frame(height: Theme.Size.gitRailHeaderHeight)
+    }
+}
+
 /// "☑ GitPanel.swift     ▮▮▮▮▮ +12 −3": the box that puts the file in the commit (a
-/// checkout only), the file's name (full path on hover; dim when left out), the five cells
-/// that say whether it is mostly additions or removals, then the counts. A click on the box
-/// toggles it without moving the cursor; anywhere else selects the row. The selected row
-/// carries the Files tool's opened fill.
+/// checkout only), the file's name (full path on hover; dim when left out, its cells too),
+/// the five cells, then the counts. A click on the box toggles it without moving the cursor;
+/// anywhere else selects the row. The cursor's fill is one shape that glides between rows.
+/// Folded, only the box (and the fill under it) shows.
 @MainActor
 private struct GitFileRow: View {
     let file: FileChange
     let isSelected: Bool
     /// Nil on a branch page: nothing is committed there.
     let checked: Bool?
+    let folded: Bool
+    /// The header's box ticks the rows one after another.
+    let tickDelay: Double
+    let railSpace: Namespace.ID
     let onToggle: () -> Void
     let onSelect: () -> Void
 
     var body: some View {
         HStack(spacing: Theme.Size.gitCheckboxGap) {
             if let checked {
-                GitCheckbox(state: checked ? .all : .none, action: onToggle)
+                GitCheckbox(value: checked ? .all : .none, delay: tickDelay, action: onToggle)
                     .help(checked ? "In the commit (\(Theme.Keys.toggle) leaves it out)" : "Left out of the commit (\(Theme.Keys.toggle) puts it in)")
             }
             Button(action: onSelect) {
@@ -210,41 +288,62 @@ private struct GitFileRow: View {
                         DiffCounts(added: file.added, removed: file.removed)
                     }
                     .fixedSize()
+                    .opacity(checked == false ? Theme.Opacity.gitUncheckedCells : 1)
                 }
                 .frame(maxHeight: .infinity)
                 .contentShape(Rectangle())
+                .animation(Theme.Motion.checkDim, value: checked)
             }
             .buttonStyle(.plain)
+            .opacity(folded ? 0 : 1)
+            .allowsHitTesting(!folded)
+            .animation(Theme.Motion.railFade, value: folded)
         }
         .padding(.horizontal, Theme.Size.treeRowHPadding)
         .frame(height: Theme.Size.treeRowHeight)
-        .background(
-            RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
-                .fill(isSelected ? Theme.Colors.treeOpened : Color.clear)
-        )
+        .background {
+            if isSelected {
+                RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+                    .fill(Theme.Colors.treeOpened)
+                    .matchedGeometryEffect(id: GitTab.cursorID, in: railSpace)
+            }
+        }
     }
 }
 
-/// A commit checkbox: empty with a tertiary edge, or white with a dark check (all in) or a
-/// dash (some in, the section header's).
+/// A commit checkbox: empty with a tertiary edge, or white with a dark check drawn as a
+/// stroke (all in) or a dash (some in, the header's). Unticking shrinks the fill as it fades.
 @MainActor
 struct GitCheckbox: View {
     enum Value { case all, none, mixed }
-    let state: Value
+    let value: Value
+    /// Waits this long before ticking (the header's staggered tick).
+    var delay: Double = 0
     let action: () -> Void
 
     var body: some View {
+        let on = value != .none
+        let shape = RoundedRectangle(cornerRadius: Theme.Radius.gitCheckbox, style: .continuous)
         Button(action: action) {
             ZStack {
-                RoundedRectangle(cornerRadius: Theme.Radius.gitCheckbox, style: .continuous)
-                    .fill(state == .none ? Color.clear : Theme.Colors.gitCheckFill)
-                RoundedRectangle(cornerRadius: Theme.Radius.gitCheckbox, style: .continuous)
-                    .strokeBorder(state == .none ? Theme.Colors.gitCheckStroke : Color.clear, lineWidth: Theme.Size.gitCheckboxStroke)
-                if state != .none {
-                    Image(systemName: state == .all ? Theme.Symbols.gitCheck : Theme.Symbols.gitMixed)
-                        .font(Theme.Fonts.symbol(Theme.Size.gitCheckMark))
-                        .foregroundStyle(Theme.Colors.gitCheckMark)
-                }
+                shape
+                    .strokeBorder(Theme.Colors.gitCheckStroke, lineWidth: Theme.Size.gitCheckboxStroke)
+                    .opacity(on ? 0 : 1)
+                shape
+                    .fill(Theme.Colors.gitCheckFill)
+                    .scaleEffect(on ? 1 : Theme.Size.gitUntickScale)
+                    .opacity(on ? 1 : 0)
+                    .animation((on ? Theme.Motion.checkStroke : Theme.Motion.checkUntick).delay(delay), value: on)
+                CheckShape()
+                    .trim(from: 0, to: value == .all ? 1 : 0)
+                    .stroke(Theme.Colors.gitCheckMark, style: StrokeStyle(lineWidth: Theme.Size.gitCheckLine, lineCap: .round, lineJoin: .round))
+                    .frame(width: Theme.Size.gitCheckMark, height: Theme.Size.gitCheckMark)
+                    .opacity(value == .all ? 1 : 0)
+                    .animation(Theme.Motion.checkStroke.delay(delay), value: value)
+                Capsule(style: .continuous)
+                    .fill(Theme.Colors.gitCheckMark)
+                    .frame(width: Theme.Size.gitCheckDash, height: Theme.Size.gitCheckLine)
+                    .opacity(value == .mixed ? 1 : 0)
             }
             .frame(width: Theme.Size.gitCheckbox, height: Theme.Size.gitCheckbox)
             .contentShape(Rectangle())
@@ -253,103 +352,94 @@ struct GitCheckbox: View {
     }
 }
 
-/// "☑ UNCOMMITTED · 4                [Commit  C]": the box puts every file in or takes every
-/// one out (a dash when some are in), the title counts "3 of 4" when some are left out, and
-/// the pill opens the commit form, white while anything is checked.
+/// The dock at the rail's foot, one 26 pt box in three looks. The field: a pen, the draft's
+/// summary (or its prompt), C; a press sends it up into the stage as the form's summary. The
+/// outline it leaves while the form is up. The receipt after a card commit, while that commit
+/// is the newest and unpushed: a check, "Committed · <subject>", Undo (U). The field and the
+/// receipt share the summary box's travel id, so whichever is here is what travels.
 @MainActor
-private struct GitUncommittedHeader: View {
+private struct GitDock: View {
     @ObservedObject var state: AppState
-    let total: Int
+    let snap: GitSnapshot
+    let stageSpace: Namespace.ID
 
     var body: some View {
-        let checked = state.gitCheckedFiles.count
-        let value: GitCheckbox.Value = checked == total ? .all : checked == 0 ? .none : .mixed
-        let count = checked == total ? "\(total)" : "\(checked) of \(total)"
-        HStack(spacing: Theme.Size.gitCheckboxGap) {
-            GitCheckbox(state: value) { state.toggleAllGitFiles() }
-                .help(value == .all ? "Leave every file out" : "Put every file in")
-            Text("Uncommitted" + Theme.Glyphs.separator + count)
-                .font(Theme.Fonts.groupHeader)
-                .foregroundStyle(Theme.Colors.gitSection)
-                .lineLimit(1)
-            Spacer(minLength: Theme.Size.spaceM)
-            ActionSegment(title: "Commit", key: Theme.Keys.commit, role: checked == 0 ? .neutral : .allow) {
-                state.openGitCommitForm()
+        let draft = state.gitDraft
+        let receipt = state.gitReceipt
+        ZStack {
+            if draft.composing {
+                RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+                    .strokeBorder(Theme.Colors.gitGhost, lineWidth: Theme.Size.hairline)
+                    .transition(.opacity)
+            } else if let receipt {
+                receiptBox(receipt)
+                    .matchedGeometryEffect(id: GitTab.summaryID, in: stageSpace)
+                    .transition(.opacity)
+            } else {
+                field(draft)
+                    .matchedGeometryEffect(id: GitTab.summaryID, in: stageSpace)
+                    .transition(.opacity)
             }
-            .help("Write the commit message (\(Theme.Keys.commit))")
         }
-        .padding(.horizontal, Theme.Size.treeRowHPadding)
-        .padding(.top, Theme.Size.groupHeaderTopPadding)
+        .frame(maxWidth: .infinity)
+        .frame(height: Theme.Size.gitDockHeight)
     }
-}
 
-/// "UNCOMMITTED  4 files", a list section's caption.
-@MainActor
-private struct GitSectionHeader: View {
-    let title: String
-    let count: String?
-
-    var body: some View {
-        HStack(spacing: Theme.Size.spaceM) {
-            Text(title)
-                .font(Theme.Fonts.groupHeader)
-                .foregroundStyle(Theme.Colors.gitSection)
-                .lineLimit(1)
-                .truncationMode(.middle)
-            if let count {
-                Text(count)
+    private func field(_ draft: GitDraft) -> some View {
+        let enabled = !snap.files.isEmpty
+        let typed = draft.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = !enabled ? "Nothing to commit" : typed.isEmpty ? state.gitSummaryPlaceholder : typed
+        return Button { state.openGitCommitForm() } label: {
+            HStack(spacing: Theme.Size.spaceS) {
+                Image(systemName: Theme.Symbols.gitPen)
+                    .font(Theme.Fonts.symbol(Theme.Fonts.tinySize))
+                    .foregroundStyle(Theme.Colors.gitRailTotals)
+                Text(text)
                     .font(Theme.Fonts.caption)
-                    .foregroundStyle(Theme.Colors.groupHeaderCount)
-                    .fixedSize()
+                    .foregroundStyle(enabled && !typed.isEmpty ? Theme.Colors.ink : Theme.Colors.filterPlaceholder)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: Theme.Size.spaceS)
+                if enabled { InlineKeycap(Theme.Keys.commit) }
             }
+            .padding(.horizontal, Theme.Size.gitFieldHPadding)
+            .frame(maxWidth: .infinity)
+            .frame(height: Theme.Size.gitDockHeight)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+                    .fill(Theme.Colors.filterFill)
+            )
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, Theme.Size.rowHPadding)
-        .padding(.top, Theme.Size.groupHeaderTopPadding)
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : Theme.Opacity.disabled)
+        .help(enabled ? "Write the commit message (\(Theme.Keys.commit))" : "Nothing to commit")
     }
-}
 
-/// "a1b2c3d  Fix the toolbar   not pushed   [Undo  U]   2h ago"; Undo only on the newest
-/// commit, when it is not pushed and has a parent.
-@MainActor
-private struct GitCommitRow: View {
-    let commit: GitCommit
-    var undo: (() -> Void)? = nil
-
-    var body: some View {
-        HStack(spacing: Theme.Size.spaceM) {
-            Text(commit.sha)
-                .font(Theme.Fonts.monoCaption)
-                .foregroundStyle(Theme.Colors.gitSha)
-                .frame(width: Theme.Size.gitShaWidth, alignment: .leading)
-            Text(commit.subject)
+    private func receiptBox(_ receipt: GitReceipt) -> some View {
+        let canUndo = state.gitCanUndo
+        return HStack(spacing: Theme.Size.spaceS) {
+            DoneCheckGlyph(size: Theme.Size.gitPushingGlyph)
+            Text("Committed" + Theme.Glyphs.separator + receipt.subject)
                 .font(Theme.Fonts.caption)
-                .foregroundStyle(Theme.Colors.gitSubject)
+                .foregroundStyle(Theme.Colors.inkSecondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .help(commit.subject)
-            if !commit.pushed {
-                Text("not pushed")
-                    .font(Theme.Fonts.tiny)
-                    .foregroundStyle(Theme.Colors.gitTagText)
-                    .padding(.horizontal, Theme.Size.badgeHPadding)
-                    .frame(height: Theme.Size.badgeHeight)
-                    .background(
-                        RoundedRectangle(cornerRadius: Theme.Radius.keycap, style: .continuous)
-                            .fill(Theme.Colors.gitTagFill)
-                    )
-                    .fixedSize()
-            }
-            Spacer(minLength: Theme.Size.spaceM)
-            if let undo {
-                ActionSegment(title: "Undo", key: Theme.Keys.undo, role: .neutral, action: undo)
-                    .help("Undo this commit: its changes come back to the list and its message to the form")
-            }
-            Text(AppState.gitAgo(commit.date))
-                .font(Theme.Fonts.caption)
-                .foregroundStyle(Theme.Colors.gitTime)
-                .fixedSize()
+                .help(receipt.sha + "  " + receipt.subject)
+            Spacer(minLength: Theme.Size.spaceS)
+            ActionSegment(title: "Undo", key: Theme.Keys.undo, role: .neutral) { state.runGitUndo() }
+                .disabled(!canUndo)
+                .opacity(canUndo ? 1 : Theme.Opacity.disabled)
+                .help("Undo this commit: its changes come back to the rail and its message to the form")
         }
-        .padding(.horizontal, Theme.Size.rowHPadding)
-        .padding(.vertical, Theme.Size.rowVPadding)
+        .padding(.leading, Theme.Size.gitFieldHPadding)
+        .padding(.trailing, Theme.Size.gitDockPillInset)
+        .frame(maxWidth: .infinity)
+        .frame(height: Theme.Size.gitDockHeight)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+                .fill(Theme.Colors.gitReceiptFill)
+        )
     }
 }
