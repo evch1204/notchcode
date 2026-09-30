@@ -1,6 +1,6 @@
 // MotionModifiers.swift
 // Motion shared by the surfaces: pane parallax, rise-in, fade-in, the wings' unfold, the Git rail's row
-// collapse, a shake, a count's pop and a ring burst. Curves come from Theme.
+// collapse, a shake and a count's pop. Curves come from Theme.
 
 import SwiftUI
 
@@ -180,87 +180,9 @@ struct CountPop<T: Equatable>: ViewModifier {
     }
 }
 
-/// One ring burst whenever `trigger` changes to a value (nil never fires): the view's
-/// rounded outline, stroked `Theme.Size.gitRingStroke`, grows from just outside the view's frame
-/// (`gitRingStartGap`) to `gitRingScaleX` × `gitRingScaleY` of it (ease-out) while it fades
-/// linearly from `gitRingStartOpacity`, over `gitRingDuration`; visible from the first frame. `reverse` runs it back in: from the full scale to the frame,
-/// 0 → `gitRingReversePeak` → 0, over `gitRingReverseDuration`, ease-in-out. An overlay, so layout never
-/// moves; the stroke stays its width as the ring grows, and it grows from the frame's top-right
-/// corner leftward and downward so the well's edges never clip it. Reduce Motion: none.
-struct RingBurst<T: Equatable>: ViewModifier {
-    let trigger: T?
-    let color: Color
-    var reverse = false
-    /// When the running burst began; nil when there is none.
-    @State private var start: Date?
-
-    private var duration: Double { reverse ? Theme.Motion.gitRingReverseDuration : Theme.Motion.gitRingDuration }
-
-    func body(content: Content) -> some View {
-        content
-            .overlay {
-                if let start {
-                    // Driven by the clock rather than an animated value, so the phase change
-                    // that fires it (and its own animations) cannot cut it short.
-                    TimelineView(.animation) { context in
-                        let t = min(1, max(0, context.date.timeIntervalSince(start) / duration))
-                        RingFrame(time: t, progress: CGFloat(reverse ? Self.easeInOut(t) : Self.easeOut(t)), reverse: reverse, color: color)
-                    }
-                    .allowsHitTesting(false)
-                    .transition(.identity)
-                }
-            }
-            .onChange(of: trigger) { _, value in
-                guard value != nil, !Theme.Motion.reduceMotion else { return }
-                let now = Date()
-                start = now
-                DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
-                    // A later shot owns the ring now.
-                    if start == now { start = nil }
-                }
-            }
-    }
-
-    private static func easeOut(_ t: Double) -> Double { 1 - (1 - t) * (1 - t) * (1 - t) }
-    private static func easeInOut(_ t: Double) -> Double { t < 0.5 ? 4 * t * t * t : 1 - pow(-2 * t + 2, 3) / 2 }
-}
-
-/// The ring at `time` (0 → 1, linear: its fade) and `progress` (eased: its growth) of its burst.
-private struct RingFrame: View {
-    let time: Double
-    let progress: CGFloat
-    let reverse: Bool
-    let color: Color
-
-    var body: some View {
-        // How far out the ring is: 0 on the frame, 1 at the full scale.
-        let out = reverse ? 1 - progress : progress
-        let opacity = reverse
-            ? Theme.Motion.gitRingReversePeak * sin(Double(progress) * .pi)
-            : Theme.Motion.gitRingStartOpacity * (1 - time)
-        GeometryReader { geo in
-            // The ring keeps the frame's top-right corner and grows leftward and downward
-            // only: the sync pill sits against the well's top and trailing edges, which would
-            // clip anything growing that way. It starts `gitRingStartGap` outside on those two
-            // sides, so it shows from the first frame even over a white pill mid-pop.
-            let gap = Theme.Size.gitRingStartGap
-            let dx = gap + geo.size.width * (Theme.Motion.gitRingScaleX - 1) * out
-            let dy = gap + geo.size.height * (Theme.Motion.gitRingScaleY - 1) * out
-            RoundedRectangle(cornerRadius: Theme.Radius.segment, style: .continuous)
-                .stroke(color, lineWidth: Theme.Size.gitRingStroke)
-                .frame(width: geo.size.width + dx, height: geo.size.height + dy)
-                .offset(x: -dx, y: 0)
-                .opacity(opacity)
-        }
-    }
-}
-
 extension View {
     func shake<T: Equatable>(trigger: T?) -> some View { modifier(Shake(trigger: trigger)) }
     func countPop<T: Equatable>(_ value: T?) -> some View { modifier(CountPop(value: value)) }
-    func ringBurst<T: Equatable>(trigger: T?, color: Color, reverse: Bool = false) -> some View {
-        modifier(RingBurst(trigger: trigger, color: color, reverse: reverse))
-    }
     func fadeIn() -> some View { modifier(FadeIn()) }
     func riseIn(_ index: Int, cap: Int = .max) -> some View { modifier(RiseIn(index: index, cap: cap)) }
     func parallaxGroup() -> some View { modifier(ParallaxGroup()) }

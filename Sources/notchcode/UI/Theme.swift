@@ -247,10 +247,6 @@ enum Theme {
         static let gitCoauthorChipFill = quietFill
         static let gitCoauthorChipText = inkSecondary
         static let gitSuggestionRing = inkSecondary
-        /// The sync pill's ring burst as it arms (P) and as esc pulls it back in.
-        static let gitArmRing = ink.opacity(0.5)
-        /// The sync pill's ring burst as a publish, push or pull lands.
-        static let gitDoneRing = green.opacity(0.6)
 
         /// A session's permission mode, as a word in its Sessions row and the open card's status
         /// line: bypass in clay (the dangerous one), plan in blue, the rest tertiary.
@@ -372,11 +368,6 @@ enum Theme {
         /// The Git tool: the header row (branch, status, the sync pill).
         static let gitHeaderHeight: CGFloat = 26
         static let gitPushingGlyph: CGFloat = 10
-        /// The sync pill's ring burst: its stroke, which stays this thick as the ring grows.
-        static let gitRingStroke: CGFloat = 1.5
-        /// The ring starts this far outside the pill, so its first frame clears the pill's
-        /// fill (which is overshooting in its pop at that moment).
-        static let gitRingStartGap: CGFloat = 2
         /// The rail: its header row ("Uncommitted · 4"), and its width folded (⌘B), the
         /// checkbox column only.
         static let gitRailHeaderHeight: CGFloat = treeRowHeight
@@ -1008,61 +999,6 @@ enum Theme {
         /// (`.numericText()`) and the pill pops (`PopIn`'s curve, without its delay).
         @MainActor static var countPop: Animation { reduceMotion ? reduced : .spring(response: pickerPillResponse, dampingFraction: pickerPillDamping) }
         @MainActor static var countPopRise: Animation { reduceMotion ? reduced : .easeOut(duration: actionPopDuration * actionPopRiseShare) }
-        // The header's sync pill, in place (its frame never changes; scale effects only).
-        // Arm: `PopIn`'s pop, the keycap flipping P → ⏎ and a ring burst. Waiting: it breathes.
-        // Run: a compress, the white fill draining to the quiet fill, the label sliding.
-        // Done: the check and a green ring. Cancel: the keycap flips back, the ring runs in
-        // reverse. Reduce Motion: none of it, a 0.2 s crossfade.
-        /// A keycap's label flipping like a clock digit: out 0° → −90° (ease-in), then in
-        /// from +90° (ease-out), each this long, around the x axis.
-        static let keycapFlipDuration: Double = 0.14
-        static let keycapFlipAngle: Double = 90
-        static let keycapFlipPerspective: CGFloat = 0.6
-        /// The ring burst on arm: the pill's outline growing to `gitRingScaleX` × `gitRingScaleY`
-        /// of the pill from its top-right corner (leftward and downward: the well's edges sit
-        /// right above and right of the pill), with an ease-out while it fades linearly from
-        /// `gitRingStartOpacity` to 0. The done ring runs the same in green.
-        static let gitRingDuration: Double = 0.38
-        static let gitRingScaleX: CGFloat = 1.2
-        static let gitRingScaleY: CGFloat = 1.6
-        static let gitRingStartOpacity: Double = 0.7
-        /// Esc on the confirm: the ring in reverse, from the full scale back to the pill, its
-        /// opacity 0 → `gitRingReversePeak` → 0.
-        static let gitRingReverseDuration: Double = 0.24
-        static let gitRingReversePeak: Double = 0.5
-        /// Waiting on the confirm: 1 ↔ `gitBreathScale`, `gitBreathPeriod` each way (a sine,
-        /// ease-in-out), from the moment the arm's pop ends.
-        static let gitBreathScale: CGFloat = 1.03
-        static let gitBreathPeriod: Double = 1.4
-        /// The breath easing back to 1 when the phase moves on.
-        static let gitBreathSettleDuration: Double = 0.12
-        @MainActor static var gitBreathSettle: Animation { .easeOut(duration: gitBreathSettleDuration) }
-        /// ⏎ runs it: the pill presses to `gitRunCompressScale` and springs back (`pickerPill`).
-        static let gitRunCompressScale: CGFloat = 0.96
-        static let gitRunCompressDuration: Double = 0.08
-        static var gitRunCompress: Animation { .easeOut(duration: gitRunCompressDuration) }
-        /// The white fill draining to the quiet fill as the sync runs (and back after the hold).
-        static let gitFillDrainDuration: Double = 0.2
-        @MainActor static var gitFillDrain: Animation { reduceMotion ? reduced : .easeInOut(duration: gitFillDrainDuration) }
-        /// The label on run: "Push 3" slides `gitLabelShift` left and fades in
-        /// `gitLabelOutDuration`; "Pushing" slides in from `gitLabelShift` right in
-        /// `gitLabelInDuration` after `gitLabelInDelay`.
-        static let gitLabelShift: CGFloat = 6
-        static let gitLabelOutDuration: Double = 0.12
-        static let gitLabelInDuration: Double = 0.16
-        static let gitLabelInDelay: Double = 0.06
-        /// The label leaving on run (left) and the running title arriving (from the right).
-        @MainActor static var gitLabelOut: AnyTransition {
-            if reduceMotion { return AnyTransition.opacity.animation(reduced) }
-            return AnyTransition.opacity.combined(with: .offset(x: -gitLabelShift)).animation(.easeOut(duration: gitLabelOutDuration))
-        }
-        @MainActor static var gitLabelIn: AnyTransition {
-            if reduceMotion { return AnyTransition.opacity.animation(reduced) }
-            return AnyTransition.opacity.combined(with: .offset(x: gitLabelShift))
-                .animation(.easeOut(duration: gitLabelInDuration).delay(gitLabelInDelay))
-        }
-        /// Any other part of the pill coming or going: a plain crossfade.
-        @MainActor static var gitPillFade: AnyTransition { AnyTransition.opacity.animation(reduceMotion ? reduced : .easeInOut(duration: gitFillDrainDuration)) }
         /// The rows' block: nothing coming in (each row rises on its own), a fade going out.
         @MainActor static var pickerRowsTransition: AnyTransition {
             .asymmetric(insertion: .identity, removal: AnyTransition.opacity.animation(reduceMotion ? reduced : contentOut))
