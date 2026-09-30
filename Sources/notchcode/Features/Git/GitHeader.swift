@@ -1,16 +1,15 @@
 // GitHeader.swift
 // The Git tool's header row: the target pill, the branch, the status line (where it stands
 // against its upstream, and where every result lands), and the sync pill (Publish, Pull,
-// Push or Fetch; pulsing while git writes), which travels into the stage for its confirm.
+// Push or Fetch; pulsing while git writes), which stays put and arms with ⏎ for its confirm.
 
 import SwiftUI
 
 // MARK: - Header
 
 /// "notchcode › seadevil ▾ W   user-friendly-distribution-plan   [Push 3  P]", or a write's
-/// result in the status's place. While a sync is asked the pill is away in the stage, armed
-/// with ⏎ under the question, and an outline holds its place; while any write runs the pill
-/// is home, pulsing. A branch checked out nowhere:
+/// result in the status's place. While a sync is asked the pill stays here armed with ⏎ (the
+/// question is in the stage); while any write runs it pulses. A branch checked out nowhere:
 /// "notchcode › design/toolbar ▾ W   not checked out · 4 commits ahead of main".
 @MainActor
 struct GitHeader: View {
@@ -20,10 +19,6 @@ struct GitHeader: View {
     /// slid out to the right. The row keeps its height.
     let open: Bool
     let pillSpace: Namespace.ID
-    /// The sync pill travels to the stage's confirm in this space.
-    let stageSpace: Namespace.ID
-    /// The pill's width, for the outline that holds its place while it is away.
-    @State private var pillWidth: CGFloat = 0
 
     var body: some View {
         HStack(spacing: Theme.Size.spaceM) {
@@ -104,12 +99,11 @@ struct GitHeader: View {
     }
 
     /// The sync pill: "Push 3  P", "Pull 2  P", "Publish 4  P" in white, "Fetch  P" dark;
-    /// away in the stage while a publish, push or pull is asked (an outline of its size stays
-    /// here); pulsing while any write runs; a check and "Pushed" while a sync's result holds,
-    /// so it cannot ask again for the commits just sent. After a commit or an undo the plain
-    /// pill stays. Each look carries the travel id, so the one here is the one that travels;
-    /// the running and done looks crossfade in place; the plain pill travels (`travelTransition`), so only one copy shows. Its count pops as it moves; a
-    /// failed sync shakes it once.
+    /// while a publish, push or pull is asked it stays here, pops once and its keycap reads ⏎
+    /// (one place to press: it or ⏎ runs the sync); pulsing while any write runs; a check and
+    /// "Pushed" while a sync's result holds, so it cannot ask again for the commits just sent.
+    /// After a commit or an undo the plain pill stays. The looks overlap so each swap is a
+    /// crossfade in place. Its count pops when it changes; a failed sync shakes it once.
     private func pill(_ phase: GitPhase) -> some View {
         let op = state.gitSyncOp
         let verb = state.gitSyncVerb
@@ -127,18 +121,16 @@ struct GitHeader: View {
         return ZStack(alignment: .trailing) {
             if let running {
                 GitRunningPill(title: running.runningTitle)
-                    .matchedGeometryEffect(id: GitTab.syncPillID, in: stageSpace)
                     .transition(.opacity)
             }
             if let done {
                 GitDonePill(title: done.doneTitle)
-                    .matchedGeometryEffect(id: GitTab.syncPillID, in: stageSpace)
                     .transition(.opacity)
             }
             if confirming {
-                RoundedRectangle(cornerRadius: Theme.Radius.segment, style: .continuous)
-                    .strokeBorder(Theme.Colors.gitGhost, style: StrokeStyle(lineWidth: Theme.Size.gitGhostStroke, dash: Theme.Size.gitGhostDash))
-                    .frame(width: pillWidth, height: Theme.Size.actionHeight)
+                ActionSegment(title: phase.op?.verb ?? verb, key: Theme.Keys.enter, role: .allow, count: state.gitSyncCount) { state.pressGitPill() }
+                    .help(state.gitConfirmText)
+                    .popIn()
                     .transition(.opacity)
             }
             if running == nil && done == nil && !confirming {
@@ -146,10 +138,8 @@ struct GitHeader: View {
                     .disabled(!enabled)
                     .opacity(enabled ? 1 : Theme.Opacity.disabled)
                     .help(enabled ? help(op) : state.gitStatusText)
-                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pillWidth = $0 }
                     .countPop(state.gitSyncCount)
-                    .matchedGeometryEffect(id: GitTab.syncPillID, in: stageSpace)
-                    .transition(Theme.Motion.travelTransition)
+                    .transition(.opacity)
             }
         }
         .shake(trigger: syncFailure(phase))

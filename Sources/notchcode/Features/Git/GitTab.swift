@@ -20,11 +20,11 @@
 // confirm) over one of the reviewer diff, the commit form, the confirm, or the clean note,
 // which trade places with a drop and a rise. C or a click on the dock sends the dock's field
 // up into the stage, where it becomes the form's summary, the description and the
-// co-authors rise under it, and the dock stays behind as an outline; esc sends it back with
+// co-authors rise under it, and the dock's slot stays empty; esc sends it back with
 // the text kept. A commit sends it back as a receipt, "Committed · <subject>" with Undo (U),
-// which stays until the commit is pushed; the committed rows fold away. P sends the sync pill
-// from the header into the stage as the confirm's button ("Push 3 ⏎"), an outline standing
-// in for it; ⏎ or the pill runs it and the pill goes home pulsing. A fetch runs in place.
+// which stays until the commit is pushed; the committed rows fold away. P arms the sync pill
+// where it is (it pops, its keycap turns ⏎) and the stage asks the question with "⏎ or Push
+// again" and Cancel; ⏎ or the pill runs it and the pill pulses. A fetch runs in place.
 //
 // W (or the pill) replaces the content with the branch picker: the repository pill
 // ("notchcode ▾", R opens the dropdown of repositories), its folder, then one row per local
@@ -43,12 +43,11 @@ struct GitTab: View {
     @Namespace private var pillSpace
     /// The rail's cursor fill glides from row to row.
     @Namespace private var railSpace
-    /// What travels between regions: the dock's summary box, the sync pill.
+    /// What travels between regions: the dock's summary box.
     @Namespace private var stageSpace
     static let pillID = "gitPill"
     static let cursorID = "gitRowCursor"
     static let summaryID = "gitSummary"
-    static let syncPillID = "gitSyncPill"
     /// The header's box ticked every row: for a moment the rows tick one after another.
     @State private var bulkTick = false
 
@@ -88,9 +87,7 @@ struct GitTab: View {
 
     private func content(_ snap: GitSnapshot, open: Bool) -> some View {
         VStack(alignment: .leading, spacing: Theme.Size.spaceS) {
-            // Over the panes, so the sync pill coming home from the confirm draws on top.
-            GitHeader(state: state, snap: snap, open: open, pillSpace: pillSpace, stageSpace: stageSpace)
-                .zIndex(state.gitPhase.isConfirming ? 0 : 1)
+            GitHeader(state: state, snap: snap, open: open, pillSpace: pillSpace)
             if !open {
                 panes(snap)
                     .transition(Theme.Motion.pickerPanesTransition)
@@ -374,8 +371,8 @@ struct GitCheckbox: View {
 }
 
 /// The dock at the rail's foot, one 26 pt box in three looks. The field: a pen, the draft's
-/// summary (or its prompt), C; a press sends it up into the stage as the form's summary. The
-/// outline it leaves while the form is up. The receipt after a card commit, while that commit
+/// summary (or its prompt), C; a press sends it up into the stage as the form's summary.
+/// Nothing while the form is up (the slot keeps its height). The receipt after a card commit, while that commit
 /// is the newest and unpushed: a check, "Committed · <subject>", Undo (U). The field and the
 /// receipt share the summary box's travel id, so whichever is here is what travels.
 @MainActor
@@ -393,13 +390,8 @@ private struct GitDock: View {
         let receipt = state.gitReceipt
         ZStack {
             if draft.composing {
-                // Shows once the box has gone, not under it.
-                RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
-                    .strokeBorder(Theme.Colors.gitGhost, style: StrokeStyle(lineWidth: Theme.Size.gitGhostStroke, dash: Theme.Size.gitGhostDash))
-                    .transition(.asymmetric(
-                        insertion: .opacity.animation(Theme.Motion.railFade.delay(Theme.Motion.contentFadeDelay)),
-                        removal: .opacity.animation(Theme.Motion.railFade)
-                    ))
+                // The box is away in the stage: the slot stays empty.
+                Color.clear
             } else if let receipt {
                 receiptBox(receipt)
                     .matchedGeometryEffect(id: GitTab.summaryID, in: stageSpace)

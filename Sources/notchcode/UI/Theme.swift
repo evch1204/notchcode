@@ -237,8 +237,6 @@ enum Theme {
         static let gitCheckFill = ink
         static let gitCheckMark = keycapTextOnLight
         static let gitUnchecked = inkTertiary
-        /// Where a travelling pill or the dock's field left from: an empty outline.
-        static let gitGhost = ink.opacity(0.22)
         /// The ring on the commit form's focused field.
         static let gitFieldFocusRing = ink.opacity(0.24)
         /// The dock after a commit: "Committed · …" with Undo, quiet (it is not a field).
@@ -423,9 +421,6 @@ enum Theme {
         static let gitFieldVPadding: CGFloat = 6
         static let gitDescriptionMinHeight: CGFloat = 60
         static let gitDescriptionTextInset: CGFloat = 5
-        /// The dashed outline a travelling box or pill leaves behind.
-        static let gitGhostStroke: CGFloat = 1
-        static let gitGhostDash: [CGFloat] = [3, 3]
         /// The commit form's focus ring.
         static let gitFieldFocusStroke: CGFloat = 1
         static let cardFooterHeight: CGFloat = 20
@@ -921,14 +916,14 @@ enum Theme {
         }
         // Git stage (Direction F): the stage swaps between the diff, the commit form and the
         // confirm, its content dropping away and the next rising in (`paneSwapTransition`),
-        // while the thing pressed travels there (`matchedGeometryEffect`): the dock's summary
-        // box from the rail's foot to the top of the form, the sync pill from the header to
-        // the confirm. Swap and travel run together on the picker pill's spring.
+        // while the dock's summary box travels from the rail's foot to the top of the form
+        // (`matchedGeometryEffect`). The sync pill stays in the header for the confirm. Swap
+        // and travel run together on the picker pill's spring.
         @MainActor static var stageSwap: Animation { pickerPill }
         /// The dock's field travelling into the stage and back: the same spring as every
         /// stage swap, so the box and the content it replaces arrive together.
         @MainActor static var dockTravel: Animation { stageSwap }
-        /// What travels (the dock's box, the sync pill), both ends: the arriving copy is
+        /// What travels (the dock's box), both ends: the arriving copy is
         /// whole from the first frame, the departing one gone within `travelDepartShare` of
         /// the spring (about 50 ms), so one box glides. Never `.identity`: that removes the
         /// departing copy at once and the box jumps.
@@ -939,8 +934,8 @@ enum Theme {
                 removal: .modifier(active: TravelFade(progress: 0, share: travelDepartShare), identity: TravelFade(progress: 1, share: travelDepartShare))
             )
         }
-        /// P: the question rises in once the diff has dropped away, Cancel after it, while the
-        /// pill is still travelling (it lands at about 0.32 s).
+        /// P: the question rises in once the diff has dropped away, the "⏎ or Push again" hint
+        /// and Cancel after it, while the header's pill pops in place.
         static let confirmQuestionDelay: Double = 0.12
         static let confirmCancelDelay: Double = 0.18
         @MainActor static func confirmRise(delay: Double) -> AnyTransition {

@@ -3,8 +3,8 @@
 // the file, "Commit to main", or nothing for a confirm) over one of four things in one
 // rectangle: the selected file's reviewer diff, the clean note, the commit form (the dock's
 // summary box arrives from the rail and the description, co-authors and bottom row rise under
-// it), or the confirm of a publish, push or pull (the header's sync pill arrives as its
-// button). They trade places with a drop and a rise, never a slide.
+// it), or the confirm of a publish, push or pull (the question, "⏎ or Push again" and Cancel;
+// the sync pill stays in the header). They trade places with a drop and a rise, never a slide.
 
 import AppKit
 import Carbon
@@ -18,7 +18,7 @@ import SwiftUI
 struct GitDiffPane: View {
     @ObservedObject var state: AppState
     let snap: GitSnapshot
-    /// The dock's summary box and the sync pill travel here.
+    /// The dock's summary box travels here.
     let stageSpace: Namespace.ID
     /// The diff row at the top of the pane, and how many rows the pane shows.
     @State private var topRow = 0
@@ -47,7 +47,7 @@ struct GitDiffPane: View {
                     .transition(Theme.Motion.paneSwapTransition)
                 }
                 GitCommitForm(state: state, shown: composing, stageSpace: stageSpace)
-                GitConfirm(state: state, phase: phase, stageSpace: stageSpace)
+                GitConfirm(state: state, phase: phase)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
@@ -137,15 +137,14 @@ private struct GitCleanNote: View {
 
 /// The confirm in the stage, its centre at 40 % of the height: "Push 3 commits to
 /// origin/seadevil?", "Publish seadevil to origin?" or "Pull 2 commits from origin/main?",
-/// then the sync pill itself, arrived from the header and armed ("Push 3 ⏎"), then Cancel
-/// (esc). Stays in the tree with nothing in it outside the confirm, so its parts transition.
-/// While git runs the question becomes "Pushing to origin/seadevil…" and the pill has gone
-/// home pulsing. A fetch, a commit and an undo never show it.
+/// then "⏎ or Push again", then Cancel (esc). The pill itself stays in the header, armed with
+/// ⏎. Stays in the tree with nothing in it outside the confirm, so its parts transition.
+/// While git runs the question becomes "Pushing to origin/seadevil…" and the hint and Cancel
+/// drop out. A fetch, a commit and an undo never show it.
 @MainActor
 private struct GitConfirm: View {
     @ObservedObject var state: AppState
     let phase: GitPhase
-    let stageSpace: Namespace.ID
 
     /// The confirm has the stage: a publish, push or pull is asked or running.
     static func shows(_ phase: GitPhase) -> Bool {
@@ -177,12 +176,14 @@ private struct GitConfirm: View {
                     .transition(Theme.Motion.confirmRise(delay: Theme.Motion.confirmQuestionDelay))
                 }
                 if confirming, let op = phase.op {
-                    ActionSegment(title: op.verb, key: Theme.Keys.enter, role: .allow, count: state.gitSyncCount) {
-                        state.pressGitPill()
+                    HStack(spacing: Theme.Size.spaceS) {
+                        Keycap(Theme.Keys.enter)
+                        Text("or " + op.verb + " again")
+                            .font(Theme.Fonts.caption)
+                            .foregroundStyle(Theme.Colors.inkTertiary)
                     }
-                    .help(state.gitConfirmText)
-                    .matchedGeometryEffect(id: GitTab.syncPillID, in: stageSpace)
-                    .transition(Theme.Motion.travelTransition)
+                    .fixedSize()
+                    .transition(Theme.Motion.confirmRise(delay: Theme.Motion.confirmCancelDelay))
                     ActionSegment(title: "Cancel", key: Theme.Keys.escape, role: .neutral) {
                         state.cancelGitConfirm()
                     }
