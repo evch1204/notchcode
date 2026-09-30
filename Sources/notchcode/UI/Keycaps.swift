@@ -17,9 +17,68 @@ struct Keycap: View {
 
     var body: some View {
         Text(label)
-            .font(Theme.Fonts.keycap)
+            .keycapLabel(onLight: onLight)
+            .keycapBox(onLight: onLight)
+    }
+}
+
+/// A keycap whose label flips like a clock digit when it changes (the sync pill's P → ⏎ and
+/// back): the old label turns away around the x axis (0° → −90°, ease-in), then the new one
+/// turns in from +90° (ease-out), `Theme.Motion.keycapFlipDuration` each, while the box stays
+/// put. Reduce Motion: a crossfade. Everywhere else uses the plain `Keycap`.
+@MainActor
+struct KeycapFlip: View {
+    let label: String
+    var onLight = false
+
+    init(_ label: String, onLight: Bool = false) {
+        self.label = label
+        self.onLight = onLight
+    }
+
+    var body: some View {
+        ZStack {
+            Text(label)
+                .keycapLabel(onLight: onLight)
+                .id(label)
+                .transition(Self.flip)
+        }
+        .keycapBox(onLight: onLight)
+    }
+
+    /// Out to −90° and in from +90°, one after the other.
+    @MainActor static var flip: AnyTransition {
+        if Theme.Motion.reduceMotion { return AnyTransition.opacity.animation(Theme.Motion.reduced) }
+        let duration = Theme.Motion.keycapFlipDuration
+        let angle = Theme.Motion.keycapFlipAngle
+        return .asymmetric(
+            insertion: AnyTransition.modifier(active: FlipTurn(degrees: angle), identity: FlipTurn(degrees: 0))
+                .animation(.easeOut(duration: duration).delay(duration)),
+            removal: AnyTransition.modifier(active: FlipTurn(degrees: -angle), identity: FlipTurn(degrees: 0))
+                .animation(.easeIn(duration: duration))
+        )
+    }
+}
+
+/// A label turned around the x axis; edge-on (±90°) it is gone.
+private struct FlipTurn: ViewModifier {
+    let degrees: Double
+
+    func body(content: Content) -> some View {
+        content
+            .rotation3DEffect(.degrees(degrees), axis: (1, 0, 0), anchor: .center, perspective: Theme.Motion.keycapFlipPerspective)
+            .opacity(abs(degrees) >= Theme.Motion.keycapFlipAngle ? 0 : 1)
+    }
+}
+
+private extension View {
+    func keycapLabel(onLight: Bool) -> some View {
+        font(Theme.Fonts.keycap)
             .foregroundStyle(onLight ? Theme.Colors.keycapTextOnLight : Theme.Colors.inkSecondary)
-            .padding(.horizontal, Theme.Size.keycapHPadding)
+    }
+
+    func keycapBox(onLight: Bool) -> some View {
+        padding(.horizontal, Theme.Size.keycapHPadding)
             .frame(minWidth: Theme.Size.keycapMin, minHeight: Theme.Size.keycapMin)
             .background(
                 RoundedRectangle(cornerRadius: Theme.Radius.keycap, style: .continuous)

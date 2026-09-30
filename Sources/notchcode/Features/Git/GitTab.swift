@@ -88,6 +88,8 @@ struct GitTab: View {
     private func content(_ snap: GitSnapshot, open: Bool) -> some View {
         VStack(alignment: .leading, spacing: Theme.Size.spaceS) {
             GitHeader(state: state, snap: snap, open: open, pillSpace: pillSpace)
+                // The sync pill's ring bursts draw over the stage, not under it.
+                .zIndex(1)
             if !open {
                 panes(snap)
                     .transition(Theme.Motion.pickerPanesTransition)
