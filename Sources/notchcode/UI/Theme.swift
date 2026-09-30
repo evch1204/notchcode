@@ -171,6 +171,22 @@ enum Theme {
         /// The selected file row in Changes and Files (keyboard cursor).
         static let rowCursor = ink.opacity(0.06)
 
+        // Changes tool (Direction G, Timeline).
+        /// The spine down the timeline's left edge.
+        static let changesSpine = hairline
+        /// A turn with files: a filled node on the spine.
+        static let changesNode = ink
+        /// The live turn's node and its breathing halo.
+        static let changesNodeLive = clay
+        static let changesHalo = clay.opacity(0.25)
+        /// A quiet turn's tick, and the three stacked ticks of a quiet group.
+        static let changesTick = inkTertiary
+        /// A file chip; the selected one, and the hovered one, a step brighter.
+        static let changesChipFill = filterFill
+        static let changesChipSelected = quietFill
+        /// The keyboard cursor's ring around a chip.
+        static let changesChipRing = inkSecondary
+
         // Files tab.
         /// The file whose preview is showing.
         static let treeOpened = quietFill
@@ -582,7 +598,7 @@ enum Theme {
         static let diffCellWidth: CGFloat = 4
         static let diffCellHeight: CGFloat = 7
         static let diffCellSpacing: CGFloat = 1
-        /// Every list row (Sessions, Changes turns and files, request rows) pads by these.
+        /// Every list row (Sessions, request rows) pads by these.
         static let rowVPadding: CGFloat = 6
         static let rowHPadding: CGFloat = 8
 
@@ -590,11 +606,50 @@ enum Theme {
         static let laneIndent: CGFloat = 22
         static let laneVPadding: CGFloat = 3
         static let laneLineWidth: CGFloat = 1
-        /// Chevron plus its gap, so lane clocks line up with the row clock. Changes indents a
-        /// turn's files by it, so their chevrons sit under the turn's title.
+        /// Chevron plus its gap, so lane clocks line up with the row clock.
         static let chevronColumn: CGFloat = 14
         /// The teleport chevron's hit area height on a session row.
         static let chevronHitHeight: CGFloat = 34
+
+        // Changes tool (Direction G, Timeline). Inside the well (576 × 334): the header row,
+        // then the body; the timeline column takes the full width, or `changesColumnWidth`
+        // beside the diff pane (gap, hairline, gap, the pane).
+        /// The header row: the session's totals and the With edits pill.
+        static let changesHeaderHeight: CGFloat = 26
+        /// The spine's x inside the column; titles start at `changesTitleInset`.
+        static let changesSpineX: CGFloat = 10
+        static let changesTitleInset: CGFloat = 26
+        /// A turn's node, the live node's halo, a quiet turn's tick (6 × 1).
+        static let changesNode: CGFloat = 8
+        static let changesHalo: CGFloat = 14
+        static let changesTickWidth: CGFloat = 6
+        static let changesTickHeight: CGFloat = 1
+        /// The quiet group's three ticks, this far apart.
+        static let changesTickGap: CGFloat = 3
+        /// One timeline row: an entry's first line, a quiet row, a chip.
+        static let changesRowHeight: CGFloat = 20
+        /// Between entries, and between an entry's title and its chips.
+        static let changesEntryGap: CGFloat = 12
+        static let changesTitleGap: CGFloat = 4
+        /// A file chip: 20 pt tall, 6 pt inside, 4 pt apart (both ways), the name at most 120 pt.
+        static let changesChipHeight: CGFloat = 20
+        static let changesChipHPadding: CGFloat = 6
+        static let changesChipGap: CGFloat = 4
+        static let changesChipMaxWidth: CGFloat = 120
+        /// The fade that ends a cut title or prompt instead of an ellipsis.
+        static let changesFadeWidth: CGFloat = 24
+        /// The timeline column beside the diff pane, and the pane.
+        static let changesColumnWidth: CGFloat = 236
+        static let changesPaneWidth: CGFloat = 320
+        /// Past this column width an entry shows its duration and a quiet group its
+        /// "questions and decisions" tail.
+        static let changesWideColumn: CGFloat = 300
+        /// The live node's halo breathes out to this scale.
+        static let changesHaloScale: CGFloat = 1.5
+        /// The keyboard cursor's ring around a chip.
+        static let changesRing: CGFloat = 1
+        /// An entry's title sits this far down its 20 pt first row (13 pt body in 16 pt lines).
+        static let changesTitleVPadding: CGFloat = 2
 
         // Settings page inside the card.
         static let settingsRowHeight: CGFloat = 28
@@ -1024,6 +1079,47 @@ enum Theme {
         /// Rows leaving and joining as the filter changes.
         @MainActor static var filterRows: Animation { reduceMotion ? reduced : .easeOut(duration: disclosureDuration) }
         static let chevronOpenDegrees: Double = 90
+        // Changes tool (Direction G, Timeline).
+        /// The live node's halo: scale 1 → `Size.changesHaloScale`, opacity to 0, 1.6 s,
+        /// repeating. Reduce Motion: nil, a static halo.
+        static let changesBreathDuration: Double = 1.6
+        @MainActor static var changesBreath: Animation? {
+            reduceMotion ? nil : .easeInOut(duration: changesBreathDuration).repeatForever(autoreverses: false)
+        }
+        /// The column's width (the pane opening, esc, ⌘B), entries sliding to make room or
+        /// close a gap, the cursor ring gliding between chips: the picker pill's spring.
+        @MainActor static var changesLayout: Animation { pickerPill }
+        /// A timeline row (an entry, a quiet group, an unfolded quiet turn) coming or going:
+        /// in with the content rise, out with the pane swap's drop, `index` × 40 ms apart
+        /// (capped at 8). Reduce Motion: a crossfade.
+        @MainActor static func changesRowTransition(_ index: Int) -> AnyTransition {
+            if reduceMotion { return rise(dy: 0, in: reduced, out: reduced) }
+            let stagger = rowStagger * Double(min(index, rowStaggerCap))
+            return .asymmetric(
+                insertion: AnyTransition.opacity.combined(with: .offset(y: contentRise))
+                    .animation(.easeOut(duration: contentFadeDuration).delay(stagger)),
+                removal: AnyTransition.opacity.combined(with: .offset(y: pickerPaneDrop))
+                    .animation(contentOut.delay(stagger))
+            )
+        }
+        /// A chip landing in a turn: from `actionPopStart` and transparent, on the count pop's spring.
+        @MainActor static var changesChipTransition: AnyTransition {
+            if reduceMotion { return AnyTransition.opacity.animation(reduced) }
+            return AnyTransition.scale(scale: actionPopStart).combined(with: .opacity).animation(countPop)
+        }
+        /// The diff pane: its header rises at `contentFadeDelay`, the diff one `rowStagger`
+        /// later (`RiseIn` 0 and 1); esc drops it 6 pt and fades it in 0.08 s.
+        @MainActor static var changesPaneTransition: AnyTransition {
+            if reduceMotion { return AnyTransition.opacity.animation(reduced) }
+            return .asymmetric(
+                insertion: .identity,
+                removal: AnyTransition.opacity.combined(with: .offset(y: pickerPaneDrop)).animation(contentOut)
+            )
+        }
+        /// A chip's hover fill, and the cursor turning from a chip's ring to a row's fill.
+        static let changesHoverDuration: Double = 0.12
+        @MainActor static var changesHover: Animation { reduceMotion ? reduced : .easeOut(duration: changesHoverDuration) }
+
         /// ⌘B: the tree folds away or comes back with the same spring as a same-state resize.
         @MainActor static var treeCollapse: Animation { panelRetarget }
         static let ringStartDegrees: Double = -90
@@ -1096,6 +1192,8 @@ enum Theme {
         static let gitAutoFetchInterval: Double = 300
         /// After a timed-out git is sent SIGTERM, this long before SIGKILL.
         static let gitKillGrace: Double = 2
+        /// Shell changes kept on disk per session (they survive a relaunch) are dropped after this long unused.
+        static let shellChangesKeep: Double = 7 * 24 * 3600
     }
 
     // MARK: - Limits (counts)
@@ -1145,6 +1243,8 @@ enum Theme {
         static let gitFooterHints: Int = 5
         /// Word highlights skip a line pair with more tokens than this on either side.
         static let wordDiffMaxTokens: Int = 200
+        /// The Changes pane counts a file's lines on disk (for the minimap) up to this size.
+        static let changesLineCountBytes: Int = 4 * 1024 * 1024
     }
 
     // MARK: - Fonts (SF Pro and SF Mono through .system, tabular numerals)

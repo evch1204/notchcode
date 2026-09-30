@@ -62,7 +62,8 @@ extension AppState {
         case .postTool:
             handlePostTool(payload, sessionId: sid)
             if payload["tool_name"]?.stringValue == "Bash" {
-                handleShellTree(envelope.tree, sessionId: sid, cwd: envelope.resolvedCWD)
+                handleShellTree(envelope.tree, sessionId: sid, cwd: envelope.resolvedCWD,
+                                agentId: payload["agent_id"]?.stringValue)
                 gitTreeReported(cwd: envelope.resolvedCWD)
             }
             // Turns include subagent edits; the transcript may be the only record of them.

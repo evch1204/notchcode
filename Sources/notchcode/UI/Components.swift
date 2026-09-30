@@ -195,17 +195,63 @@ struct DeadlineCountdown: View {
     }
 }
 
-/// Elapsed "mm:ss" since a date in tertiary, ticking once a second.
+/// Elapsed "mm:ss" since a date in tertiary (or `color`), ticking once a second.
 @MainActor
 struct ElapsedText: View {
     let since: Date
+    var color: Color = Theme.Colors.inkTertiary
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: Theme.Timing.clockTick)) { context in
             Text(Format.clock(context.date.timeIntervalSince(since)))
                 .font(Theme.Fonts.caption)
-                .foregroundStyle(Theme.Colors.inkTertiary)
+                .foregroundStyle(color)
                 .fixedSize()
+        }
+    }
+}
+
+/// Text cut after `lines` lines with a fade over the end of the last one instead of an
+/// ellipsis, so a cut line reads as cut, not ended. Text that fits shows whole, no fade.
+@MainActor
+struct FadeText: View {
+    let text: String
+    let font: Font
+    let color: Color
+    var lines = 1
+    @State private var lineHeight: CGFloat = 0
+    @State private var fullHeight: CGFloat = 0
+
+    var body: some View {
+        let cap = lineHeight * CGFloat(lines)
+        let cut = lineHeight > 0 && fullHeight > cap + 1
+        Text(text)
+            .font(font)
+            .foregroundStyle(color)
+            .fixedSize(horizontal: false, vertical: true)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { fullHeight = $0 }
+            .frame(maxWidth: .infinity, maxHeight: cut ? cap : nil, alignment: .topLeading)
+            .clipped()
+            .mask { if cut { fade(cap: cap) } else { Rectangle() } }
+            .background(alignment: .topLeading) {
+                // One line of the same font, measured: the cut falls on a line boundary.
+                Text(" ")
+                    .font(font)
+                    .fixedSize()
+                    .hidden()
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { lineHeight = $0 }
+            }
+    }
+
+    private func fade(cap: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            Rectangle().frame(height: max(0, cap - lineHeight))
+            HStack(spacing: 0) {
+                Rectangle()
+                LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
+                    .frame(width: Theme.Size.changesFadeWidth)
+            }
+            .frame(height: lineHeight)
         }
     }
 }

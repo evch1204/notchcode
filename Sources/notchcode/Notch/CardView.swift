@@ -159,7 +159,36 @@ struct CardView: View {
     private func escapeLabel(_ content: CardContent) -> String {
         if isSettings(content) { return "back" }
         if case .tool(.git) = content, let label = state.gitEscapeLabel { return label }
+        if case .tool(.changes) = content, state.changesPaneShown { return "back" }
         return "close"
+    }
+
+    /// The Changes tool's keys: what ⏎ does on the cursor's stop (a chip's diff, a quiet
+    /// group's fold), and with the pane up, the terminal and ⌘B for the timeline.
+    private var changesHints: [KeyHint] {
+        let move = KeyHint(Theme.Keys.up + Theme.Keys.down, "move")
+        let copy = KeyHint(Theme.Keys.copy, "copy path:line")
+        if state.changesPaneShown {
+            return [move, KeyHint(Theme.Keys.enter, "terminal"), copy, KeyHint(Theme.Keys.toggleTree, "list")]
+        }
+        let items = state.changesCursorItems
+        var hints = [move]
+        if items.indices.contains(state.rowCursor) {
+            switch items[state.rowCursor] {
+            case .chip:
+                hints += [KeyHint(Theme.Keys.enter, "diff"), copy]
+            case .group(let id):
+                hints.append(KeyHint(Theme.Keys.enter, state.changesUnfoldedGroups.contains(id) ? "fold" : "unfold"))
+            case .live, .quiet:
+                break
+            }
+        }
+        hints += [
+            KeyHint(Theme.Keys.optionEnter, "terminal"),
+            KeyHint(Theme.Keys.slash, "with edits"),
+            KeyHint(Theme.Keys.tab, "next tool"),
+        ]
+        return hints
     }
 
     private func isSettings(_ content: CardContent) -> Bool {
@@ -180,7 +209,7 @@ struct CardView: View {
         case .settings:
             return [KeyHint(Theme.Keys.settings, "toggles this page")]
         case .tool(.changes):
-            return [KeyHint(Theme.Keys.enter, "open"), KeyHint(Theme.Keys.copy, "copy path:line")]
+            return changesHints
         case .tool(.files):
             return [
                 KeyHint(Theme.Keys.enter, "open"),

@@ -223,6 +223,9 @@ extension AppState {
         // then leaves the picker, then the commit form, then cancels the confirm, before it
         // closes the card.
         if key == .escape, gitShown, gitEscape() { return true }
+        // Esc in Changes brings a hidden timeline back, then closes the diff pane, before it
+        // closes the card.
+        if key == .escape, isCardOpen, isShowingTool(.changes), changesEscape() { return true }
         if key == .escape {
             guard isCardOpen else { return false }
             if let req = currentPending, requestDiffPath(for: req) != nil {
@@ -308,8 +311,7 @@ extension AppState {
 
         if selectedTab == .files, let used = handleFilesKey(key) { return used }
         if selectedTab == .git, let used = handleGitKey(key) { return used }
-
-        let rows = selectedTab == .changes ? changesRows : []
+        if selectedTab == .changes, let used = handleChangesKey(key) { return used }
 
         switch key {
         case .number(let n):
@@ -323,16 +325,12 @@ extension AppState {
         case .up:
             if selectedTab == .sessions, !sessions.isEmpty {
                 sessionCursor = max(0, sessionCursor - 1)
-            } else if !rows.isEmpty {
-                rowCursor = max(0, min(rows.count - 1, rowCursor - 1))
             } else {
                 return false
             }
         case .down:
             if selectedTab == .sessions, !sessions.isEmpty {
                 sessionCursor = min(sessions.count - 1, sessionCursor + 1)
-            } else if !rows.isEmpty {
-                rowCursor = min(rows.count - 1, rowCursor + 1)
             } else {
                 return false
             }
@@ -341,21 +339,9 @@ extension AppState {
                 let ordered = orderedSessions
                 guard ordered.indices.contains(sessionCursor) else { return false }
                 selectSession(ordered[sessionCursor])
-            } else if rows.indices.contains(rowCursor) {
-                switch rows[rowCursor] {
-                case .turn(let turn):
-                    guard !turn.files.isEmpty else { return false }
-                    withAnimation(Theme.Motion.disclosure) { toggleTurn(turn.id) }
-                case .file(let item):
-                    guard !Self.diffLines(item.file).isEmpty else { return false }
-                    withAnimation(Theme.Motion.tap) { toggleDiff(item.key) }
-                }
             } else {
                 return false
             }
-        case .copy:
-            guard selectedTab == .changes else { return false }
-            return copyCursorLocation()
         default:
             return false
         }

@@ -31,7 +31,7 @@ Press the notch at any time and a card opens with five tools. `1`–`5` or `⇥`
 | Tool | Shows |
 |---|---|
 | Sessions | every live session by repository, one row per worktree: branch, model, permission mode (`bypass` in clay, `plan` in blue; nothing for default), state, current prompt, a lane per subagent. `⏎` opens its Changes. |
-| Changes | each turn you sent, the files it changed (subagent edits too), and the full diff under any file. |
+| Changes | the session as a timeline, newest first: each turn that changed files with its files as chips (a subagent's carry its colour square), runs of quiet turns folded into one row, the live turn breathing at the top. `⏎` on a chip opens its diff beside the timeline; `/` shows only the turns with edits. |
 | Files | the repository tree, changed files badged, and a preview with changed lines tinted; `⌘B` folds the tree away, and Markdown renders with a Preview · Code switch. |
 | Git | the focused session's worktree, or any local branch of a repository a session runs in (`W` opens the picker: each branch with where it lives, "worktree harbor", "main checkout" or "not checked out"). A checklist of the uncommitted files on the left with the commit's summary field docked under it, the selected file's diff on the right with line numbers, changed words lit and a minimap. A branch checked out nowhere shows its changes against main, read-only. Commit the files you check, pull, push, fetch, or undo the last unpushed commit. |
 | Usage | 5-hour and weekly limits with reset times, context used, tokens for the session and today, an estimated cost, and today's Fable share. |
@@ -110,7 +110,7 @@ While the card is open the notch takes the keyboard; the moment it closes, focus
 | Key | Does |
 |---|---|
 | `⌥ space` | open or close the card from anywhere |
-| `⏎` | the primary action: allow, commit, open the selected session or file |
+| `⏎` | the primary action: allow, commit, open the selected session or file; in Changes, a chip's diff (again: the terminal) or a quiet group's turns |
 | `⌫` | deny, or skip a commit |
 | `A` | allow always |
 | `E` | edit a proposed commit: Claude asks you for a new message |
@@ -118,9 +118,9 @@ While the card is open the notch takes the keyboard; the moment it closes, focus
 | `1` – `5` | pick a tool: Sessions, Changes, Files, Git, Usage |
 | `⇥` `⇧⇥` | next and previous tool |
 | `↑` `↓` `←` `→` | move in a list or the file tree (in Git, `↑` `↓` select a file and show its diff) |
-| `y` | copy `path:line` of the first changed line |
-| `/` | filter the Files tree, or the Git branch picker past eight branches |
-| `⌘B` | hide or show the Files tree, or the Git file list (one switch for both) |
+| `y` | copy `path:line` of the first changed line (in Changes, of the chip under the cursor) |
+| `/` | filter the Files tree, or the Git branch picker past eight branches; in Changes, only the turns with edits |
+| `⌘B` | hide or show the Files tree, or the Git file list (one switch for both); in Changes, the timeline beside an open diff |
 | `P` | switch a Markdown file between Preview and Code (Files); the sync pill: publish, pull or push after a `⏎` confirm, or fetch at once (Git) |
 | `C` | open the commit form: `⏎` or `⌘⏎` commits the checked files, `esc` backs out (Git) |
 | `space` | put the selected file in or out of the commit (Git) |
@@ -130,7 +130,7 @@ While the card is open the notch takes the keyboard; the moment it closes, focus
 | `⌥⏎` | jump to the session's terminal |
 | `⌘,` | Settings |
 | `⌘Q` | quit notchcode (while the card is open) |
-| `esc` | back, or close |
+| `esc` | back (in Changes: show the timeline, then close the diff), or close |
 
 </details>
 

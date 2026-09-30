@@ -57,6 +57,8 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     /// the hook's working-tree reports; `turns(for:)` merges them into each turn's files.
     /// Held under `pendingTurnKey` until the transcript brings the turn they belong to.
     @Published var shellFiles: [String: [String: [FileChange]]] = [:]
+    /// Sessions whose saved shell changes were read back from disk (`loadShellFiles`).
+    var shellFilesLoaded: Set<String> = []
     @Published var selectedTab: CardTab = .sessions {
         didSet {
             guard selectedTab != oldValue else { return }
@@ -89,24 +91,33 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
             guard focusedSessionId != oldValue else { return }
             rowCursor = 0
             fileFilter = ""
+            resetChangesView()
             recomputeUsage()
             if selectedTab == .files { loadRepoTree() }
             if selectedTab == .git { gitFocusChanged() }
         }
     }
     @Published var sessionCursor = 0
-    /// Keyboard cursor over the file rows of the Changes or Files tab.
+    /// Keyboard cursor over the Changes tool's stops (`changesCursorItems`).
     @Published var rowCursor = 0
-    /// Diff rows whose open state differs from their default (see `isDiffOpen`).
-    @Published var diffToggled: Set<String> = []
     /// The file whose diff is open inside the current request card, if any.
     @Published var requestDiff: RequestDiffTarget?
     /// ↑↓ scroll commands for the request card's open diff.
     @Published var requestDiffScroll = RequestDiffScroll()
     /// The commit card's file row under the keyboard cursor.
     @Published var requestRowCursor = 0
-    /// Turns in the Changes tab whose file list is flipped from its default (newest open, older closed).
-    @Published var turnToggled: Set<String> = []
+
+    // Changes tool (Direction G). All reset when the focused session changes.
+    /// The chip whose diff the pane shows (it stays after esc closes the pane).
+    @Published var changesSelection: ChangesChipKey?
+    /// The diff pane is open beside the timeline.
+    @Published var changesPaneOpen = false
+    /// `/`: only the turns with edits (and the live turn); quiet groups hide.
+    @Published var changesEditsOnly = false
+    /// Quiet groups unfolded into one row per turn, by the group's id.
+    @Published var changesUnfoldedGroups: Set<String> = []
+    /// ⌘B while the pane shows: the timeline column is hidden and the pane takes the width.
+    @Published var changesColumnHidden = false
 
     // Files tab. Per session: the tree cursor, the file being previewed, and the folders
     // flipped from their default (top level open, deeper closed).

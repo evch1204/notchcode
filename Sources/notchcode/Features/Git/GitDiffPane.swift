@@ -20,9 +20,6 @@ struct GitDiffPane: View {
     let snap: GitSnapshot
     /// The dock's summary box travels here.
     let stageSpace: Namespace.ID
-    /// The diff row at the top of the pane, and how many rows the pane shows.
-    @State private var topRow = 0
-    @State private var visibleCount = 0
 
     var body: some View {
         let file = state.gitSelectedFile
@@ -54,7 +51,6 @@ struct GitDiffPane: View {
         .animation(Theme.Motion.previewFade, value: file?.path)
         .animation(Theme.Motion.stageSwap, value: composing)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onChange(of: file?.path) { _, _ in topRow = 0 }
     }
 
     @ViewBuilder
@@ -64,13 +60,7 @@ struct GitDiffPane: View {
             if lines.isEmpty {
                 EmptyNote(text: file.kind == "new" ? "Empty file" : "No text diff")
             } else {
-                GitDiffBody(
-                    file: file,
-                    lines: lines,
-                    fileLines: snap.lineCounts[file.path],
-                    topRow: $topRow,
-                    visibleCount: $visibleCount
-                )
+                ReviewerDiff(file: file, lines: lines, fileLines: snap.lineCounts[file.path])
             }
         } else {
             GitCleanNote(text: GitTab.emptyText(snap))
@@ -103,7 +93,7 @@ struct GitDiffPane: View {
                     HStack(spacing: Theme.Size.spaceM) {
                         PathLabel(path: file.path)
                             .layoutPriority(1)
-                        GitKindBadge(kind: file.kind)
+                        FileKindBadge(kind: file.kind)
                         DiffCounts(added: file.added, removed: file.removed)
                             .fixedSize()
                     }
@@ -469,111 +459,5 @@ private struct GitCoauthorChip: View {
         .padding(.horizontal, Theme.Size.gitChipHPadding)
         .background(shape.fill(Theme.Colors.gitCoauthorChipFill))
         .overlay(shape.strokeBorder(ringed ? Theme.Colors.gitSuggestionRing : Color.clear, lineWidth: Theme.Size.gitSuggestionRing))
-    }
-}
-
-/// "M", "A" or "D" in a small badge after the file's name.
-@MainActor
-private struct GitKindBadge: View {
-    let kind: String
-
-    var body: some View {
-        Text(letter)
-            .font(Theme.Fonts.badge)
-            .foregroundStyle(Theme.Colors.gitKindText)
-            .frame(minWidth: Theme.Size.gitKindWidth)
-            .padding(.horizontal, Theme.Size.badgeHPadding / 2)
-            .frame(height: Theme.Size.badgeHeight)
-            .background(
-                RoundedRectangle(cornerRadius: Theme.Radius.keycap, style: .continuous)
-                    .fill(Theme.Colors.gitKindFill)
-            )
-            .fixedSize()
-            .help(help)
-    }
-
-    private var letter: String {
-        switch kind {
-        case "new": return "A"
-        case "deleted": return "D"
-        default: return "M"
-        }
-    }
-
-    private var help: String {
-        switch kind {
-        case "new": return "added"
-        case "deleted": return "deleted"
-        default: return "modified"
-        }
-    }
-}
-
-/// The diff itself: every line whole (the pane scrolls sideways as the Files preview
-/// does), both line numbers, the changed words tinted, the minimap on the right edge
-/// outside the scrolling content. Tracks the top row for the minimap's visible range; a
-/// minimap press scrolls it.
-@MainActor
-private struct GitDiffBody: View {
-    let file: FileChange
-    let lines: [DiffLine]
-    let fileLines: Int?
-    @Binding var topRow: Int
-    @Binding var visibleCount: Int
-    /// Worked out once per diff, not on every scroll step (the header re-renders with it).
-    @State private var words: [Int: [Range<Int>]] = [:]
-    @State private var minimap: DiffMinimapModel?
-
-    private struct Inputs: Equatable {
-        var lines: [DiffLine]
-        var fileLines: Int?
-    }
-
-    var body: some View {
-        WideLinesScroll(
-            texts: lines.map { $0.prefix + $0.text },
-            gutter: 2 * (Theme.Size.diffLineNumberWidth + Theme.Size.previewGutterSpacing),
-            reserve: Theme.Size.diffMinimapReserve,
-            footer: file.patchTruncated ? truncatedNote : nil,
-            onScroll: { minY in
-                let row = Int(((-minY - Theme.Size.previewVPadding) / Theme.Size.diffLineHeight).rounded())
-                let clamped = max(0, min(max(0, lines.count - 1), row))
-                if clamped != topRow { topRow = clamped }
-            },
-            onHeight: { height in
-                visibleCount = Int(height / Theme.Size.diffLineHeight)
-            }
-        ) { contentWidth in
-            ForEach(lines.indices, id: \.self) { index in
-                CodeLineRow(lines[index], words: words[index] ?? [], minWidth: contentWidth)
-                    .id(index)
-            }
-        } accessory: { proxy in
-            if let minimap {
-                DiffMinimap(model: minimap, visibleRows: visibleRange) { row in
-                    let target = max(0, row - visibleCount / 2)
-                    proxy.scrollTo(target, anchor: .topLeading)
-                }
-                .padding(.vertical, Theme.Size.diffMinimapInset)
-                .padding(.trailing, Theme.Size.diffMinimapInset)
-            }
-        }
-        .onChange(of: Inputs(lines: lines, fileLines: fileLines), initial: true) { _, inputs in
-            words = WordDiff.marks(inputs.lines)
-            minimap = DiffMinimapModel(lines: inputs.lines, fileLines: inputs.fileLines)
-        }
-    }
-
-    private var visibleRange: ClosedRange<Int> {
-        let last = max(0, lines.count - 1)
-        let top = min(topRow, last)
-        return top...max(top, min(last, top + max(1, visibleCount) - 1))
-    }
-
-    /// "… 212 more lines in the editor" when the patch left lines out.
-    private var truncatedNote: String {
-        let shown = lines.filter { $0.kind == .added || $0.kind == .removed }.count
-        let missing = max(0, file.added + file.removed - shown)
-        return Format.moreLines(missing) + " in the editor"
     }
 }

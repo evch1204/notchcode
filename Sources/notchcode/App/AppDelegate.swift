@@ -72,7 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// `--debug-keys open,c,1.5,esc`: after three seconds, each name in turn with 1.2 s
     /// between them: "open" opens the card on the Git tool ("open:changes" on another), a number sleeps that many
     /// seconds, anything else is a key (esc, enter, cmdenter, cmdb, space, up, down, c, p,
-    /// u, w, r, 1 to 5). For screenshots of the tool's states while nobody is at the keys.
+    /// u, w, r, /, y, 1 to 5). For screenshots of the tool's states while nobody is at the keys.
     private func runDebugKeys() {
         let args = CommandLine.arguments
         guard let index = args.firstIndex(of: "--debug-keys"), index + 1 < args.count else { return }
@@ -117,6 +117,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "u": return .undo
         case "w": return .worktree
         case "r": return .repository
+        case "/": return .filter
+        case "y": return .copy
         case "1", "2", "3", "4", "5": return .number(Int(name)!)
         default: return nil
         }

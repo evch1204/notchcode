@@ -73,6 +73,21 @@ enum Format {
 
     private static let mcpSeparator = "__"
 
+    /// "1:10 PM" (the owner's clock format): when a turn started.
+    static func timeOfDay(_ date: Date) -> String {
+        time.string(from: date)
+    }
+
+    /// "1 turn", "14 turns".
+    static func turns(_ count: Int) -> String {
+        count == 1 ? "1 turn" : "\(count) turns"
+    }
+
+    /// "1 quiet turn", "4 quiet turns".
+    static func quietTurns(_ count: Int) -> String {
+        count == 1 ? "1 quiet turn" : "\(count) quiet turns"
+    }
+
     /// "started 1:10 PM".
     static func started(_ date: Date) -> String {
         "started " + time.string(from: date)

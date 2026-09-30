@@ -442,8 +442,8 @@ private struct DiffNoteRow: View {
     }
 }
 
-/// A changed-file row that opens to its diff under it. The Changes tool indents it one
-/// chevron column under its turn; the commit card lists its files with it. The caller
+/// A changed-file row that opens to its diff under it: the commit card lists its files with
+/// it. The caller
 /// says what a click does, whether the row is open and under the cursor, and draws the diff.
 @MainActor
 struct FileDiffRow<Diff: View>: View {

@@ -262,6 +262,8 @@ struct FileChange: Identifiable, Equatable, Codable {
     var snippet: [DiffLine] = []    // the first few lines, for peeks and small inline previews (< 8 lines)
     var patch: [DiffLine] = []      // the whole diff as Claude Code recorded it (structuredPatch), capped at 400 lines
     var patchTruncated: Bool = false
+    /// The subagent that made the change (its agentId), when only subagents touched the file.
+    var agentId: String? = nil
 }
 
 struct DiffLine: Equatable, Codable {

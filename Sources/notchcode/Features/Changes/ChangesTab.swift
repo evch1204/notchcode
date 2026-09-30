@@ -1,132 +1,117 @@
 // ChangesTab.swift
-// Each turn of the selected session, newest first, in the Toolbar layout: one flat list.
-// A turn is one row: chevron, prompt, file count, ± totals, how long it took. Under an
-// open turn its files, indented one chevron column so their chevrons sit under the turn's
-// title: open for the newest turn, folded for older ones (click the row, or ⏎ on it). A
-// file row opens to its whole diff in a rounded box under it, scrollable and capped.
-// Diffs under 8 lines open by default. Rows use the app's shared type scale and row
-// metrics, the same as a Sessions row.
+// The Changes tool, Direction G (Timeline; owner, 2026-09-30). Inside the well: a 26 pt header
+// with the session's totals ("14 turns · 9 files · +607 −0 · 1h 12m", the session's, not the
+// view's) and the "With edits /" pill; under it the timeline (ChangesTimeline.swift): a spine
+// with one node per turn, newest first, the live turn breathing at the top, each turn that
+// changed files as an entry with its files as chips, and every run of quiet turns folded
+// into one row. ⏎ or a click on a chip opens the diff pane on the right (ChangesDiffPane.swift),
+// the Git tool's split: the column springs from the full width to 236 pt, a hairline, the
+// pane. The diff never opens inline, so the timeline never jumps. Esc closes the pane, ⌘B
+// hides the column while it shows, `/` hides the quiet turns.
 
 import SwiftUI
 
 @MainActor
 struct ChangesTab: View {
     @ObservedObject var state: AppState
+    /// The cursor's ring glides from chip to chip, and becomes a row's fill on a quiet row.
+    @Namespace private var cursorSpace
 
     var body: some View {
         let turns = state.turns(for: state.focusedSession?.id)
         if turns.isEmpty {
             EmptyNote(text: "Nothing changed yet in this session")
         } else {
-            ScrollViewReader { proxy in
-                ScrollView(.vertical, showsIndicators: false) {
-                    LazyVStack(alignment: .leading, spacing: Theme.Size.spaceXS) {
-                        ForEach(Array(turns.enumerated()), id: \.element.id) { item in
-                            turnBlock(item.element, newest: item.offset == 0)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .onChange(of: state.rowCursor) { _, _ in
-                    guard let key = state.cursorRowKey else { return }
-                    withAnimation(Theme.Motion.tap) { proxy.scrollTo(key) }
-                }
+            VStack(alignment: .leading, spacing: Theme.Size.spaceS) {
+                ChangesHeader(state: state, turns: turns)
+                    .frame(height: Theme.Size.changesHeaderHeight)
+                split
             }
         }
     }
 
-    private func turnBlock(_ turn: TranscriptTurn, newest: Bool) -> some View {
-        let open = state.isTurnOpen(turn, newest: newest)
-        let key = AppState.turnRowKey(turn)
-        return VStack(alignment: .leading, spacing: Theme.Size.spaceXS) {
-            Button {
-                state.setRowCursor(key: key)
-                guard !turn.files.isEmpty else { return }
-                withAnimation(Theme.Motion.disclosure) { state.toggleTurn(turn.id) }
-            } label: {
-                TurnRow(turn: turn, open: open, isCursor: state.cursorRowKey == key)
-            }
-            .buttonStyle(.plain)
-            .id(key)
-
-            if open {
-                ForEach(Array(turn.files.enumerated()), id: \.element.id) { item in
-                    let row = DiffRowItem(key: AppState.changesRowKey(turn: turn, file: item.element), file: item.element)
-                    let hasDiff = !AppState.diffLines(row.file).isEmpty
-                    FileDiffRow(
-                        file: row.file,
-                        open: hasDiff && state.isDiffOpen(row),
-                        isCursor: state.cursorRowKey == row.key
-                    ) {
-                        state.setRowCursor(key: row.key)
-                        guard hasDiff else { return }
-                        withAnimation(Theme.Motion.tap) { state.toggleDiff(row.key) }
-                    } diff: {
-                        DiffView(file: row.file)
+    /// The timeline column, then (while a chip's diff shows) gap, hairline, gap and the pane.
+    /// Hidden (⌘B), the column keeps its width inside and is clipped to nothing, so its text
+    /// does not re-wrap while the width springs.
+    private var split: some View {
+        GeometryReader { geo in
+            let selected = state.changesSelectedFile
+            let shown = state.changesPaneOpen && selected != nil
+            let hidden = shown && state.changesColumnHidden
+            let narrow = min(Theme.Size.changesColumnWidth, geo.size.width)
+            let contentWidth = shown ? narrow : geo.size.width
+            HStack(alignment: .top, spacing: 0) {
+                // Text re-wraps at once when the width changes; only the column's edge springs.
+                ChangesTimeline(state: state, width: contentWidth, cursorSpace: cursorSpace)
+                    .transaction(value: contentWidth) { $0.animation = nil }
+                    .frame(width: contentWidth, height: geo.size.height, alignment: .topLeading)
+                    .frame(width: hidden ? 0 : contentWidth, alignment: .leading)
+                    .clipped()
+                if shown, let selected {
+                    HStack(alignment: .top, spacing: 0) {
+                        Rectangle()
+                            .fill(Theme.Colors.paneDivider)
+                            .frame(width: Theme.Size.hairline)
+                            .padding(.horizontal, Theme.Size.filesColumnGap)
+                            .frame(width: hidden ? 0 : nil)
+                            .opacity(hidden ? 0 : 1)
+                            .fadeIn()
+                        ChangesDiffPane(state: state, turn: selected.turn, file: selected.file, number: selected.number)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     }
-                    .id(row.key)
-                    .padding(.leading, Theme.Size.chevronColumn)
-                    .transition(Theme.Motion.childTransition(item.offset))
+                    .transition(Theme.Motion.changesPaneTransition)
                 }
             }
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
+            .animation(Theme.Motion.changesLayout, value: shown)
+            .animation(Theme.Motion.changesLayout, value: hidden)
         }
     }
 }
 
-/// "▸ Wire the permission card to the socket   3 files  +48 −9  Working 4:12", on one
-/// line. A turn without files says "no file changes" instead of the counts, and has no
-/// chevron.
+/// "14 turns · 9 files · +607 −0 · 1h 12m" on the left (the whole session, whatever the
+/// filter), "· 3 with edits" after it while the filter is on, and the "With edits /" pill on
+/// the right: neutral, white while on; it pops when pressed.
 @MainActor
-private struct TurnRow: View {
-    let turn: TranscriptTurn
-    let open: Bool
-    let isCursor: Bool
+private struct ChangesHeader: View {
+    @ObservedObject var state: AppState
+    let turns: [TranscriptTurn]
 
     var body: some View {
-        let hasFiles = !turn.files.isEmpty
+        let on = state.changesEditsOnly
+        let paths = Set(turns.flatMap { $0.files.map(\.path) })
+        let files = turns.flatMap(\.files)
         HStack(spacing: Theme.Size.spaceM) {
-            RowChevron(open: open)
-                .opacity(hasFiles ? 1 : 0)
-            Text(turn.prompt)
-                .font(Theme.Fonts.bodySemibold)
-                .foregroundStyle(Theme.Colors.ink)
-                .lineLimit(1)
-                .truncationMode(.tail)
-            Spacer(minLength: Theme.Size.spaceM)
-            HStack(spacing: Theme.Size.spaceM) {
-                if hasFiles {
-                    Text(Format.files(turn.files.count))
-                        .font(Theme.Fonts.caption)
-                        .foregroundStyle(Theme.Colors.inkSecondary)
-                    DiffCounts(
-                        added: turn.files.reduce(0) { $0 + $1.added },
-                        removed: turn.files.reduce(0) { $0 + $1.removed }
-                    )
-                } else {
-                    Text("no file changes")
-                        .font(Theme.Fonts.caption)
+            HStack(spacing: 0) {
+                Text(Format.turns(turns.count) + Theme.Glyphs.separator + Format.files(paths.count) + Theme.Glyphs.separator)
+                DiffCounts(added: files.reduce(0) { $0 + $1.added }, removed: files.reduce(0) { $0 + $1.removed })
+                span
+                if on {
+                    Text(Theme.Glyphs.separator + "\(turns.filter { !$0.files.isEmpty }.count) with edits")
                         .foregroundStyle(Theme.Colors.inkTertiary)
+                        .transition(Theme.Motion.paneSwapTransition)
                 }
-                elapsed
             }
-            .fixedSize()
+            .font(Theme.Fonts.caption)
+            .foregroundStyle(Theme.Colors.inkSecondary)
+            .lineLimit(1)
+            Spacer(minLength: Theme.Size.spaceM)
+            ActionSegment(title: "With edits", key: Theme.Keys.slash, role: on ? .allow : .neutral) {
+                state.toggleChangesEditsOnly()
+            }
+            .countPop(on)
+            .help(on ? "Show every turn" : "Show only the turns that changed files")
         }
-        .rowCursorFill(isCursor)
+        .animation(Theme.Motion.changesLayout, value: on)
     }
 
-    @ViewBuilder
-    private var elapsed: some View {
-        if let end = turn.endedAt {
-            Text(Format.duration(end.timeIntervalSince(turn.startedAt)))
-                .font(Theme.Fonts.caption)
-                .foregroundStyle(Theme.Colors.inkTertiary)
-        } else {
-            HStack(spacing: Theme.Size.spaceM) {
-                Text("Working")
-                    .font(Theme.Fonts.captionMedium)
-                    .foregroundStyle(Theme.Colors.clay)
-                ElapsedText(since: turn.startedAt)
-            }
+    /// " · 1h 12m": the first turn's start to the last turn's end, or to now while one runs.
+    private var span: some View {
+        let first = turns.last?.startedAt ?? Date()
+        let live = state.changesLiveTurnId(turns) != nil
+        let end = turns.compactMap(\.endedAt).max() ?? first
+        return TimelineView(.periodic(from: .now, by: Theme.Timing.clockTick)) { context in
+            Text(Theme.Glyphs.separator + Format.duration((live ? context.date : end).timeIntervalSince(first)))
         }
     }
 }
