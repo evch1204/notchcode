@@ -70,7 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// `--debug-keys open,c,1.5,esc`: after three seconds, each name in turn with 1.2 s
-    /// between them: "open" opens the card on the Git tool, a number sleeps that many
+    /// between them: "open" opens the card on the Git tool ("open:changes" on another), a number sleeps that many
     /// seconds, anything else is a key (esc, enter, cmdenter, cmdb, space, up, down, c, p,
     /// u, w, r, 1 to 5). For screenshots of the tool's states while nobody is at the keys.
     private func runDebugKeys() {
@@ -88,12 +88,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 debugLog("debug key \(name)")
                 if name == "open" {
                     self.state.openCard(tab: .git)
+                } else if name.hasPrefix("open:"), let tab = Self.debugTab(String(name.dropFirst("open:".count))) {
+                    self.state.openCard(tab: tab)
                 } else if let key = Self.debugKey(name) {
                     _ = self.state.handleKey(key)
                 }
                 try? await Task.sleep(for: .seconds(1.2))
             }
         }
+    }
+
+    /// "open:changes" and the other tools by their lowercase names.
+    private static func debugTab(_ name: String) -> CardTab? {
+        CardTab.browsable.first { $0.label.lowercased() == name }
     }
 
     private static func debugKey(_ name: String) -> NotchKey? {
