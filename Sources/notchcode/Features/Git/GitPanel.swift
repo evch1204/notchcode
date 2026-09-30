@@ -273,8 +273,13 @@ extension AppState {
     }
 
     /// Push or Publish is possible: a branch, a remote, and something to send (a branch
-    /// with no upstream can always be published).
+    /// with no upstream can always be published). Never while a push runs or its result
+    /// holds: the snapshot may still count the commits just sent.
     var gitCanPush: Bool {
+        switch gitPhase {
+        case .pushing, .pushed: return false
+        case .idle, .confirming, .failed: break
+        }
         guard let snap = focusedGit, snap.isRepo, snap.branch != nil, snap.remote != nil else { return false }
         return snap.upstream == nil || snap.ahead > 0
     }
@@ -287,7 +292,12 @@ extension AppState {
 
     /// The commits a push would send, for the pill's "Push 3" or "Publish 4"; nil when none
     /// or unknown. A branch page counts them too (`GitRunner.readBranch` fills `unpushed`).
+    /// Nil while a push runs or its result holds, as the count may be the one just sent.
     var gitPushCount: Int? {
+        switch gitPhase {
+        case .pushing, .pushed: return nil
+        case .idle, .confirming, .failed: break
+        }
         guard let snap = focusedGit, snap.isRepo, snap.branch != nil, snap.remote != nil,
               snap.unpushed > 0 else { return nil }
         return snap.unpushed
@@ -735,14 +745,14 @@ extension AppState {
 
     // MARK: Push
 
-    /// P or the pill: show the confirm line. Never pushes by itself.
+    /// P or the pill: show the confirm line. Never pushes by itself. Nothing while a push
+    /// runs or its result holds: re-arming then would ask again for the commits just sent.
     func pressGitPush() {
         guard let cwd = gitCwd, gitCanPush else { return }
         switch gitPhase {
-        case .confirming, .pushing:
+        case .confirming, .pushing, .pushed:
             return
-        case .idle, .pushed, .failed:
-            gitHoldTask?.cancel()
+        case .idle, .failed:
             updateGit {
                 $0.phase = .confirming
                 $0.phaseCwd = cwd
@@ -798,6 +808,11 @@ extension AppState {
 
     private func finishGitPush(ok: Bool, message: String, cwd: String) {
         debugLog("git push \(ok ? "ok" : "failed"): \(message)")
+        // Another target armed its own confirm while this push ran: leave that one alone.
+        if gitPanel.phaseCwd != cwd {
+            refreshGit(poll: true)
+            return
+        }
         updateGit {
             $0.phase = ok ? .pushed(message) : .failed(message)
             $0.phaseCwd = cwd
@@ -807,6 +822,10 @@ extension AppState {
             refreshGit(poll: true)
             return
         }
+        // Read at once so the pill and the counts stop offering the commits just sent.
+        refreshGit()
+        // After the hold, "Pushed 3 commits" gives way to the status; the second read is a
+        // safety net for when the first was skipped because a poll's read was in flight.
         gitHoldTask?.cancel()
         gitHoldTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(Theme.Timing.gitPushedHold))

@@ -90,13 +90,20 @@ struct GitHeader: View {
 
     /// The Push pill, in the same place in every phase: "Push 3  P"; armed with ⏎ while the
     /// push is asked (it pops once as it arms, the keycap crossfading); pulsing while git
-    /// pushes. The three overlap so each swap is a crossfade in place.
+    /// pushes; a check and "Pushed" while the result holds, so it cannot ask again for the
+    /// commits just sent. The four overlap so each swap is a crossfade in place.
     private func pill(_ phase: GitPushPhase) -> some View {
         let verb = state.gitPushVerb
         let enabled = state.gitCanPush
+        var pushed = false
+        if case .pushed = phase { pushed = true }
         return ZStack(alignment: .trailing) {
             if phase == .pushing {
                 GitPushingPill(title: verb == "Publish" ? "Publishing" : "Pushing")
+                    .transition(.opacity)
+            }
+            if case .pushed(let message) = phase {
+                GitPushedPill(title: message.hasPrefix("Published") ? "Published" : "Pushed")
                     .transition(.opacity)
             }
             if phase == .confirming {
@@ -105,7 +112,7 @@ struct GitHeader: View {
                     .popIn()
                     .transition(.opacity)
             }
-            if phase != .pushing && phase != .confirming {
+            if phase != .pushing && phase != .confirming && !pushed {
                 ActionSegment(title: verb, key: Theme.Keys.push, role: enabled ? .allow : .neutral, count: state.gitPushCount) { state.pressGitPill() }
                     .disabled(!enabled)
                     .opacity(enabled ? 1 : Theme.Opacity.disabled)
@@ -168,6 +175,30 @@ private struct GitPushingPill: View {
         Button {} label: {
             HStack(spacing: Theme.Size.actionKeyGap) {
                 SparkleGlyph(size: Theme.Size.gitPushingGlyph)
+                Text(title)
+                    .font(Theme.Fonts.action)
+                    .foregroundStyle(Theme.Colors.inkSecondary)
+                    .lineLimit(1)
+                    .fixedSize()
+            }
+            .padding(.horizontal, Theme.Size.actionHPadding)
+            .frame(height: Theme.Size.actionHeight)
+        }
+        .buttonStyle(SegmentStyle(fill: Theme.Colors.neutralActionFill))
+        .disabled(true)
+    }
+}
+
+/// The pill while a push's result holds: the green check drawing itself and "Pushed", not
+/// pressable. After the hold it crossfades to the plain pill, disabled with nothing to send.
+@MainActor
+private struct GitPushedPill: View {
+    let title: String
+
+    var body: some View {
+        Button {} label: {
+            HStack(spacing: Theme.Size.actionKeyGap) {
+                DoneCheckGlyph(size: Theme.Size.gitPushingGlyph)
                 Text(title)
                     .font(Theme.Fonts.action)
                     .foregroundStyle(Theme.Colors.inkSecondary)
