@@ -454,7 +454,8 @@ enum Theme {
         static let gearWidth: CGFloat = 26
         static let toolHeight: CGFloat = 22
         static let toolGap: CGFloat = 2
-        static let toolIcon: CGFloat = 11
+        /// The stroked outlines span about three quarters of their box, so 15 pt reads like the 11 pt symbols did.
+        static let toolIcon: CGFloat = 15
         /// A tool icon's stroke as a share of its size: the canvas draws 2.4 in a 24 box.
         static let toolStrokeRatio: CGFloat = 2.4 / 24
         /// The gear's stroke, a little finer: 2.2 in the canvas's 24 box.
