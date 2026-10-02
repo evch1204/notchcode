@@ -139,26 +139,6 @@ enum Format {
         money(used) + " of " + moneyTrimmed(limit)
     }
 
-    /// One "What's contributing" line in fewer words: "94% from subagent-heavy sessions",
-    /// "82% at >150k context", "subagents general-purpose 34%, fork 5%".
-    static func behavior(_ line: String) -> String {
-        let replacements = [
-            ("% of your usage came from ", "% from "),
-            ("% of your usage was ", "% "),
-            ("% of your usage hit ", "% hit "),
-            ("Top subagents: ", "subagents "),
-            ("Top skills: ", "skills "),
-            ("Top plugins: ", "plugins "),
-            ("Top MCP servers: ", "MCP "),
-        ]
-        return replacements.reduce(line) { $0.replacingOccurrences(of: $1.0, with: $1.1) }
-    }
-
-    /// "Last 24h · 155 requests · 2 sessions".
-    static func behaviorPeriod(_ period: UsageBehaviors.Period) -> String {
-        [period.title, "\(period.requests) requests", sessions(period.sessions)].joined(separator: Theme.Glyphs.separator)
-    }
-
     /// Percent values arrive as 0-100.
     static func percent(_ value: Double) -> String {
         "\(Int(value.rounded()))%"
@@ -275,5 +255,3 @@ extension Optional where Wrapped == Session {
     /// The session's full name, or the app's when there is no session.
     var displayOrApp: String { self?.displayFull ?? "notchcode" }
 }
-
-// Test change for the commit form: delete this line.

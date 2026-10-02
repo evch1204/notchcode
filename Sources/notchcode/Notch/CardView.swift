@@ -178,7 +178,7 @@ struct CardView: View {
             case .chip:
                 hints += [KeyHint(Theme.Keys.enter, "diff"), copy]
             case .group(let id):
-                hints.append(KeyHint(Theme.Keys.enter, state.changesUnfoldedGroups.contains(id) ? "fold" : "unfold"))
+                hints.append(KeyHint(Theme.Keys.enter, state.changesTool.unfoldedGroups.contains(id) ? "fold" : "unfold"))
             case .live, .quiet:
                 break
             }

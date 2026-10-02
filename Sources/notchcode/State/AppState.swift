@@ -19,7 +19,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
             if let id = pending.first?.id, id != oldValue.first?.id {
                 answerKeysAllowedAt = Date().addingTimeInterval(Theme.Timing.requestKeyGuard)
                 // The request takes the well; the Files filter is gone, so it must not keep the keys.
-                fileFilterFocused = false
+                filesTool.filterFocused = false
             }
         }
     }
@@ -100,7 +100,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
         didSet {
             guard focusedSessionId != oldValue else { return }
             rowCursor = 0
-            fileFilter = ""
+            filesTool.filter = ""
             resetChangesView()
             recomputeUsage()
             if selectedTab == .files { loadRepoTree() }
@@ -118,32 +118,9 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     @Published var requestRowCursor = 0
 
     // Changes tool (Direction G). All reset when the focused session changes.
-    /// The chip whose diff the pane shows (it stays after esc closes the pane).
-    @Published var changesSelection: ChangesChipKey?
-    /// The diff pane is open beside the timeline.
-    @Published var changesPaneOpen = false
-    /// `/`: only the turns with edits (and the live turn); quiet groups hide.
-    @Published var changesEditsOnly = false
-    /// Quiet groups unfolded into one row per turn, by the group's id.
-    @Published var changesUnfoldedGroups: Set<String> = []
-    /// ⌘B while the pane shows: the timeline column is hidden and the pane takes the width.
-    @Published var changesColumnHidden = false
+    @Published var changesTool = ChangesToolState()
 
-    // Files tab. Per session: the tree cursor, the file being previewed, and the folders
-    // flipped from their default (top level open, deeper closed).
-    /// cwd -> the repository tree, as RepoFiles last read it.
-    @Published var repoTrees: [String: [FileTreeNode]] = [:]
-    /// cwds whose tree is being read right now.
-    @Published var repoTreesLoading: Set<String> = []
-    @Published var treeCursor: [String: String] = [:]
-    @Published var openedFile: [String: String] = [:]
-    @Published var treeToggled: [String: Set<String>] = [:]
-    /// The Files tab's name filter. Esc clears it.
-    @Published var fileFilter = ""
-    /// The filter field has keyboard focus: typed keys go to it, not to the card's shortcuts.
-    @Published var fileFilterFocused = false
-    /// The preview of the opened file, keyed "cwd|path". Only the newest few are kept.
-    @Published var previews: [String: LoadedPreview] = [:]
+    @Published var filesTool = FilesToolState()
     /// A short inline hint ("No terminal found", "Copied …") that clears itself.
     @Published var hint: String?
 
@@ -167,16 +144,12 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     /// Off in demo mode so sample sessions are not mixed with real transcripts and git state.
     var readsLocalFiles = true
 
-    // Tool state views read but that is not `@Published`: every write goes through
-    // `updateGit` (GitPanel) or the `markdownShowsCode` setter (FilesBrowser), which call
-    // `objectWillChange.send()` themselves.
+    // Git tool state views read but that is not `@Published`: every write goes through
+    // `updateGit` (AppState+Git), which calls `objectWillChange.send()` itself.
     /// The Git tool's state; read it through `gitPanel`, write it through `updateGit`.
     var gitStore = GitPanelState()
     var gitPollTask: Task<Void, Never>?
     var gitHoldTask: Task<Void, Never>?
-    /// Session id -> a Markdown file shows its source instead of the rendered preview.
-    /// In memory only: every run starts on Preview.
-    var markdownSource: [String: Bool] = [:]
 
     // MARK: Private state (never published)
 

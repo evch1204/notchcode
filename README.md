@@ -200,9 +200,9 @@ Sources/notchcode/
   ClaudeCode/              session files, the transcript watcher, the installer
   Transport/               the Unix socket server
   State/                   the app's live state
-  UI/                      the theme (every colour, size, font, radius, spring, glyph), components
+  UI/                      the theme (every colour, size, font, radius, spring, glyph), components, shared controls, the diff views
   Notch/                   the panel over the notch, the shape, every surface drawn in it
-  Features/                one folder per tool: Sessions, Changes, Files, Git, Usage, Requests, Settings
+  Features/                one folder per tool: Sessions, Changes, Files, Git, Usage, Requests, Settings; each with its model, its AppState extension and its tab
   Demo/                    the --demo script
 hooks/                     the two shell scripts Claude Code calls
 scripts/                   connect, disconnect, test events, dev build, plugin sync

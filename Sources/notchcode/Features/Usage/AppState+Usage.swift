@@ -4,30 +4,6 @@
 import AppKit
 import SwiftUI
 
-/// What Claude Code's status line input said about one session. Every field optional.
-struct StatuslineFacts: Equatable {
-    var contextPercent: Double?
-    var contextUsed: Int?
-    var contextLimit: Int?
-    var costUSD: Double?
-    var model: String?
-    /// "Fable 5.1": `model.display_name`.
-    var displayName: String?
-    /// `effort.level`: "low" … "max", only for models that have it.
-    var effort: String?
-    var thinkingEnabled: Bool?
-    var fastMode: Bool?
-    var exceeds200k: Bool?
-    /// `cost.total_duration_ms` and `cost.total_api_duration_ms`.
-    var durationMs: Int?
-    var apiDurationMs: Int?
-    var linesAdded: Int?
-    var linesRemoved: Int?
-    /// The last API call's `context_window.current_usage`.
-    var currentUsage: TokenUsage?
-    var updatedAt: Date
-}
-
 extension AppState {
 
     /// "fable", "opus", "sonnet", "haiku" from the model of the newest turn that names one.

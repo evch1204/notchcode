@@ -36,8 +36,8 @@ struct ChangesTab: View {
     private var split: some View {
         GeometryReader { geo in
             let selected = state.changesSelectedFile
-            let shown = state.changesPaneOpen && selected != nil
-            let hidden = shown && state.changesColumnHidden
+            let shown = state.changesTool.paneOpen && selected != nil
+            let hidden = shown && state.changesTool.columnHidden
             let narrow = min(Theme.Size.changesColumnWidth, geo.size.width)
             let contentWidth = shown ? narrow : geo.size.width
             HStack(alignment: .top, spacing: 0) {
@@ -78,7 +78,7 @@ private struct ChangesHeader: View {
     let turns: [TranscriptTurn]
 
     var body: some View {
-        let on = state.changesEditsOnly
+        let on = state.changesTool.editsOnly
         let paths = Set(turns.flatMap { $0.files.map(\.path) })
         let files = turns.flatMap(\.files)
         HStack(spacing: Theme.Size.spaceM) {

@@ -199,17 +199,17 @@ Layout of the repo:
 
 - `project.yml`: XcodeGen spec. `xcodegen generate` writes `notchcode.xcodeproj` (ignored by git). Needs the Xcode licence accepted first: `sudo xcodebuild -license accept`.
 - `Sources/notchcode/App`: the app entry, delegate, hotkey, keyboard routing, system notifications, debug log.
-- `Sources/notchcode/Core`: `Contract.swift`, the one shared contract (wire types, sessions, pending requests, file changes, turns, usage) everything talks through; preferences, formatting, `HookText` (hook payload parsers), `GitDir` (branch and repo name from `.git`), and `Diff/` (unified diff parser and builder, word diff).
-- `Sources/notchcode/ClaudeCode`: reads and writes Claude Code's own files: transcript reader and watcher (turns, files, tokens from `~/.claude/projects/<cwd>/<session>.jsonl`), JSON lines, the hooks installer and its ordered JSON.
+- `Sources/notchcode/Core`: `Contract.swift`, the one shared contract (wire types, sessions, pending requests, file changes, turns, usage) everything talks through; preferences, formatting, `HookText` (hook payload parsers), `GitDir` (branch and repo name from `.git`), `ISODate` (ISO 8601 parsing), and `Diff/` (unified diff parser and builder, word diff).
+- `Sources/notchcode/ClaudeCode`: reads and writes Claude Code's own files: the transcript reader (turns, files, tokens from `~/.claude/projects/<cwd>/<session>.jsonl`), its agent builder (`TranscriptAgents`) and turn builder (`TranscriptTurns`), the transcript watcher, JSON lines, the hooks installer and its ordered JSON.
 - `Sources/notchcode/Transport/SocketServer.swift`: Unix socket listener, one JSON line per event, replies for blocking events, deadline handling.
 - `Sources/notchcode/State`: `AppState.swift`, the app's live state: one class file (stored state, core derived values, mode) plus per-concern extensions (`+HookEvents`, `+Requests`, `+Sessions`, `+Card`, `+Teleport`, `+Peek`); `NotchTypes.swift`, the shared small types.
-- `Sources/notchcode/UI`: `Theme.swift` (every colour, radius, spring, glyph), shared components, keycaps, motion modifiers, glyphs, the diff view.
+- `Sources/notchcode/UI`: `Theme.swift` (every colour, radius, spring, glyph), shared components, keycaps, motion modifiers, glyphs, `Segments` (the segment look and the action segment), `Controls` (the small controls more than one tool uses) and `Diff/` (the diff box, code lines, minimap, file rows, the reviewer diff).
 - `Sources/notchcode/Notch`: the window over the notch, the shape and its morph, and every surface drawn in it: root, wings, resting, peek, attention, card, strip.
 - `Sources/notchcode/Features/Sessions`: the Sessions tab.
-- `Sources/notchcode/Features/Changes`: the Changes tab and `AppState+Changes`.
-- `Sources/notchcode/Features/Files`: the Files tab, its browser state, the repo file tree, the Markdown view and parser.
-- `Sources/notchcode/Features/Git`: the Git tab split into header, diff pane and branch picker; the panel state; `GitRunner` (runs git).
-- `Sources/notchcode/Features/Usage`: the Usage tab, its calculator and `AppState+Usage`.
+- `Sources/notchcode/Features/Changes`: the Changes tab, `ChangesModel`, `AppState+Changes`.
+- `Sources/notchcode/Features/Files`: the Files tab, `FilesModel`, `AppState+Files`, the repo file tree, the Markdown view and parser.
+- `Sources/notchcode/Features/Git`: the Git tab split into header, diff pane and branch picker; `GitModel`; `AppState+Git`, `+GitPicker`, `+GitDraft`, `+GitWrites`; `GitRunner` (runs git).
+- `Sources/notchcode/Features/Usage`: the Usage tab, `UsageModel`, the calculator, `PlanUsage` (reader and runner), `AppState+Usage`, `+PlanUsage`.
 - `Sources/notchcode/Features/Requests`: the permission, question and commit cards, and the request actions.
 - `Sources/notchcode/Features/Settings`: the Settings page.
 - `Sources/notchcode/Demo`: the `--demo` script and `AppState+Demo`.
@@ -217,6 +217,7 @@ Layout of the repo:
 - `scripts/connect.mjs`, `scripts/disconnect.mjs`: add or remove only our hooks in `~/.claude/settings.json`, beside the owner's own hooks. `scripts/send-test-event.sh`: fires a fake event at the socket.
 
 Layout reorganised 2026-09-28: feature folders under Features/, shared code in Core/, UI/, State/, ClaudeCode/. Same day: the monolith files split into one-concern files; Git and Files tool state moved off static vars onto AppState.
+Second pass 2026-10-02: the Git state, the transcript reader and the diff view split into one-concern files; the controls more than one tool uses moved to UI/; each tool's state is one value on AppState (`gitStore`, `changesTool`, `filesTool`). The file rule: a feature's value types in `<Feature>Model.swift`, its AppState extension in `AppState+<Feature>.swift`, its root view in `<Feature>Tab.swift`.
 
 Milestones:
 

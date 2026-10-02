@@ -48,7 +48,7 @@ struct ChangesDiffPane: View {
 
     private var header: some View {
         HStack(spacing: Theme.Size.spaceM) {
-            TreeTogglePill(collapsed: state.changesColumnHidden, enabled: true, subject: "timeline") {
+            TreeTogglePill(collapsed: state.changesTool.columnHidden, enabled: true, subject: "timeline") {
                 state.toggleChangesColumn()
             }
             HStack(spacing: Theme.Size.spaceM) {

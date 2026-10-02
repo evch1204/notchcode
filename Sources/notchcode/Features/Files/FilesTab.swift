@@ -48,9 +48,9 @@ struct FilesTab: View {
             state.loadRepoTree()
         }
         .onChange(of: filterFocused) { _, focused in
-            if state.fileFilterFocused != focused { state.fileFilterFocused = focused }
+            if state.filesTool.filterFocused != focused { state.filesTool.filterFocused = focused }
         }
-        .onChange(of: state.fileFilterFocused, initial: true) { _, focused in
+        .onChange(of: state.filesTool.filterFocused, initial: true) { _, focused in
             if filterFocused != focused { filterFocused = focused }
         }
     }
@@ -65,8 +65,8 @@ struct FilesTab: View {
             TextField(
                 "",
                 text: Binding(
-                    get: { state.fileFilter },
-                    set: { value in withAnimation(Theme.Motion.filterRows) { state.fileFilter = value } }
+                    get: { state.filesTool.filter },
+                    set: { value in withAnimation(Theme.Motion.filterRows) { state.filesTool.filter = value } }
                 ),
                 prompt: Text("Filter").foregroundStyle(Theme.Colors.filterPlaceholder)
             )
@@ -74,7 +74,7 @@ struct FilesTab: View {
             .font(Theme.Fonts.monoCaption)
             .foregroundStyle(Theme.Colors.ink)
             .focused($filterFocused)
-            if state.fileFilter.isEmpty && !filterFocused {
+            if state.filesTool.filter.isEmpty && !filterFocused {
                 InlineKeycap(Theme.Keys.slash)
             }
         }
@@ -123,7 +123,7 @@ struct FilesTab: View {
                         .id(row.id)
                     }
                 }
-                .animation(Theme.Motion.filterRows, value: state.fileFilter)
+                .animation(Theme.Motion.filterRows, value: state.filesTool.filter)
             }
             .overlay {
                 if rows.isEmpty { EmptyNote(text: "No matches", font: Theme.Fonts.caption) }

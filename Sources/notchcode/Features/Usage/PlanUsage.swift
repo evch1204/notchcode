@@ -1,43 +1,10 @@
 // PlanUsage.swift
-// The plan limits Claude Code itself knows: the per-model weekly windows ("Fable") and where
-// the week went, from the usage cache Claude Code keeps in ~/.claude.json
-// (`cachedUsageUtilization`, written whenever it answers `/usage`), and the "What's
-// contributing to your limits usage?" section of `claude -p /usage`. The app never calls an
-// API: `PlanUsageRunner` runs the owner's own CLI headlessly (no hooks, no model turn), which
-// refreshes that cache.
+// `PlanUsageReader` parses the usage cache Claude Code keeps in ~/.claude.json
+// (`cachedUsageUtilization`) and the "What's contributing to your limits usage?" section of
+// `claude -p /usage`. The app never calls an API: `PlanUsageRunner` runs the owner's own CLI
+// headlessly (no hooks, no model turn), which refreshes that cache. Value types: UsageModel.
 
 import Foundation
-
-/// What Claude Code's own usage cache (~/.claude.json, cachedUsageUtilization) said.
-struct PlanUsage: Equatable {
-    var fetchedAt: Date
-    var fiveHourPercent: Double?
-    var fiveHourResetsAt: Date?
-    var weekPercent: Double?
-    var weekResetsAt: Date?
-    var modelWeeks: [ModelWeek]
-    /// Rows with percent > 0 first, in the file's order.
-    var weekBreakdown: [NamedShare]
-}
-
-/// The "What's contributing to your limits usage?" section of `claude -p /usage`.
-struct UsageBehaviors: Equatable {
-    struct Period: Equatable {
-        var title: String       // "Last 24h"
-        var requests: Int
-        var sessions: Int
-        var lines: [String]
-    }
-    var day: Period?
-    var week: Period?
-}
-
-enum PlanUsageError: Error, Equatable {
-    /// No `claude` executable in the usual places or on the login shell's PATH.
-    case notFound
-    /// It ran but failed, timed out or printed no result.
-    case failed
-}
 
 enum PlanUsageReader {
 

@@ -37,7 +37,7 @@ struct ChangesTimeline: View {
                 .frame(maxWidth: .infinity, alignment: .topLeading)
                 .background(alignment: .topLeading) { spine }
                 .animation(Theme.Motion.changesLayout, value: blocks.map(\.id))
-                .animation(Theme.Motion.changesLayout, value: state.changesUnfoldedGroups)
+                .animation(Theme.Motion.changesLayout, value: state.changesTool.unfoldedGroups)
             }
             .onChange(of: state.rowCursor) { _, _ in
                 guard let key = state.cursorRowKey else { return }
@@ -71,7 +71,7 @@ struct ChangesTimeline: View {
                 live: live,
                 wide: wide,
                 cursor: cursor,
-                selection: state.changesPaneShown ? state.changesSelection : nil,
+                selection: state.changesPaneShown ? state.changesTool.selection : nil,
                 cursorSpace: cursorSpace,
                 agentColor: { id in
                     guard let sid = state.focusedSession?.id else { return 0 }
@@ -83,7 +83,7 @@ struct ChangesTimeline: View {
             ChangesQuietGroup(
                 id: id,
                 turns: turns,
-                unfolded: state.changesUnfoldedGroups.contains(id),
+                unfolded: state.changesTool.unfoldedGroups.contains(id),
                 wide: wide,
                 cursor: cursor,
                 cursorSpace: cursorSpace,

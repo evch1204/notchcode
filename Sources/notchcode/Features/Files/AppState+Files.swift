@@ -1,46 +1,14 @@
-// FilesBrowser.swift
-// The Files tab's model: the repository tree from RepoFiles, which folders are open,
-// the name filter, the keyboard cursor, the previewed file (remembered per session),
+// AppState+Files.swift
+// The Files tool's AppState extension: the repository tree from RepoFiles, which folders are
+// open, the name filter, the keyboard cursor, the previewed file (remembered per session),
 // and which lines of that file this session changed. Also the two view switches: the tree
 // collapsed (⌘B, saved with the preferences) and a Markdown file's Preview · Code (P, per
-// session, in memory).
+// session, in memory). Its value types are in FilesModel.swift.
 //
 // Reading only. RepoFiles reads the disk off the main thread; nothing here writes a file.
 
 import AppKit
 import SwiftUI
-
-/// A file preview as loaded for the pane, with the line count when RepoFiles capped it.
-struct LoadedPreview: Equatable {
-    var preview: FilePreview
-    /// Lines in the whole file, when the preview was truncated and the count is known.
-    var totalLines: Int?
-}
-
-/// One visible row of the tree.
-struct TreeRow: Identifiable, Equatable {
-    var id: String { node.path }
-    var node: FileTreeNode
-    var depth: Int
-    var isOpen: Bool
-    /// Position among its parent's children, for the 40 ms stagger when a folder opens.
-    var childIndex: Int
-}
-
-/// ±counts of a file across the session's turns.
-struct FileChangeCount: Equatable {
-    var added: Int
-    var removed: Int
-}
-
-/// Lines of the current file this session changed. `added` are new-file line numbers;
-/// `removedAt` are the lines that now sit where removed lines used to be.
-struct ChangeMarks: Equatable {
-    var added: Set<Int> = []
-    var removedAt: Set<Int> = []
-    var isEmpty: Bool { added.isEmpty && removedAt.isEmpty }
-    var firstLine: Int? { (added.union(removedAt)).min() }
-}
 
 extension AppState {
 
@@ -49,14 +17,14 @@ extension AppState {
     /// The focused session's tree, if read.
     var focusedTree: [FileTreeNode]? {
         guard let cwd = focusedSession?.cwd, !cwd.isEmpty else { return nil }
-        return repoTrees[cwd]
+        return filesTool.repoTrees[cwd]
     }
 
     /// Reads the focused session's tree in the background. RepoFiles caches it, so calling
     /// this every time the tab shows is cheap.
     func loadRepoTree() {
-        guard let cwd = focusedSession?.cwd, !cwd.isEmpty, !repoTreesLoading.contains(cwd) else { return }
-        repoTreesLoading.insert(cwd)
+        guard let cwd = focusedSession?.cwd, !cwd.isEmpty, !filesTool.repoTreesLoading.contains(cwd) else { return }
+        filesTool.repoTreesLoading.insert(cwd)
         Task.detached(priority: .userInitiated) { [weak self] in
             let nodes = RepoFiles.tree(cwd: cwd)
             await self?.applyTree(nodes, cwd: cwd)
@@ -64,10 +32,10 @@ extension AppState {
     }
 
     private func applyTree(_ nodes: [FileTreeNode], cwd: String) {
-        repoTreesLoading.remove(cwd)
-        if repoTrees[cwd] != nodes { repoTrees[cwd] = nodes }
+        filesTool.repoTreesLoading.remove(cwd)
+        if filesTool.repoTrees[cwd] != nodes { filesTool.repoTrees[cwd] = nodes }
         if let sid = focusedSession?.id, focusedSession?.cwd == cwd,
-           let path = openedFile[sid], previews[Self.previewKey(cwd: cwd, path: path)] == nil {
+           let path = filesTool.openedFile[sid], filesTool.previews[Self.previewKey(cwd: cwd, path: path)] == nil {
             loadPreview(cwd: cwd, path: path)
         }
     }
@@ -79,21 +47,21 @@ extension AppState {
     /// Top-level folders start open, deeper ones closed; a click or ←/→ flips one.
     func isFolderOpen(_ path: String, sessionId: String) -> Bool {
         let openByDefault = Self.depth(of: path) == 0
-        return openByDefault != (treeToggled[sessionId]?.contains(path) ?? false)
+        return openByDefault != (filesTool.treeToggled[sessionId]?.contains(path) ?? false)
     }
 
     func setFolder(_ path: String, open: Bool, sessionId: String) {
         guard isFolderOpen(path, sessionId: sessionId) != open else { return }
-        var set = treeToggled[sessionId] ?? []
+        var set = filesTool.treeToggled[sessionId] ?? []
         if set.contains(path) { set.remove(path) } else { set.insert(path) }
-        treeToggled[sessionId] = set
+        filesTool.treeToggled[sessionId] = set
     }
 
     /// The rows the tree shows right now. With a filter: files whose name contains it, and the
     /// folders above them, all open; a folder whose own name matches keeps its whole subtree.
     func visibleTreeRows() -> [TreeRow] {
         guard let sid = focusedSession?.id, let tree = focusedTree else { return [] }
-        let query = fileFilter.trimmingCharacters(in: .whitespaces).lowercased()
+        let query = filesTool.filter.trimmingCharacters(in: .whitespaces).lowercased()
         var rows: [TreeRow] = []
 
         func matches(_ node: FileTreeNode) -> Bool {
@@ -129,11 +97,11 @@ extension AppState {
     // MARK: Cursor and keys
 
     var treeCursorPath: String? {
-        focusedSession.flatMap { treeCursor[$0.id] }
+        focusedSession.flatMap { filesTool.treeCursor[$0.id] }
     }
 
     var openedFilePath: String? {
-        focusedSession.flatMap { openedFile[$0.id] }
+        focusedSession.flatMap { filesTool.openedFile[$0.id] }
     }
 
     /// The Files tab's keys. Nil: not a Files key, let the card handle it.
@@ -153,26 +121,26 @@ extension AppState {
         case .markdownMode:
             return toggleMarkdownMode()
         case .filter:
-            fileFilterFocused = true
+            filesTool.filterFocused = true
             return true
         case .up, .down:
             let rows = visibleTreeRows()
             guard !rows.isEmpty else { return false }
-            let current = rows.firstIndex { $0.id == treeCursor[sid] }
+            let current = rows.firstIndex { $0.id == filesTool.treeCursor[sid] }
             let next: Int
             if let current {
                 next = max(0, min(rows.count - 1, current + (key == .down ? 1 : -1)))
             } else {
                 next = key == .down ? 0 : rows.count - 1
             }
-            treeCursor[sid] = rows[next].id
+            filesTool.treeCursor[sid] = rows[next].id
             return true
         case .right:
             guard let row = cursorRow(), row.node.isDirectory else { return false }
             if row.isOpen {
                 // Already open: step onto its first child, as Finder and Xcode do.
                 if let first = visibleTreeRows().first(where: { Self.parent(of: $0.id) == row.id }) {
-                    treeCursor[sid] = first.id
+                    filesTool.treeCursor[sid] = first.id
                 }
             } else {
                 withAnimation(Theme.Motion.disclosure) { setFolder(row.id, open: true, sessionId: sid) }
@@ -180,16 +148,16 @@ extension AppState {
             return true
         case .left:
             guard let row = cursorRow() else { return false }
-            if row.node.isDirectory && row.isOpen && fileFilter.isEmpty {
+            if row.node.isDirectory && row.isOpen && filesTool.filter.isEmpty {
                 withAnimation(Theme.Motion.disclosure) { setFolder(row.id, open: false, sessionId: sid) }
             } else if let parent = Self.parent(of: row.id) {
-                treeCursor[sid] = parent
+                filesTool.treeCursor[sid] = parent
             }
             return true
         case .primary:
             guard let row = cursorRow() else { return false }
             if row.node.isDirectory {
-                guard fileFilter.isEmpty else { return true }
+                guard filesTool.filter.isEmpty else { return true }
                 withAnimation(Theme.Motion.disclosure) { setFolder(row.id, open: !row.isOpen, sessionId: sid) }
             } else {
                 openFile(row.id)
@@ -215,9 +183,9 @@ extension AppState {
     /// A click on a tree row: folders open or close, files open in the preview.
     func clickTreeRow(_ row: TreeRow) {
         guard let sid = focusedSession?.id else { return }
-        treeCursor[sid] = row.id
+        filesTool.treeCursor[sid] = row.id
         if row.node.isDirectory {
-            guard fileFilter.isEmpty else { return }
+            guard filesTool.filter.isEmpty else { return }
             withAnimation(Theme.Motion.disclosure) { setFolder(row.id, open: !row.isOpen, sessionId: sid) }
         } else {
             openFile(row.id)
@@ -227,8 +195,8 @@ extension AppState {
     /// Shows a file in the preview and remembers it for this session.
     func openFile(_ path: String) {
         guard let session = focusedSession else { return }
-        treeCursor[session.id] = path
-        withAnimation(Theme.Motion.previewFade) { openedFile[session.id] = path }
+        filesTool.treeCursor[session.id] = path
+        withAnimation(Theme.Motion.previewFade) { filesTool.openedFile[session.id] = path }
         loadPreview(cwd: session.cwd, path: path)
     }
 
@@ -236,8 +204,8 @@ extension AppState {
     /// (else the previewed file). Line 1 when this session did not change it.
     func copyFileLocation() -> Bool {
         guard let sid = focusedSession?.id else { return false }
-        var path = openedFile[sid]
-        if let cursor = treeCursor[sid], let row = visibleTreeRows().first(where: { $0.id == cursor }), !row.node.isDirectory {
+        var path = filesTool.openedFile[sid]
+        if let cursor = filesTool.treeCursor[sid], let row = visibleTreeRows().first(where: { $0.id == cursor }), !row.node.isDirectory {
             path = cursor
         }
         guard let path else { return false }
@@ -255,7 +223,7 @@ extension AppState {
 
     func setFilesTreeHidden(_ hidden: Bool) {
         guard prefs.filesTreeHidden != hidden else { return }
-        if hidden { fileFilterFocused = false }
+        if hidden { filesTool.filterFocused = false }
         withAnimation(Theme.Motion.treeCollapse) { prefs.filesTreeHidden = hidden }
     }
 
@@ -271,11 +239,10 @@ extension AppState {
 
     /// The focused session shows Markdown as source (Code) rather than rendered (Preview).
     var markdownShowsCode: Bool {
-        get { focusedSession.flatMap { markdownSource[$0.id] } ?? false }
+        get { focusedSession.flatMap { filesTool.markdownSource[$0.id] } ?? false }
         set {
             guard let sid = focusedSession?.id, markdownShowsCode != newValue else { return }
-            objectWillChange.send()
-            markdownSource[sid] = newValue
+            filesTool.markdownSource[sid] = newValue
         }
     }
 
@@ -292,12 +259,12 @@ extension AppState {
 
     /// The previewed file of the focused session, when loaded.
     var openedPreview: LoadedPreview? {
-        guard let session = focusedSession, let path = openedFile[session.id] else { return nil }
-        return previews[Self.previewKey(cwd: session.cwd, path: path)]
+        guard let session = focusedSession, let path = filesTool.openedFile[session.id] else { return nil }
+        return filesTool.previews[Self.previewKey(cwd: session.cwd, path: path)]
     }
 
     func reloadOpenedPreview() {
-        guard let session = focusedSession, let path = openedFile[session.id] else { return }
+        guard let session = focusedSession, let path = filesTool.openedFile[session.id] else { return }
         loadPreview(cwd: session.cwd, path: path)
     }
 
@@ -318,13 +285,13 @@ extension AppState {
     }
 
     private func applyPreview(_ loaded: LoadedPreview, key: String) {
-        if previews[key] == loaded { return }
+        if filesTool.previews[key] == loaded { return }
         // Keep the newest few: the one showing plus a handful to flip back to.
-        if previews[key] == nil && previews.count >= Theme.Limits.maxCachedPreviews {
-            let keep = focusedSession.flatMap { s in openedFile[s.id].map { Self.previewKey(cwd: s.cwd, path: $0) } }
-            if let drop = previews.keys.first(where: { $0 != keep }) { previews[drop] = nil }
+        if filesTool.previews[key] == nil && filesTool.previews.count >= Theme.Limits.maxCachedPreviews {
+            let keep = focusedSession.flatMap { s in filesTool.openedFile[s.id].map { Self.previewKey(cwd: s.cwd, path: $0) } }
+            if let drop = filesTool.previews.keys.first(where: { $0 != keep }) { filesTool.previews[drop] = nil }
         }
-        withAnimation(Theme.Motion.previewFade) { previews[key] = loaded }
+        withAnimation(Theme.Motion.previewFade) { filesTool.previews[key] = loaded }
     }
 
     nonisolated static func countLines(atPath path: String) -> Int? {

@@ -84,7 +84,7 @@ extension AppState {
         questionShown = false
         clearToolLabel()
         if !CardTab.browsable.contains(selectedTab) { selectedTab = .sessions }
-        fileFilterFocused = false
+        filesTool.filterFocused = false
         requestDiff = nil
         gitCardClosed()
         refresh()
@@ -168,7 +168,7 @@ extension AppState {
             }
         }
         selectedTab = tab
-        if tab != .files { fileFilterFocused = false }
+        if tab != .files { filesTool.filterFocused = false }
         if tab == .files { loadRepoTree() }
         if tab == .git { gitToolShown() }
         if tab == .usage { usagePaneShown() }
@@ -187,13 +187,13 @@ extension AppState {
         if key == .quit { quit(); return true }
 
         let filesOpen = isCardOpen && isShowingTool(.files)
-        if key == .escape, filesOpen, fileFilterFocused || !fileFilter.isEmpty {
+        if key == .escape, filesOpen, filesTool.filterFocused || !filesTool.filter.isEmpty {
             // Esc clears the filter first; a second esc closes the card.
-            withAnimation(Theme.Motion.filterRows) { fileFilter = "" }
-            fileFilterFocused = false
+            withAnimation(Theme.Motion.filterRows) { filesTool.filter = "" }
+            filesTool.filterFocused = false
             return true
         }
-        if filesOpen && fileFilterFocused {
+        if filesOpen && filesTool.filterFocused {
             // Typing goes to the filter field; only the tree keys and teleport stay with the card.
             switch key {
             case .up, .down, .primary, .teleport: break

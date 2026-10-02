@@ -3,51 +3,11 @@
 // turn with files is an entry, a run of turns without files one quiet group, the live turn
 // always first), the cursor's stops through them in reading order (chips, group rows,
 // unfolded quiet rows, the live turn with no edits yet), the chip whose diff the pane shows,
-// the With edits filter, and the changes shell commands made.
+// the With edits filter, and the changes shell commands made. Its value types are in
+// ChangesModel.swift.
 
 import AppKit
 import SwiftUI
-
-/// A file chip: the file `path` as the turn `turnId` changed it.
-struct ChangesChipKey: Hashable {
-    var turnId: String
-    var path: String
-}
-
-/// One block of the timeline, newest first.
-enum ChangesBlock: Identifiable, Equatable {
-    /// A turn with files, or the live turn. `number` counts from the session's first turn.
-    case entry(TranscriptTurn, number: Int, live: Bool)
-    /// A run of turns without files, newest first; keyed by its newest turn's id.
-    case quiet(id: String, turns: [TranscriptTurn])
-
-    var id: String {
-        switch self {
-        case .entry(let turn, _, _): return "e|" + turn.id
-        case .quiet(let id, _): return "g|" + id
-        }
-    }
-}
-
-/// A stop of the Changes cursor (`rowCursor` indexes `changesCursorItems`).
-enum ChangesItem: Identifiable, Equatable {
-    /// The live turn while it has no edits: the cursor rests on it.
-    case live(turnId: String)
-    case chip(ChangesChipKey)
-    /// A quiet group's row.
-    case group(id: String)
-    /// One turn of an unfolded quiet group.
-    case quiet(turnId: String)
-
-    var id: String {
-        switch self {
-        case .live(let id): return "l|" + id
-        case .chip(let key): return AppState.changesChipID(key)
-        case .group(let id): return "g|" + id
-        case .quiet(let id): return "q|" + id
-        }
-    }
-}
 
 extension AppState {
 
@@ -100,7 +60,7 @@ extension AppState {
         var blocks: [ChangesBlock] = []
         var run: [TranscriptTurn] = []
         func flush() {
-            if let first = run.first, !changesEditsOnly { blocks.append(.quiet(id: first.id, turns: run)) }
+            if let first = run.first, !changesTool.editsOnly { blocks.append(.quiet(id: first.id, turns: run)) }
             run = []
         }
         for (index, turn) in turns.enumerated() {
@@ -130,7 +90,7 @@ extension AppState {
                 }
             case .quiet(let id, let turns):
                 items.append(.group(id: id))
-                if changesUnfoldedGroups.contains(id) {
+                if changesTool.unfoldedGroups.contains(id) {
                     items += turns.map { .quiet(turnId: $0.id) }
                 }
             }
@@ -154,12 +114,12 @@ extension AppState {
 
     /// The diff pane shows: a chip is selected and the pane is open.
     var changesPaneShown: Bool {
-        changesPaneOpen && changesSelectedFile != nil
+        changesTool.paneOpen && changesSelectedFile != nil
     }
 
     /// The selected chip's turn, file and the turn's number, when both still exist.
     var changesSelectedFile: (turn: TranscriptTurn, file: FileChange, number: Int)? {
-        guard let key = changesSelection else { return nil }
+        guard let key = changesTool.selection else { return nil }
         let turns = turns(for: focusedSession?.id)
         guard let index = turns.firstIndex(where: { $0.id == key.turnId }),
               let file = turns[index].files.first(where: { $0.path == key.path }) else { return nil }
@@ -168,11 +128,7 @@ extension AppState {
 
     /// Every view choice goes back to its default: a new session, or the app's start.
     func resetChangesView() {
-        changesSelection = nil
-        changesPaneOpen = false
-        changesEditsOnly = false
-        changesUnfoldedGroups = []
-        changesColumnHidden = false
+        changesTool = ChangesToolState()
     }
 
     /// Runs `change` with the cursor kept on the same stop when it still exists; otherwise
@@ -192,8 +148,8 @@ extension AppState {
     func selectChangesChip(_ key: ChangesChipKey) {
         withAnimation(Theme.Motion.changesLayout) {
             if let index = changesCursorItems.firstIndex(of: .chip(key)) { rowCursor = index }
-            changesSelection = key
-            changesPaneOpen = true
+            changesTool.selection = key
+            changesTool.paneOpen = true
         }
     }
 
@@ -201,7 +157,7 @@ extension AppState {
     func toggleChangesGroup(_ id: String) {
         withAnimation(Theme.Motion.changesLayout) {
             keepingChangesCursor {
-                if changesUnfoldedGroups.contains(id) { changesUnfoldedGroups.remove(id) } else { changesUnfoldedGroups.insert(id) }
+                if changesTool.unfoldedGroups.contains(id) { changesTool.unfoldedGroups.remove(id) } else { changesTool.unfoldedGroups.insert(id) }
             }
             if let index = changesCursorItems.firstIndex(of: .group(id: id)) { rowCursor = index }
         }
@@ -210,14 +166,14 @@ extension AppState {
     /// `/`: With edits on or off. The cursor stays on its chip; from a quiet row it moves on.
     func toggleChangesEditsOnly() {
         withAnimation(Theme.Motion.changesLayout) {
-            keepingChangesCursor { changesEditsOnly.toggle() }
+            keepingChangesCursor { changesTool.editsOnly.toggle() }
         }
     }
 
     /// ⌘B while the pane shows: the timeline column goes, the pane takes the width; again brings it back.
     func toggleChangesColumn() {
         guard changesPaneShown else { return }
-        withAnimation(Theme.Motion.changesLayout) { changesColumnHidden.toggle() }
+        withAnimation(Theme.Motion.changesLayout) { changesTool.columnHidden.toggle() }
     }
 
     /// Esc in the Changes tool: a hidden column comes back, then the pane closes (the chip
@@ -225,10 +181,10 @@ extension AppState {
     func changesEscape() -> Bool {
         guard changesPaneShown else { return false }
         withAnimation(Theme.Motion.changesLayout) {
-            if changesColumnHidden {
-                changesColumnHidden = false
+            if changesTool.columnHidden {
+                changesTool.columnHidden = false
             } else {
-                changesPaneOpen = false
+                changesTool.paneOpen = false
             }
         }
         return true
@@ -244,7 +200,7 @@ extension AppState {
             withAnimation(Theme.Motion.changesLayout) {
                 rowCursor = next
                 // The pane follows the cursor from chip to chip.
-                if changesPaneOpen, case .chip(let chip) = items[next] { changesSelection = chip }
+                if changesTool.paneOpen, case .chip(let chip) = items[next] { changesTool.selection = chip }
             }
             return true
         case .primary:
@@ -252,7 +208,7 @@ extension AppState {
             guard items.indices.contains(rowCursor) else { return false }
             switch items[rowCursor] {
             case .chip(let chip):
-                if changesPaneShown, changesSelection == chip {
+                if changesPaneShown, changesTool.selection == chip {
                     // The diff is already up: ⏎ again goes to the terminal, as ⌥⏎ does.
                     teleport(session: focusedSession)
                 } else {
