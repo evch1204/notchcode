@@ -229,7 +229,7 @@ final class TranscriptWatcher {
         guard let data = try? JSONLines.read(path, from: 0, length: Self.headBytes) else { return head }
         JSONLines.forEachCompleteLine(data) { line in
             if head.cwd == nil, let c = line["cwd"] as? String, !c.isEmpty { head.cwd = c }
-            if head.startedAt == nil, let d = TranscriptDates.parse(line["timestamp"]) { head.startedAt = d }
+            if head.startedAt == nil, let d = ISODate.parse(line["timestamp"]) { head.startedAt = d }
             if head.entrypoint == nil, let e = line["entrypoint"] as? String, !e.isEmpty { head.entrypoint = e }
         }
         return head
@@ -263,7 +263,7 @@ final class TranscriptWatcher {
             if (line["isSidechain"] as? Bool) == true { return }
             if let c = line["cwd"] as? String, !c.isEmpty { cwd = c }
             if let m = line["permissionMode"] as? String, !m.isEmpty { permissionMode = m }
-            let date = TranscriptDates.parse(line["timestamp"]) ?? .distantPast
+            let date = ISODate.parse(line["timestamp"]) ?? .distantPast
             switch line["type"] as? String {
             case "assistant":
                 guard let message = line["message"] as? [String: Any] else { return }

@@ -60,17 +60,17 @@ enum PlanUsageReader {
 
         if let five = utilization["five_hour"] as? [String: Any], let percent = number(five["utilization"]) {
             plan.fiveHourPercent = clamp(percent)
-            plan.fiveHourResetsAt = date(five["resets_at"])
+            plan.fiveHourResetsAt = ISODate.parse(five["resets_at"])
         } else if let session = limit("session"), let percent = number(session["percent"]) {
             plan.fiveHourPercent = clamp(percent)
-            plan.fiveHourResetsAt = date(session["resets_at"])
+            plan.fiveHourResetsAt = ISODate.parse(session["resets_at"])
         }
         if let week = utilization["seven_day"] as? [String: Any], let percent = number(week["utilization"]) {
             plan.weekPercent = clamp(percent)
-            plan.weekResetsAt = date(week["resets_at"])
+            plan.weekResetsAt = ISODate.parse(week["resets_at"])
         } else if let week = limit("weekly_all"), let percent = number(week["percent"]) {
             plan.weekPercent = clamp(percent)
-            plan.weekResetsAt = date(week["resets_at"])
+            plan.weekResetsAt = ISODate.parse(week["resets_at"])
         }
 
         for row in limits where row["kind"] as? String == "weekly_scoped" {
@@ -79,7 +79,7 @@ enum PlanUsageReader {
                   let name = model["display_name"] as? String, !name.isEmpty,
                   let percent = number(row["percent"]),
                   !plan.modelWeeks.contains(where: { $0.name == name }) else { continue }
-            plan.modelWeeks.append(ModelWeek(name: name, percent: clamp(percent), resetsAt: date(row["resets_at"])))
+            plan.modelWeeks.append(ModelWeek(name: name, percent: clamp(percent), resetsAt: ISODate.parse(row["resets_at"])))
         }
 
         let rows = ((utilization["seven_day_breakdown"] as? [String: Any])?["rows"] as? [[String: Any]]) ?? []
@@ -139,23 +139,6 @@ enum PlanUsageReader {
     }
 
     private static func clamp(_ percent: Double) -> Double { min(100, max(0, percent)) }
-
-    private static let isoFractional: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f
-    }()
-
-    private static let iso: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime]
-        return f
-    }()
-
-    static func date(_ value: Any?) -> Date? {
-        guard let text = value as? String else { return nil }
-        return isoFractional.date(from: text) ?? iso.date(from: text)
-    }
 }
 
 /// Runs `claude -p /usage --output-format json --setting-sources "" --resume <id>` in
