@@ -11,7 +11,7 @@ extension AppState {
     /// An envelope as the socket would deliver it. The demo has no socket, so a blocking one
     /// gets the transport's deadline here: past it the request goes the timed-out way.
     func receiveDemo(_ envelope: HookEnvelope) {
-        receive(envelope) { _ in }
+        receive(envelope) { _ in true }
         guard envelope.isBlocking else { return }
         let id = envelope.id
         DispatchQueue.main.asyncAfter(deadline: .now() + Theme.Timing.permissionDeadline) { [weak self] in

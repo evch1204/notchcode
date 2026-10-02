@@ -11,6 +11,9 @@
 //     first in ~/Library/Application Support/notchcode/statusline-chain.json as
 //     {"previous": <old statusLine>} and keeps running through ours. Disconnect puts it back
 //     (or removes the key when there was none) and deletes the chain file.
+//   - hooks and the statusLine point at the app's copies of the scripts in
+//     ~/Library/Application Support/notchcode/bin/, never into the app bundle, so moving or
+//     updating the app never breaks them. The app refreshes the copies at every launch.
 //
 // JSONSerialization loses key order (NSDictionary), so this uses the small ordered JSON
 // parser and printer in OrderedJSON.swift. Untouched strings and numbers are written back
@@ -23,7 +26,9 @@
 import Foundation
 
 enum HooksInstaller {
-    enum Status { case connected, notConnected, partial }
+    /// Stale: ours are all there, but they point somewhere other than the bin copies, or at a
+    /// copy that is gone (an older connect wrote the bundle's path, or the repo's).
+    enum Status { case connected, notConnected, partial, stale }
 
     enum InstallError: LocalizedError {
         case invalidJSON(String)
@@ -56,8 +61,9 @@ enum HooksInstaller {
             .appendingPathComponent("Library/Application Support/notchcode/statusline-chain.json").path
     }
 
-    /// The status line script inside the app bundle, or the repo's hooks/ folder when running unbundled.
-    static var statuslineScriptPath: String {
+    /// The status line script inside the app bundle, or the repo's hooks/ folder when running
+    /// unbundled. Only the source of the bin copy; settings.json never names it.
+    static var bundledStatuslineScriptPath: String {
         if let url = Bundle.main.url(forResource: "notchcode-statusline", withExtension: "sh") { return url.path }
         return URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent()
@@ -65,8 +71,9 @@ enum HooksInstaller {
             .appendingPathComponent("hooks/notchcode-statusline.sh").path
     }
 
-    /// The hook script inside the app bundle, or the repo's hooks/ folder when running unbundled.
-    static var hookScriptPath: String {
+    /// The hook script inside the app bundle, or the repo's hooks/ folder when running
+    /// unbundled. Only the source of the bin copy; settings.json never names it.
+    static var bundledHookScriptPath: String {
         if let url = Bundle.main.url(forResource: "notchcode-hook", withExtension: "sh") { return url.path }
         // Sources/notchcode/ClaudeCode/HooksInstaller.swift -> <repo>/hooks/notchcode-hook.sh
         return URL(fileURLWithPath: #filePath)
@@ -75,9 +82,55 @@ enum HooksInstaller {
             .appendingPathComponent("hooks/notchcode-hook.sh").path
     }
 
+    /// The copy of the hook script that settings.json names.
+    static var installedHookScriptPath: String {
+        NotchcodePaths.binDirectory.appendingPathComponent("notchcode-hook.sh").path
+    }
+
+    /// The copy of the status line script that settings.json names. It runs the hook script
+    /// beside it, so both copies live in the same folder.
+    static var installedStatuslineScriptPath: String {
+        NotchcodePaths.binDirectory.appendingPathComponent("notchcode-statusline.sh").path
+    }
+
     // MARK: Public
 
+    /// Copies both bundled scripts into the bin folder, each only when it is missing or its
+    /// bytes differ, executable (0755). Runs at every launch and before every connect. Never
+    /// throws: a failure is logged and the next launch or connect tries again.
+    static func installScripts() {
+        let fm = FileManager.default
+        let bin = NotchcodePaths.binDirectory
+        do {
+            try fm.createDirectory(at: bin, withIntermediateDirectories: true,
+                                   attributes: [.posixPermissions: 0o700])
+        } catch {
+            debugLog("installScripts: cannot make \(bin.path): \(error)")
+            return
+        }
+        for (source, target) in [(bundledHookScriptPath, installedHookScriptPath),
+                                 (bundledStatuslineScriptPath, installedStatuslineScriptPath)] {
+            guard let data = fm.contents(atPath: source) else {
+                debugLog("installScripts: no script at \(source)")
+                continue
+            }
+            do {
+                if fm.contents(atPath: target) != data {
+                    try data.write(to: URL(fileURLWithPath: target), options: .atomic)
+                }
+                let mode = (try? fm.attributesOfItem(atPath: target))?[.posixPermissions] as? NSNumber
+                if mode?.intValue != 0o755 {
+                    try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: target)
+                }
+            } catch {
+                debugLog("installScripts: cannot copy \(source) to \(target): \(error)")
+            }
+        }
+    }
+
     /// Connected means every hook and the statusLine are ours; partial means some are.
+    /// Either one turns stale when an entry of ours does not name the bin folder, or names a
+    /// copy that is not there.
     static func status() -> Status {
         guard let file = try? readSettings(settingsPath), case .object(let top) = file.root else { return .notConnected }
         var hooks: [OJ.Member] = []
@@ -91,24 +144,48 @@ enum HooksInstaller {
         let line = top.first(where: { $0.key == "statusLine" })?.value
         let lineOurs = line.map(isOurStatusLine) ?? false
         let count = present.count + (lineOurs ? 1 : 0)
-        if count == events.count + 1 { return .connected }
-        return count == 0 ? .notConnected : .partial
+        if count == 0 { return .notConnected }
+        if isStale(hooks: hooks, line: lineOurs ? line : nil) { return .stale }
+        return count == events.count + 1 ? .connected : .partial
+    }
+
+    /// True when one of our commands does not point into the bin folder, or the copy it
+    /// runs is missing.
+    private static func isStale(hooks: [OJ.Member], line: OJ?) -> Bool {
+        let bin = NotchcodePaths.binDirectory.path
+        let fm = FileManager.default
+        var hookCommands: [String] = []
+        for member in hooks {
+            guard case .array(let groups) = member.value else { continue }
+            for group in groups {
+                for hook in hooksList(group) ?? [] where isOurs(hook) {
+                    if let c = command(of: hook) { hookCommands.append(c) }
+                }
+            }
+        }
+        if hookCommands.contains(where: { !$0.contains(bin) }) { return true }
+        if !hookCommands.isEmpty, !fm.fileExists(atPath: installedHookScriptPath) { return true }
+        if let line, let c = command(of: line) {
+            if !c.contains(bin) { return true }
+            // The status line copy runs the hook copy beside it, so both must be there.
+            if !fm.fileExists(atPath: installedStatuslineScriptPath)
+                || !fm.fileExists(atPath: installedHookScriptPath) { return true }
+        }
+        return false
     }
 
     static func connect() throws {
         let path = settingsPath
-        let script = hookScriptPath
+        // Hooks name the bin copies, so make sure they are there and current first.
+        installScripts()
+        let script = installedHookScriptPath
         guard FileManager.default.fileExists(atPath: script) else { throw InstallError.hookScriptMissing(script) }
-        let lineScript = statuslineScriptPath
+        let lineScript = installedStatuslineScriptPath
         guard FileManager.default.fileExists(atPath: lineScript) else { throw InstallError.hookScriptMissing(lineScript) }
         let chain = chainPath
 
-        // A script without the executable bit (for example one copied into a bundle that
-        // lost it) is run through sh instead. The bundle itself is never modified.
-        func runnable(_ script: String) -> String {
-            let quoted = shellQuote(script)
-            return FileManager.default.isExecutableFile(atPath: script) ? quoted : "/bin/sh \(quoted)"
-        }
+        // The bin copies are always executable, so the path is the whole command.
+        func runnable(_ script: String) -> String { shellQuote(script) }
         let prefix = runnable(script)
         let wanted = wantedHooks { kind in "\(prefix) \(kind)" }
         let lineCommand = runnable(lineScript)
@@ -280,18 +357,20 @@ enum HooksInstaller {
 
     // MARK: Ours vs theirs
 
-    private static func isOurs(_ hook: OJ) -> Bool {
-        guard case .object(let m) = hook,
+    /// The "command" string of a hook or a statusLine object.
+    private static func command(of entry: OJ) -> String? {
+        guard case .object(let m) = entry,
               let c = m.first(where: { $0.key == "command" })?.value,
-              case .string(let s, _) = c else { return false }
-        return s.contains(marker)
+              case .string(let s, _) = c else { return nil }
+        return s
+    }
+
+    private static func isOurs(_ hook: OJ) -> Bool {
+        command(of: hook)?.contains(marker) ?? false
     }
 
     private static func isOurStatusLine(_ line: OJ) -> Bool {
-        guard case .object(let m) = line,
-              let c = m.first(where: { $0.key == "command" })?.value,
-              case .string(let s, _) = c else { return false }
-        return s.contains(statuslineMarker)
+        command(of: line)?.contains(statuslineMarker) ?? false
     }
 
     private static func hooksList(_ group: OJ) -> [OJ]? {

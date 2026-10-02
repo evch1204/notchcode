@@ -20,7 +20,7 @@ extension AppState {
 
         // Claude Code's own helper runs (sdk-cli) fire hooks too; PLAN says they never show.
         if headlessIds.contains(sid) {
-            if envelope.isBlocking { reply(HookReply(id: envelope.id, decision: .none)) }
+            if envelope.isBlocking { _ = reply(HookReply(id: envelope.id, decision: .none)) }
             return
         }
 
@@ -169,8 +169,14 @@ extension AppState {
 
     func timedOut(requestId: String) {
         guard let sid = dropPending(requestId) else { return }
-        if !pending.contains(where: { $0.sessionId == sid }) { markNeedsYou(sid) }
+        unanswered(sid)
         afterPendingChange(sessionId: sid)
+    }
+
+    /// A request left the queue without the hook getting an answer: the terminal prompt waits,
+    /// so the session needs the owner unless another request of its own is still showing.
+    func unanswered(_ sid: String) {
+        if !pending.contains(where: { $0.sessionId == sid }) { markNeedsYou(sid) }
     }
 
     /// A turn with no agent left running is done: the session shows done, the done peek
@@ -252,7 +258,7 @@ extension AppState {
             return
         }
 
-        reply(HookReply(id: envelope.id, decision: .none))
+        _ = reply(HookReply(id: envelope.id, decision: .none))
         updateSession(sessionId) {
             $0.state = .working
             $0.verb = HookText.verb(forTool: tool)

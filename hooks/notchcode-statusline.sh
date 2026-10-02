@@ -12,7 +12,9 @@
 #      with the same stdin and prints exactly what it prints. With nothing chained it
 #      prints nothing.
 #
-# Rules: no dependencies beyond macOS base (sh, cat, stat, date, plutil, sed, tr, nc);
+# A session's first stamp also deletes stamps older than 7 days, so the folder never grows.
+#
+# Rules: no dependencies beyond macOS base (sh, cat, stat, date, plutil, sed, tr, nc, find);
 # never prints an error; always exits 0, including when the app is not running.
 
 here=$(dirname "$0")
@@ -33,6 +35,10 @@ if [ -S "$sock" ] && [ -n "$input" ]; then
   case "$now" in ''|*[!0-9]*) now=0 ;; esac
   case "$last" in ''|*[!0-9]*) last=0 ;; esac
   if [ $((now - last)) -ge 5 ] || [ "$now" -lt "$last" ]; then
+    if [ ! -e "$stamp" ]; then
+      # A session's first status line: prune the stamps of sessions long gone.
+      find "$stamps" -type f -mtime +7 -delete 2>/dev/null
+    fi
     mkdir -p "$stamps" 2>/dev/null && : > "$stamp" 2>/dev/null
     # Detached: the status line is never slowed, and Claude Code cancelling this script
     # (it does when a newer update arrives) does not wait on the socket.

@@ -106,7 +106,7 @@ extension AppState {
         // the second hook falls back to Claude Code, which the first answer settles.
         if let toolUseId = request.toolUseId,
            pending.contains(where: { $0.sessionId == request.sessionId && $0.toolUseId == toolUseId && $0.id != request.id }) {
-            reply(HookReply(id: request.id, decision: .none))
+            _ = reply(HookReply(id: request.id, decision: .none))
             return
         }
         if handlers[request.id] != nil {
@@ -128,12 +128,18 @@ extension AppState {
     }
 
     /// Replies exactly once and forgets the request. An answer means Claude moves on.
+    /// A press that lands after the transport's deadline reached no one: the terminal still
+    /// asks, so the session is marked the timed-out way and the card says so.
     func resolve(_ id: String, with reply: HookReply) {
         guard let handler = handlers[id] else { return }
         let sid = dropPending(id)
-        handler(reply)
-        if let sid, reply.decision != .none { clearNeedsYou(sid) }
+        let delivered = handler(reply)
+        if let sid {
+            if !delivered { unanswered(sid) }
+            else if reply.decision != .none { clearNeedsYou(sid) }
+        }
         afterPendingChange(sessionId: sid)
+        if !delivered && reply.decision != .none { flash("Too late: the terminal asks") }
     }
 
     /// Forgets a request and its reply handler without replying. Returns its session id.

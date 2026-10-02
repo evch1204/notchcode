@@ -39,6 +39,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         reposition()
         panel.orderFrontRegardless()
 
+        // Hooks name the copies in Application Support/notchcode/bin; refresh them from this
+        // build before any hook can reach the socket. Writes only when the bytes differ.
+        HooksInstaller.installScripts()
+
         let server = SocketServer(sink: state)
         do {
             try server.start()
