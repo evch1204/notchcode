@@ -50,6 +50,16 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     @Published var limitsUpdatedAt: Date?
     /// Per session, what the status line reported: real context, cost and model id.
     @Published var statusline: [String: StatuslineFacts] = [:]
+    /// Claude Code's own usage cache (~/.claude.json), as last read.
+    @Published var planUsage: PlanUsage?
+    /// "What's contributing to your limits usage?" from the last `claude -p /usage` run.
+    @Published var usageBehaviors: UsageBehaviors?
+    /// A `claude -p /usage` run is under way.
+    @Published var planUsageRefreshing = false
+    /// Nil, "claude command not found" or "couldn't run claude": why the last run gave nothing.
+    @Published var planUsageNote: String?
+    /// The plan usage schedule: the launch delay, then every `planUsageInterval`.
+    var planUsageTask: Task<Void, Never>?
     /// cwd -> the session id of the most recently written transcript in that folder.
     @Published var newestSessionByCWD: [String: String] = [:]
     @Published var turnsBySession: [String: [TranscriptTurn]] = [:]
@@ -149,6 +159,7 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
                 SystemNotifier.requestAuthorization()
             }
             if !prefs.showPeeks { peekTask?.cancel(); peek = nil }
+            if prefs.planUsageRefresh != oldValue.planUsageRefresh { planUsagePrefChanged() }
             refresh()
         }
     }

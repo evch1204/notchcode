@@ -68,6 +68,7 @@ extension AppState {
             sessionCursor = index
         }
         if selectedTab == .files { loadRepoTree() }
+        if selectedTab == .usage { usagePaneShown() }
         isCardOpen = true
         gitCardOpened()
         skipFocusReturn = false
@@ -170,6 +171,7 @@ extension AppState {
         if tab != .files { fileFilterFocused = false }
         if tab == .files { loadRepoTree() }
         if tab == .git { gitToolShown() }
+        if tab == .usage { usagePaneShown() }
         refresh()
     }
 
@@ -312,6 +314,11 @@ extension AppState {
         if selectedTab == .files, let used = handleFilesKey(key) { return used }
         if selectedTab == .git, let used = handleGitKey(key) { return used }
         if selectedTab == .changes, let used = handleChangesKey(key) { return used }
+        // R in Usage: run `claude -p /usage` now.
+        if selectedTab == .usage, key == .repository {
+            refreshPlanUsage(force: true)
+            return true
+        }
 
         switch key {
         case .number(let n):

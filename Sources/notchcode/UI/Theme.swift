@@ -130,6 +130,8 @@ enum Theme {
         static let tokenCacheWrite = green
         /// Limit bars in the Usage tool and the footer meter; context uses clay.
         static let limitBar = ink
+        /// A limit bar at or past `Limits.limitWarnPercent`.
+        static let limitBarHigh = clay
         static let contextBar = clay
 
         /// Collapsed wings: the session name and the "+N sessions" count.
@@ -379,7 +381,7 @@ enum Theme {
         static let sessionsCardHeight: CGFloat = 400
         static let changesCardHeight: CGFloat = 424
         static let filesCardHeight: CGFloat = 440
-        static let usageCardHeight: CGFloat = 380
+        static let usageCardHeight: CGFloat = 420
         static let gitCardHeight: CGFloat = 424
         /// The Git tool: the header row (branch, status, the sync pill).
         static let gitHeaderHeight: CGFloat = 26
@@ -552,26 +554,34 @@ enum Theme {
         /// on a 179 pt notch ((640 − 179) / 2 − 26). The card widens to keep it.
         static let statusMinWidth: CGFloat = 204
 
-        // Usage tab: one fixed page, never scrolls. Heights derive from `usageCardHeight`.
+        // Usage tab: one fixed page, never scrolls. The limits row takes what the others leave.
         static let usageRowSpacing: CGFloat = 10
         static let usageTileSpacing: CGFloat = 8
         static let usageLineSpacing: CGFloat = 4
         static let usageLegendSpacing: CGFloat = 10
+        /// The context bar.
         static let tokenBarHeight: CGFloat = 8
-        static let usageTokenBlockHeight: CGFloat = 60
+        /// The context row: its line, the bar, the legend.
+        static let usageContextRowHeight: CGFloat = 66
+        /// This session, Today and This week.
+        static let usageSessionRowHeight: CGFloat = 76
+        /// What's using your limits: two lines.
+        static let usageBehaviorsRowHeight: CGFloat = 44
+        /// This session's four-part token bar.
+        static let usageMiniBarHeight: CGFloat = 6
+        /// Top and bottom padding inside the session and behaviour tiles, so their lines fit the fixed heights.
+        static let usageCompactPadding: CGFloat = 6
         static let usageFootnoteHeight: CGFloat = 14
-        /// Share of the tile rows' height that goes to the big 5-hour and Week tiles.
-        static let usageBigTileShare: CGFloat = 0.56
         /// Height of a tool's pane inside the well: the card minus the bridge row, the two
         /// gaps around the well, the footer, the bottom padding and the well's own padding.
         static func tabPaneHeight(cardHeight: CGFloat) -> CGFloat {
             cardHeight - bridgeHeight - 2 * spaceM - cardFooterHeight - sidePadding - 2 * wellPadding
         }
-        static var usageTileRowsHeight: CGFloat {
-            tabPaneHeight(cardHeight: usageCardHeight) - usageTokenBlockHeight - usageFootnoteHeight - 3 * usageRowSpacing
+        /// The limit tiles: the pane minus the other rows and the four gaps.
+        static var usageLimitsRowHeight: CGFloat {
+            tabPaneHeight(cardHeight: usageCardHeight) - usageContextRowHeight - usageSessionRowHeight
+                - usageBehaviorsRowHeight - usageFootnoteHeight - 4 * usageRowSpacing
         }
-        static var usageBigTileHeight: CGFloat { (usageTileRowsHeight * usageBigTileShare).rounded(.down) }
-        static var usageSmallTileHeight: CGFloat { usageTileRowsHeight - usageBigTileHeight }
 
         // Hover rim light, the Motion board M7: the CSS `inset 0 -2px 0 0 white/50%` mirrored
         // outward (the shape shifted 2 pt down minus the shape: a 2 pt band under the flat
@@ -1190,8 +1200,18 @@ enum Theme {
         static let gitCommitTimeout: Double = 60
         /// The tool fetches the target's remote quietly when it opens, at most this often.
         static let gitAutoFetchInterval: Double = 300
-        /// After a timed-out git is sent SIGTERM, this long before SIGKILL.
-        static let gitKillGrace: Double = 2
+        /// After a timed-out process (git, claude) is sent SIGTERM, this long before SIGKILL.
+        static let processKillGrace: Double = 2
+        /// Plan usage (`claude -p /usage`) runs this often while Settings allows it.
+        static let planUsageInterval: Double = 900
+        /// Plan usage younger than this is not refreshed unless forced (R).
+        static let planUsageStaleAfter: Double = 300
+        /// A `claude -p /usage` run is stopped after this long.
+        static let planUsageTimeout: Double = 20
+        /// The first plan usage run waits this long after launch.
+        static let planUsageLaunchDelay: Double = 5
+        /// Asking the login shell where `claude` is gives up after this long.
+        static let claudeLookupTimeout: Double = 5
         /// Shell changes kept on disk per session (they survive a relaunch) are dropped after this long unused.
         static let shellChangesKeep: Double = 7 * 24 * 3600
     }
@@ -1245,6 +1265,10 @@ enum Theme {
         static let wordDiffMaxTokens: Int = 200
         /// The Changes pane counts a file's lines on disk (for the minimap) up to this size.
         static let changesLineCountBytes: Int = 4 * 1024 * 1024
+        /// A limit bar turns clay at this percent.
+        static let limitWarnPercent: Double = 90
+        /// The plan usage run's transcript starts over (a new session id) past this size.
+        static let planUsageTranscriptBytes: Int = 1_000_000
     }
 
     // MARK: - Fonts (SF Pro and SF Mono through .system, tabular numerals)
@@ -1360,6 +1384,8 @@ enum Theme {
         static let worktree = "W"
         /// Git: the picker's repository dropdown.
         static let repository = "R"
+        /// Usage: run `claude -p /usage` now.
+        static let refresh = "R"
     }
 
     // MARK: - Glyph characters used in text

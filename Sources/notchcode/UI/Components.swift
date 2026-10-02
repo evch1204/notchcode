@@ -31,17 +31,22 @@ struct TeleportLink: View {
 struct InsetGroup<Content: View>: View {
     var radius: CGFloat = Theme.Radius.inset
     var fillsHeight = false
+    /// Top and bottom padding; the sides always take `insetPadding`.
+    var verticalPadding: CGFloat = Theme.Size.insetPadding
     let content: Content
 
-    init(radius: CGFloat = Theme.Radius.inset, fillsHeight: Bool = false, @ViewBuilder content: () -> Content) {
+    init(radius: CGFloat = Theme.Radius.inset, fillsHeight: Bool = false,
+         verticalPadding: CGFloat = Theme.Size.insetPadding, @ViewBuilder content: () -> Content) {
         self.radius = radius
         self.fillsHeight = fillsHeight
+        self.verticalPadding = verticalPadding
         self.content = content()
     }
 
     var body: some View {
         content
-            .padding(Theme.Size.insetPadding)
+            .padding(.horizontal, Theme.Size.insetPadding)
+            .padding(.vertical, verticalPadding)
             .frame(maxWidth: .infinity, maxHeight: fillsHeight ? .infinity : nil,
                    alignment: fillsHeight ? .topLeading : .leading)
             .background(

@@ -15,9 +15,12 @@ enum UsageCalculator {
         var cacheWrite: Double
     }
 
-    static let opus = Rates(input: 15, output: 75, cacheRead: 1.5, cacheWrite: 18.75)
-    static let sonnet = Rates(input: 3, output: 15, cacheRead: 0.30, cacheWrite: 3.75)
-    static let haiku = Rates(input: 0.8, output: 4, cacheRead: 0.08, cacheWrite: 1)
+    // Anthropic first-party prices (claude-api skill, cached 2026-09-25).
+    static let fable = Rates(input: 10, output: 50, cacheRead: 0.25, cacheWrite: 12.5)
+    static let opus55 = Rates(input: 4, output: 20, cacheRead: 0.20, cacheWrite: 5)
+    static let opus = Rates(input: 5, output: 25, cacheRead: 0.50, cacheWrite: 6.25)
+    static let sonnet = Rates(input: 2, output: 10, cacheRead: 0.20, cacheWrite: 2.5)
+    static let haiku = Rates(input: 1, output: 5, cacheRead: 0.10, cacheWrite: 1.25)
 
     enum ModelFamily { case fable, opus, sonnet, haiku, other }
 
@@ -31,10 +34,11 @@ enum UsageCalculator {
         return .other
     }
 
-    /// Fable is priced like opus; unknown models like sonnet.
+    /// Fable and Mythos share a price; Opus 5.5 has its own; unknown models are priced like Sonnet.
     static func rates(forModel model: String?) -> Rates {
         switch family(of: model) {
-        case .fable, .opus: return opus
+        case .fable: return fable
+        case .opus: return (model ?? "").lowercased().contains("opus-5-5") ? opus55 : opus
         case .sonnet, .other: return sonnet
         case .haiku: return haiku
         }

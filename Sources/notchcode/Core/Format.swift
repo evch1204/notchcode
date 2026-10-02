@@ -129,6 +129,36 @@ enum Format {
         String(format: "$%.2f", value)
     }
 
+    /// "$50" for whole dollars, else "$12.40".
+    static func moneyTrimmed(_ value: Double) -> String {
+        value == value.rounded() ? String(format: "$%.0f", value) : money(value)
+    }
+
+    /// A gateway spend limit: "$12.40 of $50".
+    static func spend(used: Double, limit: Double) -> String {
+        money(used) + " of " + moneyTrimmed(limit)
+    }
+
+    /// One "What's contributing" line in fewer words: "94% from subagent-heavy sessions",
+    /// "82% at >150k context", "subagents general-purpose 34%, fork 5%".
+    static func behavior(_ line: String) -> String {
+        let replacements = [
+            ("% of your usage came from ", "% from "),
+            ("% of your usage was ", "% "),
+            ("% of your usage hit ", "% hit "),
+            ("Top subagents: ", "subagents "),
+            ("Top skills: ", "skills "),
+            ("Top plugins: ", "plugins "),
+            ("Top MCP servers: ", "MCP "),
+        ]
+        return replacements.reduce(line) { $0.replacingOccurrences(of: $1.0, with: $1.1) }
+    }
+
+    /// "Last 24h · 155 requests · 2 sessions".
+    static func behaviorPeriod(_ period: UsageBehaviors.Period) -> String {
+        [period.title, "\(period.requests) requests", sessions(period.sessions)].joined(separator: Theme.Glyphs.separator)
+    }
+
     /// Percent values arrive as 0-100.
     static func percent(_ value: Double) -> String {
         "\(Int(value.rounded()))%"

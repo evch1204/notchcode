@@ -105,6 +105,17 @@ struct SettingsPage: View {
                         }
                     }
 
+                    SettingsGroup(title: "Usage") {
+                        SettingsRow(label: "Refresh plan limits with the claude command") {
+                            SmallSwitch(isOn: $state.prefs.planUsageRefresh)
+                        }
+                        Text("Runs `claude -p /usage` every 15 minutes with no hooks and no model turn; the Fable week and the limits breakdown come from it. Off, the page shows what the status line and Claude Code's own cache last reported.")
+                            .font(Theme.Fonts.caption)
+                            .foregroundStyle(Theme.Colors.inkTertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.bottom, Theme.Size.settingsLabelSpacing)
+                    }
+
                     SettingsGroup(title: "Quit") {
                         SettingsRow(label: "Quit notchcode. Relaunch it with scripts/dev.sh, or it starts with your next Claude Code session when the plugin is installed.") {
                             Button("Quit") { state.quit() }

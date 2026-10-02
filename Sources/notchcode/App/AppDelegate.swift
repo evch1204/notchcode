@@ -65,6 +65,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let watcher = TranscriptWatcher(sink: state)
             self.watcher = watcher
             watcher.start()
+            // Plan limits from Claude Code's usage cache, refreshed by `claude -p /usage`.
+            state.startPlanUsage()
         }
         runDebugKeys()
     }
@@ -72,7 +74,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// `--debug-keys open,c,1.5,esc`: after three seconds, each name in turn with 1.2 s
     /// between them: "open" opens the card on the Git tool ("open:changes" on another), a number sleeps that many
     /// seconds, anything else is a key (esc, enter, cmdenter, cmdb, space, up, down, c, p,
-    /// u, w, r, /, y, 1 to 5). For screenshots of the tool's states while nobody is at the keys.
+    /// u, w, r, /, y, 1 to 5). "snap:<name>" renders the panel's view (no screen capture, so no
+    /// screen-recording permission) to Application Support/notchcode/snapshots/<name>.png.
+    /// For screenshots of the tool's states while nobody is at the keys.
     private func runDebugKeys() {
         let args = CommandLine.arguments
         guard let index = args.firstIndex(of: "--debug-keys"), index + 1 < args.count else { return }
@@ -90,11 +94,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.state.openCard(tab: .git)
                 } else if name.hasPrefix("open:"), let tab = Self.debugTab(String(name.dropFirst("open:".count))) {
                     self.state.openCard(tab: tab)
+                } else if name.hasPrefix("snap:") {
+                    self.snapshot(String(name.dropFirst("snap:".count)))
                 } else if let key = Self.debugKey(name) {
                     _ = self.state.handleKey(key)
                 }
                 try? await Task.sleep(for: .seconds(1.2))
             }
+        }
+    }
+
+    /// Renders the panel's content view at its window's backing scale into a PNG.
+    private func snapshot(_ name: String) {
+        guard let view = panel?.contentView, let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        let folder = NotchcodePaths.supportDirectory.appendingPathComponent("snapshots", isDirectory: true)
+        let url = folder.appendingPathComponent("\(name).png")
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            guard let data = rep.representation(using: .png, properties: [:]) else { return }
+            try data.write(to: url)
+            debugLog("snapshot \(url.path) \(rep.pixelsWide)x\(rep.pixelsHigh) scale=\(view.window?.backingScaleFactor ?? 0)")
+        } catch {
+            debugLog("snapshot failed \(error)")
         }
     }
 

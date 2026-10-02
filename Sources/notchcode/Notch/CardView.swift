@@ -261,7 +261,9 @@ struct CardView: View {
             // Past six the row would crowd the meter; ⇥ is taught by every other tool.
             if hints.count <= Theme.Limits.gitFooterHints { hints.append(KeyHint(Theme.Keys.tab, "next tool")) }
             return hints
-        case .question, .tool(.usage), .tool(.settings):
+        case .tool(.usage):
+            return [KeyHint(Theme.Keys.refresh, "refresh"), KeyHint(Theme.Keys.tab, "next tool")]
+        case .question, .tool(.settings):
             return [KeyHint(Theme.Keys.tab, "next tool")]
         }
     }

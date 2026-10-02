@@ -34,7 +34,7 @@ Press the notch at any time and a card opens with five tools. `1`–`5` or `⇥`
 | Changes | the session as a timeline, newest first: each turn that changed files with its files as chips (a subagent's carry its colour square), runs of quiet turns folded into one row, the live turn breathing at the top. `⏎` on a chip opens its diff beside the timeline; `/` shows only the turns with edits. |
 | Files | the repository tree, changed files badged, and a preview with changed lines tinted; `⌘B` folds the tree away, and Markdown renders with a Preview · Code switch. |
 | Git | the focused session's worktree, or any local branch of a repository a session runs in (`W` opens the picker: each branch with where it lives, "worktree harbor", "main checkout" or "not checked out"). A checklist of the uncommitted files on the left with the commit's summary field docked under it, the selected file's diff on the right with line numbers, changed words lit and a minimap. A branch checked out nowhere shows its changes against main, read-only. Commit the files you check, pull, push, fetch, or undo the last unpushed commit. |
-| Usage | 5-hour and weekly limits with reset times, context used, tokens for the session and today, an estimated cost, and today's Fable share. |
+| Usage | 5-hour, weekly and per-model (Fable) limits with reset times, context with what the last call cached, this session's cost, time and lines from Claude Code, today's tokens, where the week went, and what's using your limits. |
 
 ### Git without leaving the notch
 
@@ -126,7 +126,7 @@ While the card is open the notch takes the keyboard; the moment it closes, focus
 | `space` | put the selected file in or out of the commit (Git) |
 | `U` | undo the newest unpushed commit; its changes and message come back (Git) |
 | `W` | the Git branch picker: every local branch of a repository (`↑` `↓`, `⏎` shows that branch, `esc` goes back) |
-| `R` | in the Git branch picker, the repository dropdown (`↑` `↓`, `⏎` picks, `esc` closes) |
+| `R` | in the Git branch picker, the repository dropdown (`↑` `↓`, `⏎` picks, `esc` closes); in Usage, refresh the plan limits with `claude -p /usage` |
 | `⌥⏎` | jump to the session's terminal |
 | `⌘,` | Settings |
 | `⌘Q` | quit notchcode (while the card is open) |

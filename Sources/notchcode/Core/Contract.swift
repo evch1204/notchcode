@@ -214,6 +214,8 @@ struct Preferences: Equatable, Codable {
     /// The small keycaps beside buttons and pills inside the card. The footer's key row and
     /// the attention row keep theirs either way; the shortcuts work either way.
     var keycapsBesideButtons: Bool = true
+    /// Run `claude -p /usage` every 15 minutes for the per-model week and the limits breakdown.
+    var planUsageRefresh: Bool = true
 
     init() {}
 
@@ -231,6 +233,7 @@ struct Preferences: Equatable, Codable {
         peekEdits = try c.decodeIfPresent(Bool.self, forKey: .peekEdits) ?? d.peekEdits
         filesTreeHidden = try c.decodeIfPresent(Bool.self, forKey: .filesTreeHidden) ?? d.filesTreeHidden
         keycapsBesideButtons = try c.decodeIfPresent(Bool.self, forKey: .keycapsBesideButtons) ?? d.keycapsBesideButtons
+        planUsageRefresh = try c.decodeIfPresent(Bool.self, forKey: .planUsageRefresh) ?? d.planUsageRefresh
     }
 }
 
@@ -337,6 +340,30 @@ struct FilePreview: Equatable {
     var isBinary: Bool
 }
 
+/// One of Claude Code's per-model weekly windows ("Fable"), from its usage cache.
+struct ModelWeek: Equatable, Identifiable {
+    var id: String { name }
+    var name: String
+    var percent: Double
+    var resetsAt: Date?
+}
+
+/// A share with a name: "Claude Code 98%" (the week breakdown), from the usage cache.
+struct NamedShare: Equatable, Identifiable {
+    var id: String { name }
+    var name: String
+    var percent: Double
+}
+
+/// A gateway spend limit from the status line. Present only behind a gateway.
+struct SpendLimit: Equatable {
+    var percent: Double
+    var resetsAt: Date?
+    var usedUSD: Double?
+    var limitUSD: Double?
+    var period: String?
+}
+
 /// Limits and cost, when a source provides them. Every field optional: the UI degrades.
 struct UsageSnapshot: Equatable {
     var fiveHourPercent: Double?
@@ -354,6 +381,11 @@ struct UsageSnapshot: Equatable {
     var todayFableTokens: TokenUsage?
     var todayFableCostUSD: Double?
     var costIsEstimate: Bool = true // true when computed from tokens with our rate table, not reported by Claude
+    /// Per-model weekly windows and where the week went, from Claude Code's usage cache.
+    var modelWeeks: [ModelWeek] = []
+    var weekBreakdown: [NamedShare] = []
+    /// The status line's `rate_limits.spend_limit`, behind a gateway only.
+    var spendLimit: SpendLimit?
 }
 
 // MARK: - JSONValue
@@ -414,4 +446,10 @@ enum NotchcodePaths {
     static var claudeProjectsDirectory: URL {
         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/projects", isDirectory: true)
     }
+    /// Claude Code's own config, which caches the last `/usage` answer (`cachedUsageUtilization`).
+    static var claudeConfigFile: URL {
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude.json")
+    }
+    /// The working folder of the headless `claude -p /usage` run, so its transcript has a project of its own.
+    static var usageRunDirectory: URL { supportDirectory.appendingPathComponent("usage", isDirectory: true) }
 }

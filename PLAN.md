@@ -72,6 +72,7 @@ Commit here means letting Claude's own `git commit` through. The Git tool's own 
 A Settings page inside the card (gear, or ⌘, while the card is open). Never a separate macOS window: one surface, one set of keys. Idle style (agents in the notch, or pure notch), attention style (two-row, or wings only), peeks on/off and their length, open on click or hover, the ⌥ space hotkey, agents in the wings, and an optional macOS notification for blocking events. Stored as one JSON blob in UserDefaults. Settings also holds Connect / Disconnect.
 
 - Keys group (owner, 2026-09-28): a switch, on by default, hides the keycaps beside buttons inside the card because they crowd it; the footer keys and the attention row keep theirs; shortcuts work either way. ⌥ space moved into this group.
+- Usage group (2026-10-01): a switch, on by default, lets the app run `claude -p /usage` every 15 minutes for the Fable week and the limits breakdown (see Usage tab layout).
 
 **Rule exception, decided 2026-09-27:** the app may edit `~/.claude/settings.json`, and only that file, and only to add or remove its own hook entries, after a backup. Everything else stays hook-only.
 
@@ -148,7 +149,7 @@ Teleport: the hook forwards `TERM_PROGRAM` and the session's process id. iTerm2 
 | Which terminal runs the session | partial | not in the payload; hooks inherit the environment, so the script forwards `TERM_PROGRAM` and friends. |
 | Edit diffs | partial | the payload has the file path; the hook runs `git diff --numstat` for counts and grabs a snippet. |
 | Context size and cost | yes | statusline JSON: `context_window`, `cost`. |
-| 5-hour and weekly usage percent | yes, via the status line | Claude Code passes `rate_limits` to the `statusLine` command. Our script forwards it to the socket and chains the previous status line (Orca, sidecar) so nothing breaks. No keychain, no API calls. |
+| 5-hour and weekly usage percent | yes, via the status line | Claude Code passes `rate_limits` to the `statusLine` command. Our script forwards it to the socket and chains the previous status line (Orca, sidecar) so nothing breaks. No keychain, no API calls. Per-model weekly windows (Fable) and the week breakdown come from Claude Code's own usage cache in `~/.claude.json`, refreshed by a headless `claude -p /usage` run (Settings → Usage). |
 | Buttons over the notch | yes | a non-activating panel at status-bar level, positioned from `NSScreen.safeAreaInsets`; the same trick Boring Notch uses. Clicks land, focus stays in the terminal. |
 | Long-running hook without blocking Claude | yes | hooks support `async: true`; the permission hook waits up to 60 s on a Unix socket. |
 
@@ -254,11 +255,31 @@ Toolbar motion (owner, 2026-09-27 evening), all in Theme: tools unfold from behi
 
 **Settled, no bounce (owner, 2026-09-27 late).** The toolbar build bounced more than `main`: the wider, taller card made the 0.72 width spring overshoot visibly, the breath played on attention, and opening often ran the re-target spring instead of the sequenced ones (mode and card height changed together, and the second change replaced the first animation). Now every shape spring is damped at 0.9 or more: width 0.42/0.9, height 0.48/0.9, close at 0.7× those responses (30% faster), re-target 0.40/0.94 and only when the target actually changed. Tool names: a caption pill under the strip, centred under the tool, after 150 ms at rest (it follows the mouse between tools at once), and for 1.2 s after `⇥` or `1–4`. On the collapsed strip there is no room below (outside the black) or beside the tools, so the left wing shows the name instead.
 
-## Usage tab layout (owner, 2026-09-27)
+## Usage tab layout (2026-10-01)
 
-One page, no scrolling, fixed heights. Row 1: two big tiles, 5-hour and Week (percent, bar, resets in / at). Row 2: four small tiles, Context (36% of 1M · 357k), This session (tokens · ~$), Today (tokens · ~$), Fable (tokens · ~$ · share of today). Row 3: one thin four-part token bar with inline legend chips. Footer: one tertiary line, "cost estimated from tokens · limits updated 3m ago" (or "as of 2:14 PM"). Limits keep their last known value between status line reports, since the status line only reports when Claude Code redraws; a window whose reset time has passed dims its number and says "reset at …". Only before the first report do the big tiles show "—" and "connect the status line", and the footer says "limits from Claude Code's status line". The layout never changes.
+One page, no scrolling, fixed heights; the card is 420 pt, so the pane is 350. Unknown values show "—" in the same place. Numbers are never invented. The layout never changes shape with data.
 
-Fable tile (owner, 2026-09-28): today's tokens on Fable models (by the transcripts' per-message model ids, over the same sessions as Today) with the estimated cost and their share of today's tokens. The weekly Fable limit that `/usage` shows is not shown: Claude Code's status line only forwards the five-hour, weekly and spend-limit windows (no per-model buckets; checked in Claude Code 2.1.284), and the app makes no API calls and reads no keychain.
+Row 1, limits (what the other rows leave, about 110 pt): one tile per window, sharing the width. 5-hour, Week, one per model week ("Fable week"), then Spend behind a gateway. Each tile: the title, the percent large, a bar, the reset. The bar is white, clay at 90% or more. A window whose reset time has passed dims its number and says "reset at …". Before any data the 5-hour and Week tiles say "connect the status line"; a model week says "from /usage". Spend says "$12.40 of $50" when the gateway sends the amounts.
+
+Row 2, context (66 pt): "Context", the model's name, "effort high", "thinking", "fast", and "past 200k" in clay; "36% · 357k of 1M" on the right. An 8 pt bar filled to the percent, split by the last call's input side: cached, new to cache, fresh. Then the legend chips and "643k free".
+
+Row 3, session (76 pt), three tiles. This session: its tokens, a four-part token bar, then the cost ("$1.42" from Claude Code, "~$1.42" estimated), the time and "+2351 −147". Today: its tokens, "~$12.40 · Fable 78%" (today's Fable share of tokens). This week: where the week went, "Claude Code 98%", then "Chats 2%".
+
+Row 4, behaviours (44 pt): "Last 24h · 155 requests · 2 sessions" with the week's counts on the right, then the day's lines in fewer words ("94% from subagent-heavy sessions · 82% at >150k context · subagents general-purpose 34%, fork 5%").
+
+Footer: "cost from Claude Code" (or "cost estimated from tokens"), "limits updated 3m ago", "plan usage 8m ago" (or refreshing, off in Settings, or why the run failed). Keys: `R` refresh, `⇥` next tool.
+
+Sources. Claude Code's status line gives the 5-hour and week windows, the spend limit, context, the last call's tokens, cost, time, lines, the model, effort, thinking and fast mode. Claude Code's own usage cache in `~/.claude.json` (`cachedUsageUtilization`, written whenever it answers `/usage`) gives the per-model weeks and the week breakdown, and the 5-hour and week windows when it is newer than the status line. A headless `claude -p /usage --output-format json --setting-sources "" --resume <id>` refreshes that cache: about 300 ms, no tokens, no model turn, no hooks. It runs 5 s after launch, every 15 minutes, when the Usage pane shows and the cache is older than 5 minutes, and on `R`. Its text gives the behaviour lines. It runs in `~/Library/Application Support/notchcode/usage`, so its transcript lands in `~/.claude/projects/-Users-…-notchcode-usage/`; past 1 MB a new session id starts over. Its session is headless and never shows. Settings → Usage turns the runs off; the page then shows what the status line and the cache last said. The demo never runs it. The app still makes no API calls and reads no keychain.
+
+Prices (Anthropic first-party, per million tokens, cached 2026-09-25), for the estimated costs only:
+
+| Model | Input | Output | Cache read | Cache write |
+|---|---|---|---|---|
+| Fable, Mythos | 10 | 50 | 0.25 | 12.5 |
+| Opus 5.5 | 4 | 20 | 0.20 | 5 |
+| Other Opus | 5 | 25 | 0.50 | 6.25 |
+| Sonnet, unknown | 2 | 10 | 0.20 | 2.5 |
+| Haiku | 1 | 5 | 0.10 | 1.25 |
 
 Changed-file rows (Changes, the commit card, the Files preview header): the file name only, in ink, middle-truncated when long, the full path on hover; the cells and counts always stay visible at the right (owner, 2026-09-28).
 

@@ -51,7 +51,7 @@ enum NotchKey: Equatable {
     case markdownMode
     /// "W": the Git tool's branch picker.
     case worktree
-    /// "R": the branch picker's repository dropdown.
+    /// "R": the branch picker's repository dropdown in the Git tool; refresh in the Usage tool.
     case repository
     /// "C": the Git tool's commit form.
     case commit

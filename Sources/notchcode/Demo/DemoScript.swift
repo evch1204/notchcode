@@ -368,25 +368,78 @@ final class DemoScript {
         return lines
     }
 
-    /// The limits arrive the way real ones do: a status line envelope through `receive`.
+    /// The limits arrive the way real ones do: a status line envelope through `receive`, one
+    /// per session (ponyfish on Fable, bluefin on Sonnet), with the same rate limits.
     private func sendDemoStatusline() {
         let now = Date()
         let fiveHourReset = now.addingTimeInterval(1 * 3600 + 52 * 60)
         let weekReset = now.addingTimeInterval(3 * 86400)
-        send(.statusline, session: ponyfish, cwd: ponyfishCWD, payload: [
-            "session_id": .string(ponyfish),
-            "model": .object(["id": .string("claude-opus-5")]),
-            "rate_limits": .object([
-                "five_hour": .object([
-                    "used_percentage": .number(61),
-                    "resets_at": .number(fiveHourReset.timeIntervalSince1970),
-                ]),
-                "seven_day": .object([
-                    "used_percentage": .number(34),
-                    "resets_at": .number(weekReset.timeIntervalSince1970),
-                ]),
+        let rateLimits: JSONValue = .object([
+            "five_hour": .object([
+                "used_percentage": .number(61),
+                "resets_at": .number(fiveHourReset.timeIntervalSince1970),
+            ]),
+            "seven_day": .object([
+                "used_percentage": .number(34),
+                "resets_at": .number(weekReset.timeIntervalSince1970),
             ]),
         ])
+        send(.statusline, session: ponyfish, cwd: ponyfishCWD, payload: [
+            "session_id": .string(ponyfish),
+            "model": .object(["id": .string("claude-fable-5-1"), "display_name": .string("Fable 5.1")]),
+            "context_window": .object([
+                "context_window_size": .number(1_000_000),
+                "used_percentage": .number(36),
+                "total_input_tokens": .number(357_200),
+                "current_usage": .object([
+                    "input_tokens": .number(5_200),
+                    "output_tokens": .number(2_100),
+                    "cache_creation_input_tokens": .number(34_000),
+                    "cache_read_input_tokens": .number(318_000),
+                ]),
+            ]),
+            "cost": .object([
+                "total_cost_usd": .number(1.42),
+                "total_duration_ms": .number(Double((3 * 3600 + 27 * 60) * 1000)),
+                "total_api_duration_ms": .number(Double(12 * 60 * 1000)),
+                "total_lines_added": .number(2351),
+                "total_lines_removed": .number(147),
+            ]),
+            "effort": .object(["level": .string("high")]),
+            "thinking": .object(["enabled": .bool(true)]),
+            "fast_mode": .bool(false),
+            "exceeds_200k_tokens": .bool(true),
+            "rate_limits": rateLimits,
+        ])
+        // bluefin's turns: the first started 18 minutes ago; one edit, +5 −1.
+        send(.statusline, session: bluefin, cwd: bluefinCWD, payload: [
+            "session_id": .string(bluefin),
+            "model": .object(["id": .string("claude-sonnet-5-5"), "display_name": .string("Sonnet 5.5")]),
+            "context_window": .object([
+                "context_window_size": .number(200_000),
+                "used_percentage": .number(23),
+                "total_input_tokens": .number(45_100),
+                "current_usage": .object([
+                    "input_tokens": .number(3_100),
+                    "output_tokens": .number(1_400),
+                    "cache_creation_input_tokens": .number(8_000),
+                    "cache_read_input_tokens": .number(34_000),
+                ]),
+            ]),
+            "cost": .object([
+                "total_cost_usd": .number(0.07),
+                "total_duration_ms": .number(Double(18 * 60 * 1000)),
+                "total_api_duration_ms": .number(Double(2 * 60 * 1000)),
+                "total_lines_added": .number(5),
+                "total_lines_removed": .number(1),
+            ]),
+            "effort": .object(["level": .string("high")]),
+            "thinking": .object(["enabled": .bool(true)]),
+            "fast_mode": .bool(false),
+            "exceeds_200k_tokens": .bool(false),
+            "rate_limits": rateLimits,
+        ])
+        state.seedDemoPlanUsage()
     }
 
     private func demoTurns() -> [TranscriptTurn] {
