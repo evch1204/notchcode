@@ -46,10 +46,11 @@ extension AppState {
         return true
     }
 
-    /// ⏎ on the confirm. Push: `git push -- <remote> <src>:refs/heads/<upstream branch>`;
+    /// ⏎ on the confirm. Push: `git push -- <remote> refs/heads/<b>:refs/heads/<upstream branch>`;
     /// publish: `git push -u -- <remote> refs/heads/<b>:refs/heads/<b>`. Full refs on both
     /// sides: a plain `git push` follows push.default and pushRemote (it can go elsewhere, or
-    /// push several branches), and a bare name is ambiguous with a tag. Pull: `git pull
+    /// push several branches), and a bare name is ambiguous with a tag. The branch, not HEAD: a
+    /// checkout that moved between the poll and ⏎ cannot push the wrong head. Pull: `git pull
     /// --ff-only --no-rebase -- <remote> <upstream branch>`, a checkout only: it never merges
     /// or rebases, so a diverged branch is sent to the terminal.
     func runGitSync() {
@@ -66,8 +67,7 @@ extension AppState {
             args = ["push", "-u", "--", remote, local + ":" + local]
             message = "Published " + branch + " to " + remote
         case .push:
-            let source = snap.checkedOut ? "HEAD" : local
-            args = ["push", "--", remote, source + ":refs/heads/" + upstreamBranch]
+            args = ["push", "--", remote, local + ":refs/heads/" + upstreamBranch]
             message = "Pushed " + AppState.commits(snap.unpushed)
         case .pull:
             guard snap.checkedOut else { return }
@@ -229,9 +229,11 @@ extension AppState {
 
     /// No confirm: `git log -1 --format=%B`, then `git reset --quiet HEAD~1` (mixed), which
     /// loses nothing: the commit's changes come back to the rail and its message refills the
-    /// form (co-authors from its trailers), as GitHub Desktop does.
+    /// form (co-authors from its trailers), as GitHub Desktop does. The reset happens only while
+    /// HEAD is still the commit the card shows; else the undo fails with "HEAD moved" and the
+    /// failure's read brings the card up to date.
     func runGitUndo() {
-        guard gitCanUndo, let cwd = gitCwd, let snap = focusedGit else { return }
+        guard gitCanUndo, let cwd = gitCwd, let snap = focusedGit, let expected = snap.commits.first?.sha else { return }
         let remote = snap.remote ?? ""
         updateGit {
             $0.phase = .running(.undo)
@@ -242,6 +244,12 @@ extension AppState {
             let log = await GitRunner.run(["log", "-1", "--format=%B"], cwd: snap.root)
             guard log.status == 0 else {
                 await self?.finishGitUndo(ok: false, text: GitRunner.errorLine(log, remote: remote, op: .undo), cwd: cwd)
+                return
+            }
+            // `%h` is short: the full sha must start with it.
+            let head = await GitRunner.run(["rev-parse", "--verify", "HEAD"], cwd: snap.root)
+            guard head.status == 0, head.out.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix(expected) else {
+                await self?.finishGitUndo(ok: false, text: "HEAD moved; refresh and try again", cwd: cwd)
                 return
             }
             let reset = await GitRunner.run(["reset", "--quiet", "HEAD~1"], cwd: snap.root)

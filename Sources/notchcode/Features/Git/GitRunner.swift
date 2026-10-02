@@ -17,6 +17,8 @@ enum GitRunner {
         // No prompt can be answered from a notch: fail instead of waiting on one.
         env["GIT_TERMINAL_PROMPT"] = "0"
         env["LC_ALL"] = "C"
+        // Paths from `git status` come back as pathspecs: `app/[id]/page.tsx` must not glob to `app/i/page.tsx`.
+        env["GIT_LITERAL_PATHSPECS"] = "1"
         return await ProcessRunner.run(
             executable: "/usr/bin/git",
             arguments: ["-C", cwd, "-c", "core.quotePath=false"] + args,

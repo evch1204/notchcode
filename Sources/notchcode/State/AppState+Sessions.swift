@@ -101,6 +101,7 @@ extension AppState {
         turnsBySession[sid] = nil
         turnTitles[sid] = nil
         shellFiles[sid] = nil
+        shellFilesLoaded.remove(sid)
         statusline[sid] = nil
         clearSessionState(sid)
         if let ended = agents.removeValue(forKey: sid) {

@@ -143,9 +143,9 @@ enum PlanUsageRunner {
     }
 
     /// Claude Code keeps a project's transcripts in ~/.claude/projects/<cwd with every
-    /// character but letters and digits turned into "-">.
+    /// character but ASCII letters and digits turned into "-">, the transcript reader's encoding.
     static func transcriptURL(for id: String) -> URL {
-        let folder = String(NotchcodePaths.usageRunDirectory.path.map { $0.isLetter || $0.isNumber ? $0 : "-" })
+        let folder = TranscriptReader.encodedProjectName(forCWD: NotchcodePaths.usageRunDirectory.path)
         return NotchcodePaths.claudeProjectsDirectory
             .appendingPathComponent(folder, isDirectory: true)
             .appendingPathComponent(id + ".jsonl")
