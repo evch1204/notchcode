@@ -134,10 +134,10 @@ extension AppState {
     func pickGitBranch(_ branch: GitBranch) {
         guard let repo = gitPickerGroup else { return }
         let target: GitTarget = branch.path.map { .folder($0) } ?? .branch(repo: repo.id, name: branch.name)
-        if gitPanel.picked != target { cancelGitConfirm() }
         updateGit {
             $0.picked = target
             $0.resetPicker()
+            $0.dropConfirms()
         }
         rowCursor = 0
         debugLog("git target picked: \(target.key)")

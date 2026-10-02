@@ -149,7 +149,8 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     /// The Git tool's state; read it through `gitPanel`, write it through `updateGit`.
     var gitStore = GitPanelState()
     var gitPollTask: Task<Void, Never>?
-    var gitHoldTask: Task<Void, Never>?
+    /// Target key -> the task that ends its write's result hold.
+    var gitHoldTasks: [String: Task<Void, Never>] = [:]
 
     // MARK: Private state (never published)
 

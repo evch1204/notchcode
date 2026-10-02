@@ -77,7 +77,9 @@ enum GitRunner {
         var seen = Set<String>()
         for entry in entries where !seen.contains(entry.path) {
             seen.insert(entry.path)
-            snap.files.append(fileChange(entry.path, kind: kind(statusCode: entry.code), diff: byPath[entry.path]))
+            var file = fileChange(entry.path, kind: kind(statusCode: entry.code), diff: byPath[entry.path])
+            file.renamedFrom = entry.renamedFrom
+            snap.files.append(file)
         }
         for file in snap.files.prefix(Theme.Limits.gitLineCountFiles) where file.kind != "deleted" {
             // Regular files only: an untracked FIFO would block the read forever.
@@ -184,10 +186,12 @@ enum GitRunner {
         snap.upstreamBranch = String(parts[1].dropFirst("refs/heads/".count))
     }
 
-    /// "new" for an untracked or added file, "deleted", else "edit"; the diff pane's badge
-    /// reads A, D or M from it.
+    /// "new" for an untracked or added file, "renamed" for a staged rename, "deleted", else
+    /// "edit"; the diff pane's badge reads A, R, D or M from it.
     private static func kind(statusCode code: String) -> String {
-        if code == "??" || code.contains("A") { return "new" }
+        if code == "??" { return "new" }
+        if code.contains("R") { return "renamed" }
+        if code.contains("A") { return "new" }
         if code.contains("D") { return "deleted" }
         return "edit"
     }
