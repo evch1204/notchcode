@@ -332,7 +332,7 @@ private struct GitFileRow: View {
 /// A commit checkbox: empty with a tertiary edge, or white with a dark check drawn as a
 /// stroke (all in) or a dash (some in, the header's). Unticking shrinks the fill as it fades.
 @MainActor
-struct GitCheckbox: View {
+private struct GitCheckbox: View {
     enum Value { case all, none, mixed }
     let value: Value
     /// Waits this long before ticking (the header's staggered tick).

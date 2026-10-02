@@ -8,13 +8,6 @@
 import AppKit
 import SwiftUI
 
-/// One expandable file row in the Git tool's rail. `key` is stable across reloads.
-struct DiffRowItem: Identifiable, Equatable {
-    var id: String { key }
-    var key: String
-    var file: FileChange
-}
-
 /// A file chip: the file `path` as the turn `turnId` changed it.
 struct ChangesChipKey: Hashable {
     var turnId: String

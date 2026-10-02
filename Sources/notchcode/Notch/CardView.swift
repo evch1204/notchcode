@@ -294,7 +294,7 @@ struct CardView: View {
 
 /// "5h ▬▬▬── 61%": a label, a short bar and the percent, in the footer.
 @MainActor
-struct FooterMeter: View {
+private struct FooterMeter: View {
     let label: String
     let percent: Double
     let tint: Color
