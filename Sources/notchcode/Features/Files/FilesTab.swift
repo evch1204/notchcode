@@ -272,32 +272,6 @@ private struct PreviewPane: View {
     }
 }
 
-/// The sidebar pill and its ⌘B keycap. Disabled (dimmed) with no file open. The Git tool
-/// hides its file list with it.
-@MainActor
-struct TreeTogglePill: View {
-    let collapsed: Bool
-    let enabled: Bool
-    /// What the pill hides: "file tree" (Files), "file list" (Git).
-    var subject = "file tree"
-    let action: () -> Void
-
-    var body: some View {
-        HStack(spacing: Theme.Size.spaceS) {
-            Button(action: action) {
-                Image(systemName: Theme.Symbols.sidebar)
-                    .font(Theme.Fonts.symbol(Theme.Fonts.tinySize))
-            }
-            .buttonStyle(SmallPillStyle())
-            .help(collapsed ? "Show the " + subject : "Hide the " + subject)
-            InlineKeycap(Theme.Keys.toggleTree)
-        }
-        .disabled(!enabled)
-        .opacity(enabled ? 1 : Theme.Opacity.disabled)
-        .fixedSize()
-    }
-}
-
 /// "FilesTab.swift   Preview · Code  P   +12 −3". The switch shows only for Markdown files.
 @MainActor
 private struct PreviewHeader: View {

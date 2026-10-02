@@ -4,9 +4,6 @@
 
 import SwiftUI
 
-/// An action's part in a request: Allow (primary, white), Deny (red tint), or neutral.
-enum ActionRole { case allow, deny, neutral }
-
 /// One action of a request, as the strip, the attention row and the footer show it.
 struct RequestAction {
     let title: String

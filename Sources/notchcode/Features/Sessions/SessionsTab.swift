@@ -244,21 +244,6 @@ private struct SessionRow: View {
     }
 }
 
-/// A small capsule: "Showing", "newest", or the permission mode ("bypass" in clay).
-@MainActor
-struct SmallTag: View {
-    let text: String
-    var color: Color = Theme.Colors.inkTertiary
-
-    var body: some View {
-        Text(text)
-            .font(Theme.Fonts.caption)
-            .foregroundStyle(color)
-            .capsuleTag()
-            .fixedSize()
-    }
-}
-
 /// One subagent under its session: colour square, type, description, elapsed (or how long it ran).
 @MainActor
 private struct AgentLane: View {
