@@ -144,7 +144,7 @@ struct SettingsPage: View {
                     .foregroundStyle(Theme.Colors.ink)
                     .lineLimit(1)
                 Spacer(minLength: Theme.Size.spaceM)
-                Button(hookStatus == .connected ? "Disconnect" : "Connect") {
+                Button(connectButtonTitle) {
                     toggleConnection()
                 }
                 .buttonStyle(SmallPillStyle(primary: hookStatus != .connected))
@@ -176,6 +176,15 @@ struct SettingsPage: View {
         case .connected: return "Connected to Claude Code"
         case .notConnected: return "Not connected"
         case .partial: return "Partly connected"
+        case .stale: return "Reconnect · the hooks point at an old copy"
+        }
+    }
+
+    private var connectButtonTitle: String {
+        switch hookStatus {
+        case .connected: return "Disconnect"
+        case .stale: return "Reconnect"
+        case .notConnected, .partial: return "Connect"
         }
     }
 
@@ -183,7 +192,7 @@ struct SettingsPage: View {
         switch hookStatus {
         case .connected: return Theme.Colors.settingsConnected
         case .notConnected: return Theme.Colors.settingsDisconnected
-        case .partial: return Theme.Colors.settingsPartial
+        case .partial, .stale: return Theme.Colors.settingsPartial
         }
     }
 
@@ -198,7 +207,7 @@ struct SettingsPage: View {
             refreshStatus()
         }
         do {
-            // "Partly connected" connects the rest.
+            // "Partly connected" connects the rest; stale ("Reconnect") rewrites ours to the bin copies.
             if hookStatus == .connected {
                 try HooksInstaller.disconnect()
             } else {

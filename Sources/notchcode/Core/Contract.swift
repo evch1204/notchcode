@@ -140,7 +140,9 @@ struct HookReply: Codable {
     var reason: String? = nil
 }
 
-typealias ReplyHandler = (HookReply?) -> Void
+/// Sends the owner's answer to the waiting hook. Returns true when the hook got the reply;
+/// false when the transport had already answered none at its deadline or the hook had gone.
+typealias ReplyHandler = (HookReply?) -> Bool
 
 /// The UI side implements this. The transport calls `receive` on the main actor.
 /// For blocking kinds the sink MUST eventually call `reply`, or the transport
@@ -452,4 +454,6 @@ enum NotchcodePaths {
     }
     /// The working folder of the headless `claude -p /usage` run, so its transcript has a project of its own.
     static var usageRunDirectory: URL { supportDirectory.appendingPathComponent("usage", isDirectory: true) }
+    /// The app's own copies of the hook scripts, so hooks never point into the app bundle.
+    static var binDirectory: URL { supportDirectory.appendingPathComponent("bin", isDirectory: true) }
 }

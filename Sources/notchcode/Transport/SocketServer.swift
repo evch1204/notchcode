@@ -194,7 +194,7 @@ final class SocketServer {
         if envelope.isBlocking {
             let payload = envelope.payload
             let replyHandler: ReplyHandler = { r in
-                _ = conn.finish(SocketServer.replyLine(r, id: id, payload: payload))
+                conn.finish(SocketServer.replyLine(r, id: id, payload: payload))
             }
             let sink = self.sink
             // Order matters: `receive` is queued on main before the watcher can
@@ -222,7 +222,7 @@ final class SocketServer {
             }
         } else {
             conn.finish(Self.replyLine(nil, id: id, payload: .null))
-            deliver(envelope, reply: { _ in })
+            deliver(envelope, reply: { _ in true })  // nothing waits
         }
     }
 
