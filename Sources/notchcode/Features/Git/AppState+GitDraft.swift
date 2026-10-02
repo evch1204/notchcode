@@ -187,13 +187,15 @@ extension AppState {
         cancelGitConfirm()
     }
 
-    /// With one file checked, GitHub Desktop's prefill: "Create x", "Delete x", "Update x".
+    /// With one file checked, GitHub Desktop's prefill: "Create x", "Rename w to x", "Delete x",
+    /// "Update x".
     private var gitSummaryPrefill: String? {
         let checked = gitCheckedFiles
         guard checked.count == 1, let file = checked.first else { return nil }
         let name = Format.fileName(file.path)
         switch file.kind {
         case "new": return "Create " + name
+        case "renamed": return "Rename " + Format.fileName(file.renamedFrom ?? file.path) + " to " + name
         case "deleted": return "Delete " + name
         default: return "Update " + name
         }

@@ -132,7 +132,7 @@ enum GitOp: String, Equatable {
     var confirms: Bool { self == .publish || self == .push || self == .pull }
 }
 
-/// Every write, from the press to its result. Belongs to one target (`GitPanelState.phaseCwd`).
+/// Every write, from the press to its result. Each target has its own (`GitPanelState.phases`).
 enum GitPhase: Equatable {
     case idle
     /// A confirm is up in the right pane (push, publish, pull). ⏎ runs it, esc cancels.
@@ -245,12 +245,15 @@ struct GitRepoGroup: Identifiable, Equatable {
 }
 
 struct GitPanelState: Equatable {
-    /// Target key -> its last read.
+    /// Target key -> its last read. When the card closes only the next target's stays; a
+    /// forgotten session's goes with it unless another session shares its folder.
     var snapshots: [String: GitSnapshot] = [:]
     /// Keys being read right now.
     var loading: Set<String> = []
-    var phase: GitPhase = .idle
-    var phaseCwd: String?
+    /// Target key -> its write phase; a missing key is idle. Each target runs and keeps its own
+    /// write, so switching targets mid-write neither frees it for a second one nor loses the
+    /// first one's result. Only the target on screen may hold a confirm.
+    var phases: [String: GitPhase] = [:]
     /// Target key -> the commit being written for it. Cleared when the card closes.
     var drafts: [String: GitDraft] = [:]
     /// Work tree root -> when its remote was last fetched (by hand or quietly).
@@ -284,5 +287,16 @@ struct GitPanelState: Equatable {
         repoMenuOpen = false
         filter = ""
         filterFocused = false
+    }
+
+    /// Sets `key`'s phase; idle removes it.
+    mutating func setPhase(_ phase: GitPhase, for key: String) {
+        phases[key] = phase == .idle ? nil : phase
+    }
+
+    /// Every armed confirm goes back to idle: the target on screen changed, and a confirm
+    /// armed on one target must not run from another. Running and finished writes stay.
+    mutating func dropConfirms() {
+        phases = phases.filter { if case .confirming = $0.value { return false } else { return true } }
     }
 }

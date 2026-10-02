@@ -133,14 +133,19 @@ enum UnifiedDiff {
         return files
     }
 
-    /// Porcelain v1 status lines as (path, code), in order. A rename's path is its new name.
-    static func status(_ lines: [String]) -> [(path: String, code: String)] {
+    /// Porcelain v1 status lines as (path, code, renamedFrom), in order. A rename's or copy's
+    /// path is its new name and `renamedFrom` its old one (`R  old -> new`); nil otherwise.
+    static func status(_ lines: [String]) -> [(path: String, code: String, renamedFrom: String?)] {
         lines.compactMap { line in
             guard line.count > 3 else { return nil }
             let code = String(line.prefix(2))
             var rest = Substring(line.dropFirst(3))
-            if let arrow = rest.range(of: " -> ") { rest = rest[arrow.upperBound...] }
-            return (unquote(rest), code)
+            var from: String?
+            if code.contains("R") || code.contains("C"), let arrow = rest.range(of: " -> ") {
+                from = unquote(rest[..<arrow.lowerBound])
+                rest = rest[arrow.upperBound...]
+            }
+            return (unquote(rest), code, from)
         }
     }
 

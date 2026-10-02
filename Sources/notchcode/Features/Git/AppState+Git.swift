@@ -10,8 +10,9 @@ extension AppState {
 
     // MARK: Storage
 
-    // The state itself is stored on AppState (`gitStore`, `gitPollTask`, `gitHoldTask`);
-    // every write goes through `updateGit`, which tells SwiftUI.
+    // The state itself is stored on AppState (`gitStore`, `gitPollTask`, `gitHoldTasks`, one
+    // result hold per target as each target keeps its own phase); every write goes through
+    // `updateGit`, which tells SwiftUI.
 
     var gitPanel: GitPanelState { gitStore }
 
@@ -76,8 +77,7 @@ extension AppState {
 
     /// The write phase of the target.
     var gitPhase: GitPhase {
-        guard let cwd = gitCwd, gitPanel.phaseCwd == cwd else { return .idle }
-        return gitPanel.phase
+        gitCwd.flatMap { gitPanel.phases[$0] } ?? .idle
     }
 
     /// The uncommitted files (a branch page: its changes) as rows; `rowCursor` indexes them
@@ -213,9 +213,10 @@ extension AppState {
         if selectedTab == .git { gitToolShown() } else { refreshGit() }
     }
 
-    /// The Git tool came on screen: a fresh read, then one every `gitRefreshInterval`.
+    /// The Git tool came on screen: no confirm (the focus may have moved while it was away), a
+    /// fresh read, then one every `gitRefreshInterval`.
     func gitToolShown() {
-        cancelGitConfirm()
+        updateGit { $0.dropConfirms() }
         closeGitPicker()
         refreshGit(thenFetch: true)
         gitAutoFetchIfDue()
@@ -229,16 +230,24 @@ extension AppState {
             if gitPanel.rootByCwd[focusedGitCwd ?? ""] == nil { refreshGitWorktrees() }
             return
         }
-        cancelGitConfirm()
+        updateGit { $0.dropConfirms() }
         refreshGit()
     }
 
-    /// The card closed: the hand pick and the picker go; next time the tool follows the focus.
+    /// The card closed: the hand pick, the picker and any confirm go; next time the tool follows
+    /// the focus. Only the snapshot of that next target stays, and the fetch times of roots no
+    /// kept snapshot uses go too, so a reopen reads them fresh. A quiet fetch in flight keeps
+    /// its mark (it clears itself as it lands), so it is never run twice at once.
     func gitCardClosed() {
+        let next = focusedGitCwd.map { GitTarget.folder($0).key }
         updateGit {
             $0.picked = nil
             $0.resetPicker()
             $0.drafts = [:]
+            $0.dropConfirms()
+            $0.snapshots = $0.snapshots.filter { $0.key == next }
+            let roots = Set($0.snapshots.values.map(\.root))
+            $0.lastFetch = $0.lastFetch.filter { roots.contains($0.key) }
         }
     }
 
@@ -268,8 +277,8 @@ extension AppState {
     func refreshGit(poll: Bool = false, thenFetch: Bool = false) {
         guard readsLocalFiles, let target = gitTarget else { return }
         let key = target.key
-        if !poll, gitPanel.phaseCwd == key, case .failed = gitPanel.phase {
-            updateGit { $0.phase = .idle }
+        if !poll, case .failed = gitPanel.phases[key] {
+            updateGit { $0.setPhase(.idle, for: key) }
         }
         guard !gitPanel.loading.contains(key) else { return }
         updateGit { $0.loading.insert(key) }
@@ -296,7 +305,7 @@ extension AppState {
         }
         // The pill offers something else now (pushed from the terminal, or a fetch found
         // commits to pull while a push was asked): drop the confirm.
-        if case .confirming(let op) = gitPhase, !gitCanSync || op != gitSyncOp { updateGit { $0.phase = .idle } }
+        if case .confirming(let op) = gitPhase, !gitCanSync || op != gitSyncOp { cancelGitConfirm() }
         if thenFetch { gitAutoFetchIfDue() }
     }
 

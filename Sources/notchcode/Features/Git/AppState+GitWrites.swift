@@ -27,10 +27,7 @@ extension AppState {
         }
         // The confirm takes the pane; the form's text stays for later.
         if gitDraft.composing { setGitComposing(false) }
-        updateGit {
-            $0.phase = .confirming(op)
-            $0.phaseCwd = cwd
-        }
+        updateGit { $0.setPhase(.confirming(op), for: cwd) }
     }
 
     /// The pill while the confirm shows: the same as ⏎.
@@ -41,8 +38,8 @@ extension AppState {
     /// Esc while the confirm shows. False when there was nothing to cancel.
     @discardableResult
     func cancelGitConfirm() -> Bool {
-        guard case .confirming = gitPhase else { return false }
-        updateGit { $0.phase = .idle }
+        guard case .confirming = gitPhase, let cwd = gitCwd else { return false }
+        updateGit { $0.setPhase(.idle, for: cwd) }
         return true
     }
 
@@ -76,7 +73,7 @@ extension AppState {
         case .fetch, .commit, .undo:
             return
         }
-        updateGit { $0.phase = .running(op) }
+        updateGit { $0.setPhase(.running(op), for: cwd) }
         debugLog("git \(op.command) in \(snap.root): \(args.joined(separator: " "))")
         Task.detached(priority: .userInitiated) { [weak self] in
             let result = await GitRunner.run(args, cwd: snap.root, timeout: Theme.Timing.gitSyncTimeout)
@@ -91,10 +88,7 @@ extension AppState {
     private func runGitFetch() {
         guard let cwd = gitCwd, let snap = focusedGit, let remote = snap.remote else { return }
         let root = snap.root
-        updateGit {
-            $0.phase = .running(.fetch)
-            $0.phaseCwd = cwd
-        }
+        updateGit { $0.setPhase(.running(.fetch), for: cwd) }
         debugLog("git fetch in \(root): fetch --prune -- \(remote)")
         Task.detached(priority: .userInitiated) { [weak self] in
             let result = await GitRunner.run(["fetch", "--prune", "--", remote], cwd: root, timeout: Theme.Timing.gitSyncTimeout)
@@ -147,9 +141,10 @@ extension AppState {
     // MARK: Commit
 
     /// ⏎ in the summary, ⌘⏎ anywhere in the form, or the Commit pill. `git add -- <paths>`
-    /// (stages new files and the removal of deleted ones), then `git commit --only --quiet
-    /// -m <summary> [-m <description>] [-m <trailers>] -- <paths>`: `--only` commits exactly
-    /// these paths' working-tree state and leaves the rest of the index as it was. Unchecked
+    /// for every checked file but the deleted ones (stages new files), then `git commit --only
+    /// --quiet -m <summary> [-m <description>] [-m <trailers>] -- <paths>`, a staged rename
+    /// naming its old path too: `--only` commits exactly these paths' working-tree state
+    /// (a deletion included) and leaves the rest of the index as it was. Unchecked
     /// files are never touched; the index is never reset. The trailers are one
     /// "Co-authored-by: Name <email>" line per co-author, the message's last paragraph, where
     /// git reads trailers. Then `git log -1` names the commit for the dock's receipt.
@@ -158,26 +153,30 @@ extension AppState {
         let summary = gitCommitSummary
         let description = gitDraft.description.trimmingCharacters(in: .whitespacesAndNewlines)
         let trailers = gitDraft.coauthors.map { Self.gitCoauthorTrailer + " " + $0 }.joined(separator: "\n")
-        let paths = gitCheckedFiles.map(\.path)
+        let checked = gitCheckedFiles
+        // A staged rename is two paths: the commit takes the old one's removal with the new one.
+        let paths = checked.flatMap { [$0.path] + ($0.renamedFrom.map { [$0] } ?? []) }
+        // `git add` refuses a path in neither the work tree nor the index (a staged deletion, a
+        // rename's old name), and needs none for a deletion: `--only` commits it as it is.
+        let adds = checked.filter { $0.kind != "deleted" }.map(\.path)
         let remote = snap.remote ?? ""
-        updateGit {
-            $0.phase = .running(.commit)
-            $0.phaseCwd = cwd
-        }
+        updateGit { $0.setPhase(.running(.commit), for: cwd) }
         var args = ["commit", "--only", "--quiet", "-m", summary]
         if !description.isEmpty { args += ["-m", description] }
         if !trailers.isEmpty { args += ["-m", trailers] }
         args += ["--"] + paths
-        debugLog("git commit in \(snap.root): \(paths.count) files, summary \"\(summary)\"")
+        debugLog("git commit in \(snap.root): \(checked.count) files, summary \"\(summary)\"")
         Task.detached(priority: .userInitiated) { [weak self] in
-            let add = await GitRunner.run(["add", "--"] + paths, cwd: snap.root, timeout: Theme.Timing.gitCommitTimeout)
-            guard add.status == 0 else {
-                await self?.finishGitCommit(ok: false, message: GitRunner.errorLine(add, remote: remote, op: .commit), receipt: nil, cwd: cwd)
-                return
+            if !adds.isEmpty {
+                let add = await GitRunner.run(["add", "--"] + adds, cwd: snap.root, timeout: Theme.Timing.gitCommitTimeout)
+                guard add.status == 0 else {
+                    await self?.finishGitCommit(ok: false, message: GitRunner.errorLine(add, remote: remote, op: .commit), receipt: nil, cwd: cwd)
+                    return
+                }
             }
             let result = await GitRunner.run(args, cwd: snap.root, timeout: Theme.Timing.gitCommitTimeout)
             let ok = result.status == 0
-            let message = ok ? "Committed " + Format.files(paths.count) : GitRunner.errorLine(result, remote: remote, op: .commit)
+            let message = ok ? "Committed " + Format.files(checked.count) : GitRunner.errorLine(result, remote: remote, op: .commit)
             var receipt: GitReceipt?
             if ok {
                 let head = await GitRunner.run(["log", "-1", "--format=%h%x1f%s"], cwd: snap.root)
@@ -235,10 +234,7 @@ extension AppState {
     func runGitUndo() {
         guard gitCanUndo, let cwd = gitCwd, let snap = focusedGit, let expected = snap.commits.first?.sha else { return }
         let remote = snap.remote ?? ""
-        updateGit {
-            $0.phase = .running(.undo)
-            $0.phaseCwd = cwd
-        }
+        updateGit { $0.setPhase(.running(.undo), for: cwd) }
         debugLog("git reset in \(snap.root): reset --quiet HEAD~1 (undo \(snap.commits.first?.sha ?? "-"))")
         Task.detached(priority: .userInitiated) { [weak self] in
             let log = await GitRunner.run(["log", "-1", "--format=%B"], cwd: snap.root)
@@ -295,40 +291,36 @@ extension AppState {
 
     /// Every write's end. `message` nil (a fetch that brought something): straight back to
     /// idle, the fresh read speaks. Else the result holds `gitResultHold`, an error until a
-    /// refresh other than the poll.
+    /// refresh other than the poll. The result is kept on `cwd`, its own target, even when
+    /// another one shows by now; a read for the target on screen then counts as a poll, so it
+    /// leaves that target's error alone.
     func finishGitOp(op: GitOp, ok: Bool, message: String?, cwd: String) {
         debugLog("git \(op.command) \(ok ? "ok" : "failed"): \(message ?? "-")")
-        // Another target armed its own confirm while this write ran: leave that one alone.
-        if gitPanel.phaseCwd != cwd {
-            refreshGit(poll: true)
-            return
-        }
+        let shown = gitCwd == cwd
         guard let message else {
-            updateGit { $0.phase = .idle }
-            refreshGit()
+            updateGit { $0.setPhase(.idle, for: cwd) }
+            refreshGit(poll: !shown)
             return
         }
-        updateGit {
-            $0.phase = ok ? .done(op, message) : .failed(op, message)
-            $0.phaseCwd = cwd
-        }
+        updateGit { $0.setPhase(ok ? .done(op, message) : .failed(op, message), for: cwd) }
         guard ok else {
             // The counts may have moved (a partial push); the error stays.
             refreshGit(poll: true)
             return
         }
         // Read at once so the pill and the counts stop offering what was just sent.
-        refreshGit()
+        refreshGit(poll: !shown)
         // After the hold, the result gives way to the status; the second read is a safety net
         // for when the first was skipped because a poll's read was in flight.
-        gitHoldTask?.cancel()
-        gitHoldTask = Task { @MainActor [weak self] in
+        gitHoldTasks[cwd]?.cancel()
+        gitHoldTasks[cwd] = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(Theme.Timing.gitResultHold))
             guard let self, !Task.isCancelled else { return }
-            if self.gitPanel.phaseCwd == cwd, case .done = self.gitPanel.phase {
-                self.updateGit { $0.phase = .idle }
+            if case .done = self.gitPanel.phases[cwd] {
+                self.updateGit { $0.setPhase(.idle, for: cwd) }
             }
-            self.refreshGit()
+            self.gitHoldTasks[cwd] = nil
+            self.refreshGit(poll: self.gitCwd != cwd)
         }
     }
 }

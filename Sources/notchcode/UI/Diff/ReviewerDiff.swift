@@ -101,6 +101,7 @@ struct FileKindBadge: View {
     private var letter: String {
         switch kind {
         case "new": return "A"
+        case "renamed": return "R"
         case "deleted": return "D"
         default: return "M"
         }
@@ -109,6 +110,7 @@ struct FileKindBadge: View {
     private var help: String {
         switch kind {
         case "new": return "added"
+        case "renamed": return "renamed"
         case "deleted": return "deleted"
         default: return "modified"
         }

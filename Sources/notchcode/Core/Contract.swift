@@ -269,6 +269,8 @@ struct FileChange: Identifiable, Equatable, Codable {
     var patchTruncated: Bool = false
     /// The subagent that made the change (its agentId), when only subagents touched the file.
     var agentId: String? = nil
+    /// A staged rename's old path (`R  old -> new`); a commit must name both.
+    var renamedFrom: String? = nil
 }
 
 struct DiffLine: Equatable, Codable {

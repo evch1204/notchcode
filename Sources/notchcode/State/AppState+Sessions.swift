@@ -98,6 +98,7 @@ extension AppState {
         if let cwd = gone?.cwd, !cwd.isEmpty, !sessions.contains(where: { RepoFiles.sameRoot($0.cwd, cwd) }) {
             RepoFiles.forget(root: cwd)
         }
+        if let cwd = gone?.cwd, cwd != gitCwd, !sessions.contains(where: { $0.cwd == cwd }) { updateGit { $0.snapshots[cwd] = nil } }
         turnsBySession[sid] = nil
         turnTitles[sid] = nil
         shellFiles[sid] = nil
