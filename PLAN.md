@@ -52,6 +52,7 @@ Wings never grow taller for passive events. Only blocking events open the card b
 |---|---|---|---|---|
 | Permission request | blocking | `PermissionRequest` | tool, command or path, reason, countdown. For Edit / Write / MultiEdit the real diff, built from the hook's old and new text, opens inside the card with `D` and scrolls | Allow, Always, Deny |
 | Commit proposed | blocking | `PreToolUse` on `Bash(git commit *)`, only a plain `git commit` (2026-09-28: Commit allows the whole command, so anything chained onto it goes to the permission card) | message, files, ±counts; each file row opens its diff in place | Commit (allow), Edit, Skip (deny) |
+| Plan ready | blocking | `PermissionRequest` on `ExitPlanMode` | the plan as Markdown, its first heading as the title, scrolling in the well; the attention row reads "Plan ready · <heading>" | Approve (allow), Auto-accept (allow + `setMode acceptEdits` for the session), Keep planning (deny: Claude asks what to change) |
 | Question | preview only | `Notification` + transcript | the question and its options | Answer in terminal (teleport). No hook can answer a question from outside. |
 | Edit landed | silent | `PostToolUse` on Edit/Write | no peek by default (a setting turns per-file peeks on). Updates the verb and the Changes tab | — |
 | Shell command changed files | silent | `PostToolUse` on Bash (baseline from `UserPromptSubmit`) | no peek. Updates the Changes tool: the files show under the turn, tagged "shell", diff against HEAD | — |
@@ -59,7 +60,7 @@ Wings never grow taller for passive events. Only blocking events open the card b
 | Subagent finished | passive | `SubagentStop` | peek: ■ type finished · session | — |
 | Session start / end | silent | `SessionStart`, `SessionEnd` | updates the session list | — |
 
-Permission timeout: 58 s (the socket enforces it and the card counts down to the same moment; the hook itself waits 59 s), then the hook returns nothing and Claude Code's own terminal prompt continues. Nothing is denied on the owner's behalf.
+Permission timeout: 58 s (the socket enforces it and the card counts down to the same moment; the hook itself waits 59 s), then the hook returns nothing and Claude Code's own terminal prompt continues. Nothing is denied on the owner's behalf. A plan waits 298 s (the hook 299 s, the hook entry's `timeout` 305 s): reading a plan takes longer than reading a command. One PermissionRequest entry covers both; the hook script picks its wait from the payload's tool name.
 
 Commit here means letting Claude's own `git commit` through. The Git tool's own writes (commit, push, pull, fetch, undo) are listed under Git tool.
 
@@ -126,6 +127,19 @@ Canvas: https://claude.ai/artifact/X1n5uqeNZyXEaVHk1PnaRD (boards B0 to B5, plus
 - **Word highlights (from Direction A)**: inside each hunk a run of removed lines followed by a run of added lines is paired line by line; each pair is split into whitespace-separated words, and the words outside their longest common subsequence get a stronger tint (34 % against the line's 10 %). Unpaired lines, pairs with no word in common, and pairs over 200 words keep the line tint only.
 - **Fixed 2026-10-02 after a bug pass**: git runs with `GIT_LITERAL_PATHSPECS=1` so a checked path such as `app/[id]/page.tsx` cannot stage its glob matches; undo resets only while HEAD is still the commit the card showed, else "HEAD moved; refresh and try again"; push names the branch ref, not HEAD; the write phase is kept per target, so switching targets mid-write can neither start a second write nor lose the first one's result, and a confirm belongs to the target on screen; a staged rename (`R old -> new`) commits both paths and shows an R badge; snapshots are dropped when the card closes except the next target's, and with a forgotten session.
 
+## Plan review (owner, 2026-10-04)
+
+Picked from a brainstorm of developer tools that survive the move to a notch (the others: a checks verdict read from Claude's own test and build runs, task progress in the wing; a free-form command box was rejected because the notch has no terminal for the output). Plan mode is where the owner most needs to read before pressing, and the card showed "Allow ExitPlanMode?" with nothing to read.
+
+- **Event**: the `PermissionRequest` hook already installed fires for `ExitPlanMode` when Claude finishes a plan. Verified with a scripted interactive session on Claude Code 2.1.287: `tool_input.plan` holds the plan's Markdown, `tool_input.planFilePath` the file Claude wrote under `~/.claude/plans/<slug>.md`; `permission_mode` is `plan`; there is no `tool_use_id` and no `permission_suggestions`. A headless `claude -p` session never offers `ExitPlanMode`, so the test had to drive the terminal UI.
+- **A third request kind, plan**, beside permission and commit. Title: the plan's first heading (its `#` marks and a leading "Plan:" dropped), else "Plan ready". Body: the rest of the Markdown. When `plan` is empty the file at `planFilePath` is read (the demo reads no disk); when both are empty the card says the plan is in the terminal.
+- **Attention row**: unchanged shape. Row 2 reads "Plan ready" and the heading, then the segments Keep planning · Auto-accept · Approve, the countdown draining along Approve.
+- **Card**: the heading as the hero with the countdown ring, then the plan rendered by the Files tool's Markdown renderer in a snippet box that takes the room above the footer and scrolls (`↑↓` move it by blocks; the wheel works too), then the request footer ("At 0:00 the terminal asks instead", "Open in <terminal>"). Height `planCardHeight`, the expanded request height. Past `planMaxLines` the body is cut with "… N more lines · open in the terminal". No diff, no `D`.
+- **Answers**: `⏎` Approve sends a plain allow, so Claude Code leaves plan mode in the mode the session had before (manual approval for most sessions). `A` Auto-accept sends allow with `updatedPermissions: [{type: setMode, mode: acceptEdits, destination: session}]`, the hooks guide's own example; the reply carries the array explicitly instead of echoing `permission_suggestions`, which a plan does not have. `⌫` Keep planning sends deny with "The owner read the plan in notchcode and wants changes. Ask them what to change, then plan again.", so Claude stays in plan mode and asks in the terminal. No text field in the card for now: the question Claude asks is where the owner types. `Ctrl+G` (edit the plan in an editor) stays a terminal thing; the teleport link is the way there.
+- **Time**: a plan waits 298 s in the app, the hook 299 s, the hook entry's `timeout` 305 s (was 65). One PermissionRequest entry serves both deadlines: the script reads the tool name from the payload. A settings.json whose entry still says 65 reads as stale, so Reconnect fixes it; until then Claude Code cuts the hook at 65 s and the terminal asks, which is the same fallback as a timeout.
+- **Demo and test events**: the demo script raises a plan after the Edit permission; `scripts/send-test-event.sh plan` sends one with the captured payload shape.
+- **Not doing now**: a reason field for Keep planning (Claude asks instead); showing the plan file in Files; a peek when a plan is approved; choosing auto mode or bypass from the notch.
+
 ## Sessions the list must not show, and edits it cannot see (2026-09-28)
 
 - **Helper runs.** Claude Code starts short runs of its own in a session's folder (naming a branch when a worktree is made, summarising). They write a transcript beside the real one, fire the same hooks, and ended up as a second "seadevil" row: Done, no files. Their lines carry `entrypoint: "sdk-cli"` (the owner's carry `"cli"`); the watcher marks such transcripts headless and the app drops any row with that id. Decided and built 2026-09-28.
@@ -144,6 +158,7 @@ Teleport: the hook forwards `TERM_PROGRAM` and the session's process id. iTerm2 
 |---|---|---|
 | Allow / deny a permission from the app | yes | `PermissionRequest` hook, `hookSpecificOutput.decision.behavior` allow/deny. No output = terminal prompt continues. |
 | Gate `git commit` | yes | `PreToolUse`, matcher Bash, `permissionDecision` allow/deny. |
+| Approve or send back a plan from the app | yes | `PermissionRequest` fires for `ExitPlanMode` (captured on 2.1.287, 2026-10-04): `tool_input.plan` is the Markdown, `tool_input.planFilePath` the file under `~/.claude/plans/`; no `tool_use_id`, no `permission_suggestions`. Allow leaves plan mode in the mode from before; `updatedPermissions` `setMode` picks another; deny with a message keeps planning. |
 | Answer a multiple-choice question from the app | no | No hook can answer `AskUserQuestion`. The card previews and teleports. |
 | Know when Claude needs input or finished | yes | `Notification` types `permission_prompt`, `idle_prompt`, `agent_needs_input`, `agent_completed`; `Stop`. |
 | Session id and cwd in every hook | yes | every payload carries `session_id`, `cwd`, `transcript_path`. |
