@@ -76,10 +76,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// `--debug-keys open,c,1.5,esc`: after three seconds, each name in turn with 1.2 s
-    /// between them: "open" opens the card on the Git tool ("open:changes" on another), a number sleeps that many
-    /// seconds, anything else is a key (esc, enter, cmdenter, cmdb, space, up, down, c, p,
-    /// u, w, r, /, y, a, delete, 1 to 5). "snap:<name>" renders the panel's view (no screen capture, so no
-    /// screen-recording permission) to Application Support/notchcode/snapshots/<name>.png.
+    /// between them: "open" opens the card on the Git tool ("open:changes" on another), a
+    /// number sleeps that many seconds, anything else is a key (esc, enter, cmdenter, cmdb,
+    /// space, up, down, c, p, u, w, r, /, y, a, delete, 1 to 5). "snap:<name>" renders the
+    /// panel's view (no screen capture, so no screen-recording permission) to
+    /// Application Support/notchcode/snapshots/<name>.png.
     /// For screenshots of the tool's states while nobody is at the keys.
     private func runDebugKeys() {
         let args = CommandLine.arguments

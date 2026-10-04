@@ -327,9 +327,10 @@ struct StatusSegment: View {
 
 // MARK: - Action segments
 
-/// Deny · Always · Allow (or Skip · Edit · Commit). Deny sits nearest the camera; Allow,
-/// the primary, at the outer end. `allKeys`: the middle segment shows its keycap too
-/// (where there is room; the open card's footer carries it otherwise).
+/// Deny · Always · Allow (or Skip · Edit · Commit, Revise · Auto-accept · Approve). Deny sits
+/// nearest the camera; Allow, the primary, at the outer end. `allKeys`: the middle segment
+/// and a plan's deny show their keycaps too (the attention row shows all three; the open
+/// card's strip drops the ones that do not fit, and the footer carries them).
 @MainActor
 struct ActionStrip: View {
     @ObservedObject var state: AppState

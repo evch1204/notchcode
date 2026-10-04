@@ -141,13 +141,17 @@ enum HookText {
     }
 
     /// A plan's title: its first ATX heading (`#` to `######`) without the marks and a leading
-    /// "Plan:" or "Plan –". Front matter and fenced code are skipped. Nil when there is none.
+    /// "Plan:" or "Plan –". Front matter and fenced code are skipped. With no heading, the
+    /// first non-empty line; nil only for an empty plan.
     ///
     ///     "# Plan: Add the hook\n…"      "Add the hook"
     ///     "## Steps"                     "Steps"
+    ///     "Rename the flag.\n…"          "Rename the flag."
     static func planTitle(_ markdown: String) -> String? {
         let lines = markdown.fileLines
-        guard let index = planHeadingIndex(lines) else { return nil }
+        guard let index = planHeadingIndex(lines) else {
+            return lines.lazy.map { $0.trimmingCharacters(in: .whitespaces) }.first { !$0.isEmpty }
+        }
         var text = lines[index].trimmingCharacters(in: .whitespaces).drop(while: { $0 == "#" })
             .trimmingCharacters(in: .whitespaces)
         for prefix in ["plan:", "plan –", "plan —", "plan -"] where text.lowercased().hasPrefix(prefix) {

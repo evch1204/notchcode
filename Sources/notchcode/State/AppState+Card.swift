@@ -274,17 +274,10 @@ extension AppState {
             case .up, .down:
                 guard isCardOpen else { return false }
                 let step = key == .up ? -1 : 1
-                if req.kind == .plan {
-                    // The plan card reads the same scroll command as blocks.
-                    requestDiffScroll = RequestDiffScroll(
-                        seq: requestDiffScroll.seq + 1,
-                        delta: step * Theme.Limits.planScrollBlocks
-                    )
-                } else if requestDiffPath(for: req) != nil {
-                    requestDiffScroll = RequestDiffScroll(
-                        seq: requestDiffScroll.seq + 1,
-                        delta: step * Theme.Limits.requestDiffScrollLines
-                    )
+                if req.kind == .plan || requestDiffPath(for: req) != nil {
+                    // One scroll command: a diff reads it as lines, the plan card as blocks.
+                    let unit = req.kind == .plan ? Theme.Limits.planScrollBlocks : Theme.Limits.requestDiffScrollLines
+                    requestDiffScroll = RequestDiffScroll(seq: requestDiffScroll.seq + 1, delta: step * unit)
                 } else if req.kind == .commit, !req.files.isEmpty {
                     let shown = min(req.files.count, Theme.Limits.commitMaxFileRows)
                     requestRowCursor = max(0, min(shown - 1, requestRowCursor + step))

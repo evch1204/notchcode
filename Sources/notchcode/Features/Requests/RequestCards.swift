@@ -328,6 +328,7 @@ struct PlanCard: View {
                     ? Format.moreLines(body.count - shown.count) + Theme.Glyphs.separator + "open in the terminal"
                     : nil
                 MarkdownView(lines: shown, footer: footer, scroll: state.requestDiffScroll)
+                    .id(request.id)   // each plan starts at its top with its own scroll state
                     .layoutPriority(-1)
             }
 

@@ -11,7 +11,8 @@
 #
 # Blocking events (permission, commit, plan) wait for your answer in the notch and print
 # the raw reply line. plan is an ExitPlanMode PermissionRequest as Claude Code 2.1.287 sends
-# it (permission_mode plan, no tool_use_id, no permission_suggestions); it waits up to 298 s. Set NOTCHCODE_SOCK to aim at another socket.
+# it (permission_mode plan, no tool_use_id, no permission_suggestions); it waits up to
+# 298 s. Set NOTCHCODE_SOCK to aim at another socket.
 
 sock="${NOTCHCODE_SOCK:-$HOME/Library/Application Support/notchcode/notchcode.sock}"
 root=$(cd "$(dirname "$0")/.." && pwd)

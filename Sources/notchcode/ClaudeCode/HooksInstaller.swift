@@ -155,20 +155,16 @@ enum HooksInstaller {
     private static func isStale(hooks: [OJ.Member], line: OJ?) -> Bool {
         let bin = NotchcodePaths.binDirectory.path
         let fm = FileManager.default
-        let wantedPermission = wantedHooks { $0 }.first { $0.0 == "PermissionRequest" }
-            .flatMap { hooksList($0.1)?.first }.flatMap(timeout(of:))
         var hookCommands: [String] = []
-        var timeoutDiffers = false
         for member in hooks {
             guard case .array(let groups) = member.value else { continue }
             for group in groups {
                 for hook in hooksList(group) ?? [] where isOurs(hook) {
                     if let c = command(of: hook) { hookCommands.append(c) }
-                    if member.key == "PermissionRequest", timeout(of: hook) != wantedPermission { timeoutDiffers = true }
+                    if member.key == "PermissionRequest", timeout(of: hook) != Double(permissionTimeout) { return true }
                 }
             }
         }
-        if timeoutDiffers { return true }
         if hookCommands.contains(where: { !$0.contains(bin) }) { return true }
         if !hookCommands.isEmpty, !fm.fileExists(atPath: installedHookScriptPath) { return true }
         if let line, let c = command(of: line) {
@@ -328,6 +324,10 @@ enum HooksInstaller {
 
     // MARK: The hooks we install
 
+    /// The PermissionRequest entry's timeout, in seconds: a plan waits 298 s in the app, the
+    /// hook 299 s. scripts/lib/settings.mjs and plugin/hooks/hooks.json say the same.
+    private static let permissionTimeout = 305
+
     private static var wantedEventNames: [String] { wantedHooks { $0 }.map(\.0) }
 
     /// Mirrors wantedHooks() in scripts/lib/settings.mjs, same order, same key order.
@@ -348,7 +348,7 @@ enum HooksInstaller {
         }
         func passive(_ kind: String) -> OJ { handler(kind, timeout: 5, async: true) }
         return [
-            ("PermissionRequest", group(nil, handler("permission", timeout: 305, async: false))),
+            ("PermissionRequest", group(nil, handler("permission", timeout: permissionTimeout, async: false))),
             ("PreToolUse", group("Bash", handler("pre_tool", timeout: 65, async: false, ifRule: "Bash(git commit *)"))),
             ("PostToolUse", group("Edit|Write|MultiEdit|Bash", passive("post_tool"))),
             ("Notification", group(nil, passive("notification"))),

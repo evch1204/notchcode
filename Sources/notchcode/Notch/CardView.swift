@@ -200,13 +200,14 @@ struct CardView: View {
     private func keyHints(_ content: CardContent) -> [KeyHint] {
         switch content {
         case .request(let request):
+            // The keys the strip does not show: the middle action's, and a plan's ⌫ and ↑↓.
             let actions = request.kind.actions
             let middle = actions.middle
-            if request.kind == .plan {
-                return [actions.deny, middle, actions.allow].map { KeyHint($0.key ?? "", $0.title.lowercased()) }
-                    + [KeyHint(Theme.Keys.up + Theme.Keys.down, "scroll")]
-            }
             var hints = [KeyHint(middle.key ?? "", middle.title.lowercased())]
+            if request.kind == .plan {
+                hints.insert(KeyHint(actions.deny.key ?? "", actions.deny.title.lowercased()), at: 0)
+                hints.append(KeyHint(Theme.Keys.up + Theme.Keys.down, "scroll"))
+            }
             if request.files.contains(where: { !AppState.diffLines($0).isEmpty }) {
                 hints.append(KeyHint(Theme.Keys.diff, "diff"))
             }

@@ -12,6 +12,8 @@
 
 import SwiftUI
 
+private let markdownScrollSpace = "markdownScroll"
+
 @MainActor
 struct MarkdownView: View {
     let lines: [String]
@@ -21,8 +23,15 @@ struct MarkdownView: View {
     var scroll: RequestDiffScroll? = nil
 
     @State private var blocks: [MarkdownBlock] = []
-    /// The block at the top of the viewport while `scroll` drives it; the wheel moves it too.
-    @State private var topBlock: Int?
+    /// While `scroll` drives it: each laid-out block's top (a block the lazy stack dropped keeps
+    /// its last one, far off screen), the content's frame and the viewport's height, in the
+    /// scroll view's space. ↑↓ pick their target from these.
+    @State private var blockTops: [Int: CGFloat] = [:]
+    @State private var contentFrame: CGRect = .zero
+    @State private var viewportHeight: CGFloat = 0
+
+    /// Where a scrolled-to block's top sits: one content margin below the box's edge.
+    private let edge = Theme.Size.markdownPadding
 
     var body: some View {
         scrollable
@@ -37,27 +46,76 @@ struct MarkdownView: View {
         }
     }
 
-    /// The scroll view; it tracks its top block only when `scroll` drives it.
+    /// The scroll view; it tracks its blocks only when `scroll` drives it.
     @ViewBuilder
     private var scrollable: some View {
         if scroll == nil {
-            ScrollView(.vertical, showsIndicators: false) { content }
+            ScrollView(.vertical, showsIndicators: false) { content(tracked: false) }
         } else {
-            ScrollView(.vertical, showsIndicators: false) { content }
-            // Anchored at the top: without an anchor a block already in view never moves.
-            .scrollPosition(id: $topBlock, anchor: .top)
-            .onChange(of: scroll) { _, command in
-                guard let command else { return }
-                let next = max(0, min(max(0, blocks.count - 1), (topBlock ?? 0) + command.delta))
-                withAnimation(Theme.Motion.tap) { topBlock = next }
+            VStack(alignment: .leading, spacing: 0) {
+                ScrollViewReader { proxy in
+                    ScrollView(.vertical, showsIndicators: false) {
+                        content(tracked: true)
+                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(markdownScrollSpace)) } action: { contentFrame = $0 }
+                    }
+                    .coordinateSpace(name: markdownScrollSpace)
+                    // The margin lives outside the content, so a block scrolled to the top keeps it.
+                    .contentMargins(.vertical, edge, for: .scrollContent)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewportHeight = $0 }
+                    .onChange(of: scroll) { _, command in
+                        // scrollTo, not a scrollPosition binding: at the end the last target cannot
+                        // reach the top, and setting the same id again would not move anything.
+                        guard let command, let next = target(for: command.delta) else { return }
+                        withAnimation(Theme.Motion.tap) { proxy.scrollTo(next, anchor: .top) }
+                    }
+                }
+                if let note {
+                    Text(note)
+                        .font(Theme.Fonts.caption)
+                        .foregroundStyle(Theme.Colors.inkTertiary)
+                        .lineLimit(1)
+                        .frame(height: Theme.Size.diffLineHeight)
+                        .padding(.horizontal, edge)
+                        .padding(.bottom, Theme.Size.previewVPadding)
+                }
             }
         }
     }
 
-    private var content: some View {
+    /// ↓: the `delta`-th block whose top is below the edge (the last block when fewer), nothing
+    /// once the content's bottom is in view. ↑: the `|delta|`-th block above the edge (the first
+    /// when fewer). Block ids run in document order, so only the block at the edge is measured:
+    /// a lazy stack has not laid out the blocks further up.
+    private func target(for delta: Int) -> Int? {
+        // The first block whose top is at or below the edge; every block before it is above.
+        let first = blockTops.filter { $0.value > edge - 1 }.map(\.key).min()
+            ?? (blockTops.keys.max() ?? -1) + 1
+        if delta > 0 {
+            guard contentFrame.maxY > viewportHeight + 1 else { return nil }
+            let atEdge = (blockTops[first] ?? .infinity) <= edge + 1
+            return min(blocks.count - 1, first + delta - (atEdge ? 0 : 1))
+        }
+        return first > 0 ? max(0, first + delta) : nil
+    }
+
+    /// "more below · scroll" while the content runs past the box, "end of plan" once scrolled
+    /// to the bottom of a plan that did not fit, nil when it all fits.
+    private var note: String? {
+        guard viewportHeight > 0, contentFrame.height + 2 * edge > viewportHeight + 1 else { return nil }
+        return contentFrame.maxY > viewportHeight + 1 ? "more below" + Theme.Glyphs.separator + "scroll" : "end of plan"
+    }
+
+    private func content(tracked: Bool) -> some View {
         LazyVStack(alignment: .leading, spacing: Theme.Size.markdownBlockSpacing) {
             ForEach(blocks) { block in
-                MarkdownBlockView(block: block)
+                if tracked {
+                    MarkdownBlockView(block: block)
+                        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(markdownScrollSpace)).minY } action: {
+                            blockTops[block.id] = $0
+                        }
+                } else {
+                    MarkdownBlockView(block: block)
+                }
             }
             if let footer {
                 Text(footer)
@@ -65,8 +123,8 @@ struct MarkdownView: View {
                     .foregroundStyle(Theme.Colors.inkTertiary)
             }
         }
-        .scrollTargetLayout()   // read only while scrollPosition tracks it (a plan card)
-        .padding(Theme.Size.markdownPadding)
+        .padding(.horizontal, Theme.Size.markdownPadding)
+        .padding(.vertical, tracked ? 0 : Theme.Size.markdownPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

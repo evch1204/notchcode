@@ -10,7 +10,8 @@ struct RequestDiffTarget: Equatable {
     var path: String
 }
 
-/// A request card's diff moves by `delta` lines each time `seq` changes (↑↓ while it is open).
+/// A request card's box moves by `delta` lines (a diff) or blocks (a plan) each time `seq`
+/// changes (↑↓ while it is open).
 struct RequestDiffScroll: Equatable {
     var seq = 0
     var delta = 0
@@ -72,6 +73,7 @@ extension AppState {
         guard Date() >= answerKeysAllowedAt else { return }
         switch kind {
         case .allow: allow(id: req.id)
+        case .deny where req.kind == .plan: revisePlan(id: req.id)
         case .deny: deny(id: req.id)
         case .always where req.kind == .plan: approveAcceptingEdits(id: req.id)
         case .always: allowAlways(id: req.id)
@@ -83,13 +85,16 @@ extension AppState {
         resolve(id, with: HookReply(id: id, decision: .allow))
     }
 
-    /// A plan sent back stays in plan mode: Claude asks in the terminal what to change.
     private func deny(id: String) {
-        let plan = pending.first(where: { $0.id == id })?.kind == .plan
-        let reason = plan
-            ? "The owner read the plan in notchcode and wants changes. Ask them what to change, then plan again."
-            : "The owner denied this from notchcode."
-        resolve(id, with: HookReply(id: id, decision: .deny, reason: reason))
+        resolve(id, with: HookReply(id: id, decision: .deny, reason: "The owner denied this from notchcode."))
+    }
+
+    /// A plan sent back stays in plan mode: Claude asks in the terminal what to change.
+    private func revisePlan(id: String) {
+        resolve(id, with: HookReply(
+            id: id, decision: .deny,
+            reason: "The owner read the plan in notchcode and wants changes. Ask them what to change, then plan again."
+        ))
     }
 
     private func allowAlways(id: String) {

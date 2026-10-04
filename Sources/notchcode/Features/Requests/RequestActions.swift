@@ -62,7 +62,8 @@ extension PendingRequest {
 
     /// The command or path (an MCP tool's server leads it), the commit subject, or the plan's heading.
     var summary: String {
-        if kind == .commit || kind == .plan { return title }
+        if kind == .commit { return title }
+        if kind == .plan { return detail.isEmpty ? "" : title }
         guard let server = Format.mcpServer(tool) else { return detail }
         return detail.isEmpty ? server : server + Theme.Glyphs.separator + detail
     }

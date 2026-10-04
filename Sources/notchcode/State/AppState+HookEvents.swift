@@ -242,11 +242,12 @@ extension AppState {
         updateSession(sessionId) { $0.state = .needsYou }
     }
 
-    /// An `ExitPlanMode` input's Markdown: `plan`, else the file at `planFilePath` (up to 1 MB)
-    /// when the app reads local files; "" when neither gives text.
+    /// An `ExitPlanMode` input's Markdown: `plan`, else the file at `planFilePath` (up to 1 MB,
+    /// and only under ~/.claude/plans/) when the app reads local files; "" when neither gives text.
     private func planMarkdown(_ input: JSONValue?) -> String {
         if let plan = input?["plan"]?.stringValue, !plan.isEmpty { return plan }
-        guard readsLocalFiles, let path = input?["planFilePath"]?.stringValue, !path.isEmpty,
+        guard readsLocalFiles, let path = input?["planFilePath"]?.stringValue,
+              (path as NSString).standardizingPath.hasPrefix(NSHomeDirectory() + "/.claude/plans/"),
               let handle = RegularFile.open(path, maxBytes: Theme.Limits.planFileBytes) else { return "" }
         defer { try? handle.close() }
         guard let data = try? handle.read(upToCount: Theme.Limits.planFileBytes) else { return "" }
