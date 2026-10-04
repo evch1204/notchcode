@@ -176,7 +176,7 @@ struct SettingsPage: View {
         case .connected: return "Connected to Claude Code"
         case .notConnected: return "Not connected"
         case .partial: return "Partly connected"
-        case .stale: return "Reconnect · the hooks point at an old copy"
+        case .stale: return "Reconnect · the hooks are out of date"
         }
     }
 

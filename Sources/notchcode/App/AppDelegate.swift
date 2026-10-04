@@ -78,7 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// `--debug-keys open,c,1.5,esc`: after three seconds, each name in turn with 1.2 s
     /// between them: "open" opens the card on the Git tool ("open:changes" on another), a number sleeps that many
     /// seconds, anything else is a key (esc, enter, cmdenter, cmdb, space, up, down, c, p,
-    /// u, w, r, /, y, 1 to 5). "snap:<name>" renders the panel's view (no screen capture, so no
+    /// u, w, r, /, y, a, delete, 1 to 5). "snap:<name>" renders the panel's view (no screen capture, so no
     /// screen-recording permission) to Application Support/notchcode/snapshots/<name>.png.
     /// For screenshots of the tool's states while nobody is at the keys.
     private func runDebugKeys() {
@@ -145,6 +145,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "r": return .repository
         case "/": return .filter
         case "y": return .copy
+        case "a": return .always
+        case "delete": return .deny
         case "1", "2", "3", "4", "5": return .number(Int(name)!)
         default: return nil
         }

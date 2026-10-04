@@ -338,8 +338,10 @@ struct ActionStrip: View {
 
     var body: some View {
         let actions = request.kind.actions
+        // A plan's titles fill the open card's wing, so its ⌫ keycap stays in the footer there.
+        let denyKey = allKeys || request.kind != .plan ? actions.deny.key : nil
         HStack(spacing: Theme.Size.actionGap) {
-            ActionSegment(title: actions.deny.title, key: actions.deny.key, role: actions.deny.role) {
+            ActionSegment(title: actions.deny.title, key: denyKey, role: actions.deny.role) {
                 state.answer(.deny, to: request)
             }
             .help(actions.deny.help)

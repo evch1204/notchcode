@@ -264,7 +264,7 @@ extension AppState {
             case .primary: answer(.allow, to: req)
             case .deny: answer(.deny, to: req)
             case .always:
-                guard req.kind == .permission else { return false }
+                guard req.kind != .commit else { return false }
                 answer(.always, to: req)
             case .edit:
                 guard req.kind == .commit else { return false }
@@ -274,7 +274,13 @@ extension AppState {
             case .up, .down:
                 guard isCardOpen else { return false }
                 let step = key == .up ? -1 : 1
-                if requestDiffPath(for: req) != nil {
+                if req.kind == .plan {
+                    // The plan card reads the same scroll command as blocks.
+                    requestDiffScroll = RequestDiffScroll(
+                        seq: requestDiffScroll.seq + 1,
+                        delta: step * Theme.Limits.planScrollBlocks
+                    )
+                } else if requestDiffPath(for: req) != nil {
                     requestDiffScroll = RequestDiffScroll(
                         seq: requestDiffScroll.seq + 1,
                         delta: step * Theme.Limits.requestDiffScrollLines

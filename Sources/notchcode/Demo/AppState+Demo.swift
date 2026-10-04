@@ -14,7 +14,7 @@ extension AppState {
         receive(envelope) { _ in true }
         guard envelope.isBlocking else { return }
         let id = envelope.id
-        DispatchQueue.main.asyncAfter(deadline: .now() + Theme.Timing.permissionDeadline) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + Theme.Timing.replyDeadline(plan: envelope.isPlanRequest)) { [weak self] in
             self?.timedOut(requestId: id)
         }
     }

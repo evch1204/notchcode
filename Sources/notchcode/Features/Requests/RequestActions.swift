@@ -29,6 +29,13 @@ extension PendingRequest.Kind {
                 RequestAction(title: "Edit", key: Theme.Keys.edit, help: "Ask for a different message (\(Theme.Keys.edit))", role: .neutral),
                 RequestAction(title: "Commit", key: Theme.Keys.enter, help: "Commit (\(Theme.Keys.enter))", role: .allow)
             )
+        case .plan:
+            return (
+                // "Revise", not "Keep planning": the open card's right wing has room for one short word.
+                RequestAction(title: "Revise", key: Theme.Keys.delete, help: "Keep planning: Claude asks what to change (\(Theme.Keys.delete))", role: .deny),
+                RequestAction(title: "Auto-accept", key: Theme.Keys.always, help: "Approve and auto-accept edits for this session (\(Theme.Keys.always))", role: .neutral),
+                RequestAction(title: "Approve", key: Theme.Keys.enter, help: "Approve the plan (\(Theme.Keys.enter))", role: .allow)
+            )
         }
     }
 }
@@ -44,14 +51,18 @@ extension PendingRequest {
         remaining(at: date) / max(1, deadline.timeIntervalSince(receivedAt))
     }
 
-    /// "Allow Bash?" (an MCP tool by its own name) or "Commit?".
+    /// "Allow Bash?" (an MCP tool by its own name), "Commit?" or "Plan ready".
     var headline: String {
-        kind == .commit ? "Commit?" : "Allow \(Format.toolName(tool))?"
+        switch kind {
+        case .permission: return "Allow \(Format.toolName(tool))?"
+        case .commit: return "Commit?"
+        case .plan: return "Plan ready"
+        }
     }
 
-    /// The command or path (an MCP tool's server leads it), or the commit subject.
+    /// The command or path (an MCP tool's server leads it), the commit subject, or the plan's heading.
     var summary: String {
-        if kind == .commit { return title }
+        if kind == .commit || kind == .plan { return title }
         guard let server = Format.mcpServer(tool) else { return detail }
         return detail.isEmpty ? server : server + Theme.Glyphs.separator + detail
     }

@@ -27,7 +27,8 @@ import Foundation
 
 enum HooksInstaller {
     /// Stale: ours are all there, but they point somewhere other than the bin copies, or at a
-    /// copy that is gone (an older connect wrote the bundle's path, or the repo's).
+    /// copy that is gone (an older connect wrote the bundle's path, or the repo's), or our
+    /// PermissionRequest entry still has an older timeout (65 s, before plans).
     enum Status { case connected, notConnected, partial, stale }
 
     enum InstallError: LocalizedError {
@@ -149,20 +150,25 @@ enum HooksInstaller {
         return count == events.count + 1 ? .connected : .partial
     }
 
-    /// True when one of our commands does not point into the bin folder, or the copy it
-    /// runs is missing.
+    /// True when one of our commands does not point into the bin folder, the copy it runs is
+    /// missing, or our PermissionRequest hook's timeout is not the wanted one (a plan needs 305 s).
     private static func isStale(hooks: [OJ.Member], line: OJ?) -> Bool {
         let bin = NotchcodePaths.binDirectory.path
         let fm = FileManager.default
+        let wantedPermission = wantedHooks { $0 }.first { $0.0 == "PermissionRequest" }
+            .flatMap { hooksList($0.1)?.first }.flatMap(timeout(of:))
         var hookCommands: [String] = []
+        var timeoutDiffers = false
         for member in hooks {
             guard case .array(let groups) = member.value else { continue }
             for group in groups {
                 for hook in hooksList(group) ?? [] where isOurs(hook) {
                     if let c = command(of: hook) { hookCommands.append(c) }
+                    if member.key == "PermissionRequest", timeout(of: hook) != wantedPermission { timeoutDiffers = true }
                 }
             }
         }
+        if timeoutDiffers { return true }
         if hookCommands.contains(where: { !$0.contains(bin) }) { return true }
         if !hookCommands.isEmpty, !fm.fileExists(atPath: installedHookScriptPath) { return true }
         if let line, let c = command(of: line) {
@@ -342,7 +348,7 @@ enum HooksInstaller {
         }
         func passive(_ kind: String) -> OJ { handler(kind, timeout: 5, async: true) }
         return [
-            ("PermissionRequest", group(nil, handler("permission", timeout: 65, async: false))),
+            ("PermissionRequest", group(nil, handler("permission", timeout: 305, async: false))),
             ("PreToolUse", group("Bash", handler("pre_tool", timeout: 65, async: false, ifRule: "Bash(git commit *)"))),
             ("PostToolUse", group("Edit|Write|MultiEdit|Bash", passive("post_tool"))),
             ("Notification", group(nil, passive("notification"))),
@@ -363,6 +369,14 @@ enum HooksInstaller {
               let c = m.first(where: { $0.key == "command" })?.value,
               case .string(let s, _) = c else { return nil }
         return s
+    }
+
+    /// The "timeout" number of a hook, in seconds.
+    private static func timeout(of hook: OJ) -> Double? {
+        guard case .object(let m) = hook,
+              let t = m.first(where: { $0.key == "timeout" })?.value,
+              case .number(let n) = t else { return nil }
+        return Double(n)
     }
 
     private static func isOurs(_ hook: OJ) -> Bool {

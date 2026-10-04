@@ -445,6 +445,8 @@ enum Theme {
         static let requestCardHeight: CGFloat = 310
         /// A permission or commit card with its diff open. Keeps the panel clear of the notch row plus shadow.
         static let requestCardHeightExpanded: CGFloat = 440
+        /// A plan request: the rendered plan takes the room a diff takes.
+        static let planCardHeight: CGFloat = 440
         static let commitCardHeight: CGFloat = 356
         static let questionCardHeight: CGFloat = 296
         static let settingsCardHeight: CGFloat = 424
@@ -1153,6 +1155,10 @@ enum Theme {
     enum Timing {
         /// A blocking request waits this long; the socket replies "none" at the same moment.
         static let permissionDeadline: Double = 58
+        /// A plan waits this long (reading takes longer); the hook waits 299 s, its entry's timeout is 305 s.
+        static let planDeadline: Double = 298
+        /// The deadline of a blocking request: a plan's, or every other request's.
+        static func replyDeadline(plan: Bool) -> Double { plan ? planDeadline : permissionDeadline }
         /// After a new request arrives, ⏎ / ⌫ / A / E are ignored this long (typing in the
         /// terminal must not answer it). Clicks are never delayed.
         static let requestKeyGuard: Double = 0.4
@@ -1232,6 +1238,12 @@ enum Theme {
         static let diffCellCount: Int = 5
         /// ↑↓ move a request card's diff by this many lines.
         static let requestDiffScrollLines: Int = 4
+        /// A plan card renders at most this many lines of the plan, then "… N more lines".
+        static let planMaxLines: Int = 600
+        /// ↑↓ move a plan card's Markdown by this many blocks.
+        static let planScrollBlocks: Int = 2
+        /// A plan read from its file (`planFilePath`) when the hook sent no text.
+        static let planFileBytes: Int = 1024 * 1024
         static let maxQuestionOptions: Int = 3
         /// Children beyond this index rise in together, so a big folder never trickles in.
         static let maxStaggeredChildren: Int = 12

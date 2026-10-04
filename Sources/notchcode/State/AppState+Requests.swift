@@ -73,6 +73,7 @@ extension AppState {
         switch kind {
         case .allow: allow(id: req.id)
         case .deny: deny(id: req.id)
+        case .always where req.kind == .plan: approveAcceptingEdits(id: req.id)
         case .always: allowAlways(id: req.id)
         case .edit: requestCommitEdit(id: req.id)
         }
@@ -82,12 +83,27 @@ extension AppState {
         resolve(id, with: HookReply(id: id, decision: .allow))
     }
 
+    /// A plan sent back stays in plan mode: Claude asks in the terminal what to change.
     private func deny(id: String) {
-        resolve(id, with: HookReply(id: id, decision: .deny, reason: "The owner denied this from notchcode."))
+        let plan = pending.first(where: { $0.id == id })?.kind == .plan
+        let reason = plan
+            ? "The owner read the plan in notchcode and wants changes. Ask them what to change, then plan again."
+            : "The owner denied this from notchcode."
+        resolve(id, with: HookReply(id: id, decision: .deny, reason: reason))
     }
 
     private func allowAlways(id: String) {
         resolve(id, with: HookReply(id: id, decision: .allow, always: true))
+    }
+
+    /// Plan "Auto-accept": approve, and the session accepts edits from now on.
+    private func approveAcceptingEdits(id: String) {
+        let acceptEdits: JSONValue = .object([
+            "type": .string("setMode"),
+            "mode": .string("acceptEdits"),
+            "destination": .string("session"),
+        ])
+        resolve(id, with: HookReply(id: id, decision: .allow, always: true, updatedPermissions: .array([acceptEdits])))
     }
 
     /// Commit card "Edit": let Claude know the owner wants a different message.

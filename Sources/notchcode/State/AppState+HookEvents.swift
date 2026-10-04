@@ -201,6 +201,24 @@ extension AppState {
         let tool = payload["tool_name"]?.stringValue ?? "Tool"
         let input = payload["tool_input"]
         let now = Date()
+        if envelope.isPlanRequest {
+            let markdown = planMarkdown(input)
+            let request = PendingRequest(
+                id: envelope.id,
+                kind: .plan,
+                sessionId: sessionId,
+                tool: tool,
+                title: HookText.planTitle(markdown) ?? "Plan ready",
+                detail: markdown,
+                reason: nil,
+                toolUseId: payload["tool_use_id"]?.stringValue,
+                receivedAt: now,
+                deadline: now.addingTimeInterval(Theme.Timing.replyDeadline(plan: true))
+            )
+            enqueue(request, reply: reply)
+            updateSession(sessionId) { $0.state = .needsYou }
+            return
+        }
         var request = PendingRequest(
             id: envelope.id,
             kind: .permission,
@@ -212,7 +230,7 @@ extension AppState {
             alwaysRules: HookText.alwaysRules(payload: payload),
             toolUseId: payload["tool_use_id"]?.stringValue,
             receivedAt: now,
-            deadline: now.addingTimeInterval(Theme.Timing.permissionDeadline)
+            deadline: now.addingTimeInterval(Theme.Timing.replyDeadline(plan: false))
         )
         // A file change: show what it would do, and name the file in the title.
         if let proposed = HookText.proposedChange(tool: tool, input: input, cwd: envelope.resolvedCWD, readsDisk: readsLocalFiles) {
@@ -222,6 +240,17 @@ extension AppState {
         }
         enqueue(request, reply: reply)
         updateSession(sessionId) { $0.state = .needsYou }
+    }
+
+    /// An `ExitPlanMode` input's Markdown: `plan`, else the file at `planFilePath` (up to 1 MB)
+    /// when the app reads local files; "" when neither gives text.
+    private func planMarkdown(_ input: JSONValue?) -> String {
+        if let plan = input?["plan"]?.stringValue, !plan.isEmpty { return plan }
+        guard readsLocalFiles, let path = input?["planFilePath"]?.stringValue, !path.isEmpty,
+              let handle = RegularFile.open(path, maxBytes: Theme.Limits.planFileBytes) else { return "" }
+        defer { try? handle.close() }
+        guard let data = try? handle.read(upToCount: Theme.Limits.planFileBytes) else { return "" }
+        return String(data: data, encoding: .utf8) ?? ""
     }
 
     private func handlePreTool(_ envelope: HookEnvelope, sessionId: String, reply: @escaping ReplyHandler) {
@@ -251,7 +280,7 @@ extension AppState {
                 files: latestFiles,
                 toolUseId: payload["tool_use_id"]?.stringValue,
                 receivedAt: now,
-                deadline: now.addingTimeInterval(Theme.Timing.permissionDeadline)
+                deadline: now.addingTimeInterval(Theme.Timing.replyDeadline(plan: false))
             )
             enqueue(request, reply: reply)
             updateSession(sessionId) { $0.state = .needsYou }

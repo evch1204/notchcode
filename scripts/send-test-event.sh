@@ -2,15 +2,16 @@
 # send-test-event.sh <event> ...
 #
 # Fires fake Claude Code hook events at the running notchcode app, without Claude Code.
-# events: permission  commit  stop  post_tool  shell_tool  notification  session_start  session_end
+# events: permission  commit  plan  stop  post_tool  shell_tool  notification  session_start  session_end
 #         user_prompt  subagent_start  subagent_stop  statusline  all
 #
 # shell_tool is a Bash PostToolUse sent through hooks/notchcode-hook.sh, so it carries the
 # real working tree of this repo. The first one is the baseline; change a file and send it
 # again to see the change under the session's newest turn in Changes, tagged "shell".
 #
-# Blocking events (permission, commit) wait for your answer in the notch and print the
-# raw reply line. Set NOTCHCODE_SOCK to aim at another socket.
+# Blocking events (permission, commit, plan) wait for your answer in the notch and print
+# the raw reply line. plan is an ExitPlanMode PermissionRequest as Claude Code 2.1.287 sends
+# it (permission_mode plan, no tool_use_id, no permission_suggestions); it waits up to 298 s. Set NOTCHCODE_SOCK to aim at another socket.
 
 sock="${NOTCHCODE_SOCK:-$HOME/Library/Application Support/notchcode/notchcode.sock}"
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -22,10 +23,16 @@ project=$(printf '%s' "$root" | sed 's/[^A-Za-z0-9]/-/g')
 transcript=$(esc "$HOME/.claude/projects/$project/$session.jsonl")
 common="\"session_id\":\"$session\",\"transcript_path\":\"$transcript\",\"cwd\":\"$cwd\",\"permission_mode\":\"default\""
 
+# The plan's Markdown, escaped for a JSON string (printf turns \\ into \).
+plan_md='# Plan: Add \\"Hello\\" to README.md\\n\\n## Context\\nThe README has no greeting. The owner wants one line at the top.\\n\\n## Steps\\n1. Open `README.md` and find the first heading.\\n   - Keep the badges where they are.\\n2. Add a line that reads **Hello** under it.\\n   - One line, no emoji.\\n3. Run `scripts/sync-plugin.sh --check` to be sure nothing else moved.\\n\\n## Verification\\n- `head -5 README.md` shows the new line.\\n- The diff lists only README.md.'
+plan_common=$(printf '%s' "$common" | sed 's/"permission_mode":"default"/"permission_mode":"plan"/')
+
 payload_for() {
   case "$1" in
     permission)
       printf '{%s,"hook_event_name":"PermissionRequest","tool_name":"Bash","tool_input":{"command":"npm test -- --watch=false","description":"Run the test suite once"},"tool_use_id":"toolu_test_permission","permission_suggestions":[{"type":"addRules","rules":[{"toolName":"Bash","ruleContent":"npm test:*"}],"behavior":"allow","destination":"localSettings"}]}' "$common" ;;
+    plan)
+      printf '{%s,"hook_event_name":"PermissionRequest","tool_name":"ExitPlanMode","tool_input":{"plan":"'"$plan_md"'","planFilePath":"%s"}}' "$plan_common" "$(esc "$HOME/.claude/plans/add-hello-to-readme-quiet-harbor.md")" ;;
     commit)
       printf '{%s,"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \\"Add socket transport and hook script\\"","description":"Commit the transport"},"tool_use_id":"toolu_test_commit"}' "$common" ;;
     stop)
@@ -59,8 +66,9 @@ payload_for() {
 send() {
   name="$1"
   case "$name" in
-    permission) kind=permission; wait=1 ;;
-    commit)     kind=pre_tool;   wait=1 ;;
+    permission) kind=permission; wait=1; secs=59 ;;
+    plan)       kind=permission; wait=1; secs=299 ;;
+    commit)     kind=pre_tool;   wait=1; secs=59 ;;
     *)          kind="$name";    wait=0 ;;
   esac
   payload=$(payload_for "$name") || { echo "unknown event: $name" >&2; return 1; }
@@ -73,8 +81,8 @@ send() {
   envelope=$(printf '{"v":1,"kind":"%s","id":"%s","term_program":"%s","term_bundle_id":"%s","pid":%s,"ts":%s,"payload":%s}' \
     "$kind" "$(uuidgen)" "$(esc "${TERM_PROGRAM:-}")" "$(esc "${__CFBundleIdentifier:-}")" "$$" "$(date +%s)" "$payload")
   if [ "$wait" -eq 1 ]; then
-    echo "$name: sent, answer it in the notch (up to 58 s)..."
-    reply=$(printf '%s\n' "$envelope" | nc -U -w 59 "$sock" 2>/dev/null | head -n 1)
+    echo "$name: sent, answer it in the notch (up to $((secs - 1)) s)..."
+    reply=$(printf '%s\n' "$envelope" | nc -U -w "$secs" "$sock" 2>/dev/null | head -n 1)
     echo "$name: reply ${reply:-<none>}"
   else
     reply=$(printf '%s\n' "$envelope" | nc -U -w 2 "$sock" 2>/dev/null | head -n 1)
@@ -83,7 +91,7 @@ send() {
 }
 
 if [ $# -eq 0 ]; then
-  sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
   exit 1
 fi
 if [ ! -S "$sock" ]; then
@@ -93,7 +101,7 @@ fi
 
 for name in "$@"; do
   if [ "$name" = all ]; then
-    for n in session_start statusline user_prompt subagent_start post_tool subagent_stop notification stop permission; do send "$n"; sleep 1; done
+    for n in session_start statusline user_prompt subagent_start post_tool subagent_stop notification stop permission plan; do send "$n"; sleep 1; done
   else
     send "$name"
   fi

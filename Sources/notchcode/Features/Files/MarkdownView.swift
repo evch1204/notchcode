@@ -7,7 +7,8 @@
 // blocks: those show as plain text.
 //
 // It fills the same box PreviewLines does (inset fill, snippet radius) and scrolls
-// vertically; wide code blocks and tables scroll sideways on their own.
+// vertically; wide code blocks and tables scroll sideways on their own. A plan request's
+// card renders its plan with it too, where ↑↓ move it by blocks.
 
 import SwiftUI
 
@@ -16,24 +17,15 @@ struct MarkdownView: View {
     let lines: [String]
     /// "… 212 more lines" when the file was capped.
     let footer: String?
+    /// Inside a plan card: ↑↓ arrive here as block steps. The Files tool passes nil.
+    var scroll: RequestDiffScroll? = nil
 
     @State private var blocks: [MarkdownBlock] = []
+    /// The block at the top of the viewport while `scroll` drives it; the wheel moves it too.
+    @State private var topBlock: Int?
 
     var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            LazyVStack(alignment: .leading, spacing: Theme.Size.markdownBlockSpacing) {
-                ForEach(blocks) { block in
-                    MarkdownBlockView(block: block)
-                }
-                if let footer {
-                    Text(footer)
-                        .font(Theme.Fonts.caption)
-                        .foregroundStyle(Theme.Colors.inkTertiary)
-                }
-            }
-            .padding(Theme.Size.markdownPadding)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
+        scrollable
         .tint(Theme.Colors.markdownLink)
         .environment(\.openURL, OpenURLAction { url in
             // Web links open in the browser; relative links in a repo lead nowhere from here.
@@ -43,6 +35,39 @@ struct MarkdownView: View {
         .onChange(of: lines, initial: true) { _, lines in
             blocks = MarkdownParser.parse(lines)
         }
+    }
+
+    /// The scroll view; it tracks its top block only when `scroll` drives it.
+    @ViewBuilder
+    private var scrollable: some View {
+        if scroll == nil {
+            ScrollView(.vertical, showsIndicators: false) { content }
+        } else {
+            ScrollView(.vertical, showsIndicators: false) { content }
+            // Anchored at the top: without an anchor a block already in view never moves.
+            .scrollPosition(id: $topBlock, anchor: .top)
+            .onChange(of: scroll) { _, command in
+                guard let command else { return }
+                let next = max(0, min(max(0, blocks.count - 1), (topBlock ?? 0) + command.delta))
+                withAnimation(Theme.Motion.tap) { topBlock = next }
+            }
+        }
+    }
+
+    private var content: some View {
+        LazyVStack(alignment: .leading, spacing: Theme.Size.markdownBlockSpacing) {
+            ForEach(blocks) { block in
+                MarkdownBlockView(block: block)
+            }
+            if let footer {
+                Text(footer)
+                    .font(Theme.Fonts.caption)
+                    .foregroundStyle(Theme.Colors.inkTertiary)
+            }
+        }
+        .scrollTargetLayout()   // read only while scrollPosition tracks it (a plan card)
+        .padding(Theme.Size.markdownPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

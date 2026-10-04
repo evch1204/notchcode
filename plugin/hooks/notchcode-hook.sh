@@ -116,9 +116,14 @@ if [ "$blocking" -eq 0 ]; then
   exit 0
 fi
 
-# Blocking: wait up to 59 s for one reply line. The app answers "none" at 58 s,
-# and Claude Code's own hook timeout is 65 s, so nothing is ever cut off mid-way.
-reply=$(printf '%s\n' "$envelope" | nc -U -w 59 "$sock" 2>/dev/null | head -n 1)
+# Blocking: wait up to 59 s for one reply line (299 s for a plan). The app answers
+# "none" at 58 s (298 s for a plan), and Claude Code's own hook timeout is 305 s,
+# so nothing is ever cut off mid-way.
+wait=59
+case "$payload" in
+  *'"tool_name":"ExitPlanMode"'*|*'"tool_name": "ExitPlanMode"'*) wait=299 ;;
+esac
+reply=$(printf '%s\n' "$envelope" | nc -U -w "$wait" "$sock" 2>/dev/null | head -n 1)
 [ -n "$reply" ] || exit 0
 
 # The app writes sorted keys: always, decision, id, reason, then updated_permissions

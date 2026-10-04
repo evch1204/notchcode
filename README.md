@@ -99,8 +99,8 @@ While the card is open the notch takes the keyboard; the moment it closes, focus
 |---|---|
 | `⌥ space` | open or close the card from anywhere |
 | `⏎` | allow, or the primary action |
-| `⌫` | deny |
-| `A` | allow always |
+| `⌫` | deny, or send a plan back for changes |
+| `A` | allow always; for a plan, approve and auto-accept edits |
 | `D` | show the diff behind a request |
 | `1` – `5` | Sessions, Changes, Files, Git, Usage |
 
@@ -111,13 +111,13 @@ While the card is open the notch takes the keyboard; the moment it closes, focus
 |---|---|
 | `⌥ space` | open or close the card from anywhere |
 | `⏎` | the primary action: allow, commit, open the selected session or file; in Changes, a chip's diff (again: the terminal) or a quiet group's turns |
-| `⌫` | deny, or skip a commit |
-| `A` | allow always |
+| `⌫` | deny, skip a commit, or send a plan back for changes |
+| `A` | allow always; for a plan, approve and auto-accept edits |
 | `E` | edit a proposed commit: Claude asks you for a new message |
 | `D` | show the diff behind a permission or commit request |
 | `1` – `5` | pick a tool: Sessions, Changes, Files, Git, Usage |
 | `⇥` `⇧⇥` | next and previous tool |
-| `↑` `↓` `←` `→` | move in a list or the file tree (in Git, `↑` `↓` select a file and show its diff) |
+| `↑` `↓` `←` `→` | move in a list or the file tree (in Git, `↑` `↓` select a file and show its diff); in a plan, `↑` `↓` scroll it |
 | `y` | copy `path:line` of the first changed line (in Changes, of the chip under the cursor) |
 | `/` | filter the Files tree, or the Git branch picker past eight branches; in Changes, only the turns with edits |
 | `⌘B` | hide or show the Files tree, or the Git file list (one switch for both); in Changes, the timeline beside an open diff |
@@ -137,7 +137,7 @@ While the card is open the notch takes the keyboard; the moment it closes, focus
 ## How it works
 
 1. **Session files.** Claude Code writes every session to `~/.claude/projects/<folder>/<session>.jsonl`, and notchcode polls that folder every two seconds. That alone gives sessions, prompts, files, diffs, subagents, tokens, and cost, with no setup.
-2. **Hooks.** One shell script, called by Claude Code's hooks, sends one JSON line over a Unix socket in `~/Library/Application Support/notchcode/`. For a permission request or a `git commit` it waits for your answer; if the app is not running it prints nothing and exits at once.
+2. **Hooks.** One shell script, called by Claude Code's hooks, sends one JSON line over a Unix socket in `~/Library/Application Support/notchcode/`. For a permission request, a `git commit` or a finished plan it waits for your answer; if the app is not running it prints nothing and exits at once.
 3. **Status line.** Claude Code hands its status line command the 5-hour and weekly limits. notchcode's status line script forwards them to the app, then runs whatever status line you had before.
 
 It is the sibling of [sidecar-pane](https://github.com/evch1204/sidecar-pane), which shows the same stream in a terminal split. They share a data contract, not code.
@@ -147,7 +147,7 @@ It is the sibling of [sidecar-pane](https://github.com/evch1204/sidecar-pane), w
 
 | Claude Code event | Matcher | Blocks Claude? |
 |---|---|---|
-| `PermissionRequest` | all tools | until you answer, or 58 s pass |
+| `PermissionRequest` | all tools | until you answer, or 58 s pass (a plan: 5 min) |
 | `PreToolUse` | `Bash`, only `git commit …` | the same |
 | `PostToolUse` | `Edit`, `Write`, `MultiEdit`, `Bash` | no |
 | `Notification`, `Stop`, `UserPromptSubmit` | | no |

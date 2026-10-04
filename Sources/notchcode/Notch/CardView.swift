@@ -70,10 +70,10 @@ struct CardView: View {
         return Group {
             switch content {
             case .request(let request):
-                if request.kind == .commit {
-                    CommitCard(state: state, request: request)
-                } else {
-                    PermissionCard(state: state, request: request)
+                switch request.kind {
+                case .permission: PermissionCard(state: state, request: request)
+                case .commit: CommitCard(state: state, request: request)
+                case .plan: PlanCard(state: state, request: request)
                 }
             case .question(let question):
                 QuestionCard(state: state, question: question)
@@ -200,7 +200,12 @@ struct CardView: View {
     private func keyHints(_ content: CardContent) -> [KeyHint] {
         switch content {
         case .request(let request):
-            let middle = request.kind.actions.middle
+            let actions = request.kind.actions
+            let middle = actions.middle
+            if request.kind == .plan {
+                return [actions.deny, middle, actions.allow].map { KeyHint($0.key ?? "", $0.title.lowercased()) }
+                    + [KeyHint(Theme.Keys.up + Theme.Keys.down, "scroll")]
+            }
             var hints = [KeyHint(middle.key ?? "", middle.title.lowercased())]
             if request.files.contains(where: { !AppState.diffLines($0).isEmpty }) {
                 hints.append(KeyHint(Theme.Keys.diff, "diff"))

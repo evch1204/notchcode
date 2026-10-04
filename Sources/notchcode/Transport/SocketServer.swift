@@ -7,13 +7,13 @@
 //
 // Passive kinds get `decision: none` at once, so the hook exits immediately.
 // Blocking kinds (permission, pre_tool) stay open until the sink calls its
-// reply handler or `replyDeadline` passes, whichever comes first.
+// reply handler or `Theme.Timing.replyDeadline(plan:)` passes, whichever comes first.
 //
-// When the owner picks "always" and Claude Code offered `permission_suggestions`
-// in the PermissionRequest payload, the reply line carries one extra key,
-// `updated_permissions`, holding those suggestions verbatim. It is always the
-// last key, so the sh hook can cut it out without a JSON parser and hand it
-// back to Claude Code as `decision.updatedPermissions`.
+// A reply that allows "always" carries one extra key, `updated_permissions`: the
+// app's own rules (a plan's Auto-accept), else the PermissionRequest payload's
+// `permission_suggestions` verbatim. Under sorted keys it is always the last key,
+// so the sh hook can cut it out without a JSON parser and hand it back to Claude
+// Code as `decision.updatedPermissions`.
 //
 // While a blocking request waits, a watcher on the client socket notices the
 // hook going away first (the owner answered in the terminal, or Claude Code
@@ -44,9 +44,6 @@ enum SocketServerError: Error, CustomStringConvertible {
 
 final class SocketServer {
     static let readTimeout: Int = 2             // seconds to receive the envelope line
-    /// The only deadline enforced for a request; the card's countdown draws the same value, so
-    /// the owner can never press Allow after the hook was told "none" (hook waits 59 s, Claude Code 65 s).
-    static let replyDeadline: TimeInterval = Theme.Timing.permissionDeadline
     static let maxLineBytes = 8 * 1024 * 1024
 
     private static let log = Logger(subsystem: "com.notchcode.app", category: "socket")
@@ -199,7 +196,9 @@ final class SocketServer {
             let sink = self.sink
             // Order matters: `receive` is queued on main before the watcher can
             // queue `cancel`, so the sink always sees receive first.
-            conn.armDeadline(after: Self.replyDeadline,
+            // The only deadline enforced for a request; the card's countdown draws the same value,
+            // so the owner can never press Allow after the hook was told "none".
+            conn.armDeadline(after: Theme.Timing.replyDeadline(plan: envelope.isPlanRequest),
                              line: Self.replyLine(nil, id: id, payload: .null),
                              queue: clientQueue) {
                 SocketServer.log.info("reply deadline passed for \(id, privacy: .public)")
@@ -263,25 +262,20 @@ final class SocketServer {
         return nil
     }
 
-    /// One reply line: the HookReply with sorted keys, plus `updated_permissions`
-    /// appended last when the owner chose "always" and the payload offered suggestions.
+    /// One reply line: the HookReply with sorted keys and a trailing newline. An "always" allow
+    /// with no rules of its own echoes the payload's `permission_suggestions` as `updated_permissions`.
     static func replyLine(_ reply: HookReply?, id: String, payload: JSONValue) -> Data {
         var r = reply ?? HookReply(id: id, decision: .none)
         r.id = id
+        if r.decision == .allow, r.always, r.updatedPermissions == nil,
+           let suggestions = payload["permission_suggestions"],
+           let list = suggestions.arrayValue, !list.isEmpty {
+            r.updatedPermissions = suggestions
+        }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         guard var data = try? encoder.encode(r) else {
             return Data("{\"always\":false,\"decision\":\"none\",\"id\":\"?\"}\n".utf8)
-        }
-        if r.decision == .allow, r.always,
-           let suggestions = payload["permission_suggestions"],
-           let list = suggestions.arrayValue, !list.isEmpty,
-           let extra = try? encoder.encode(suggestions),
-           data.last == UInt8(ascii: "}") {
-            data.removeLast()
-            data.append(contentsOf: Array(",\"updated_permissions\":".utf8))
-            data.append(extra)
-            data.append(UInt8(ascii: "}"))
         }
         data.append(0x0A)
         return data

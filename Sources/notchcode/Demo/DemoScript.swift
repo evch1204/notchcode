@@ -183,6 +183,20 @@ final class DemoScript {
         await waitUntilAnswered(editId)
         if Task.isCancelled { return }
 
+        // +3 s: Claude finished a plan (ExitPlanMode). The card renders it as Markdown.
+        await pause(3)
+        let planId = UUID().uuidString
+        send(.permission, session: ponyfish, cwd: ponyfishCWD, id: planId, payload: [
+            "permission_mode": .string("plan"),
+            "tool_name": .string("ExitPlanMode"),
+            "tool_input": .object([
+                "plan": .string(demoPlan),
+                "planFilePath": .string("/Users/demo/.claude/plans/add-permission-hook-quiet-harbor.md"),
+            ]),
+        ])
+        await waitUntilAnswered(planId)
+        if Task.isCancelled { return }
+
         // +3 s: a commit request with three files.
         await pause(3)
         let commitId = UUID().uuidString
@@ -209,6 +223,27 @@ final class DemoScript {
         await pause(3)
         send(.stop, session: bluefin, cwd: bluefinCWD, payload: [:])
     }
+
+    // MARK: - Plan request sample
+
+    private let demoPlan = """
+        # Plan: Add the PermissionRequest hook and the socket transport
+
+        ## Context
+        Permission prompts only show in the terminal. The notch should answer them through a `PermissionRequest` hook that talks to the app over a Unix socket.
+
+        ## Steps
+        1. Write `hooks/notchcode-hook.sh`, which sends one JSON line and waits for the reply.
+           - Exit 0 with no output when the app is not running.
+        2. Add `SocketServer` to the app and answer `none` at the 58 s deadline.
+           - Keep the reply keys sorted so the script can read them without `jq`.
+        3. Wire the permission card's Allow, Always and Deny to the reply handler.
+           - Always echoes `permission_suggestions` back as `updated_permissions`.
+
+        ## Verification
+        - `scripts/send-test-event.sh permission` prints the reply line for each answer.
+        - With the app quit, a tool call still reaches the terminal prompt.
+        """
 
     // MARK: - Edit request sample
 

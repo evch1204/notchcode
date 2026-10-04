@@ -303,6 +303,42 @@ struct CommitCard: View {
     }
 }
 
+/// A finished plan: its heading as the hero, the rest rendered as Markdown in a box that
+/// takes the room above the footer and scrolls (↑↓ by blocks, or the wheel).
+@MainActor
+struct PlanCard: View {
+    @ObservedObject var state: AppState
+    let request: PendingRequest
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Size.spaceL) {
+            RequestTitle(request: request)
+
+            if request.detail.isEmpty {
+                Text("The plan is in the terminal.")
+                    .font(Theme.Fonts.body)
+                    .foregroundStyle(Theme.Colors.inkSecondary)
+                    .padding(Theme.Size.markdownPadding)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .snippetBox()
+            } else {
+                let body = HookText.planBody(request.detail)
+                let shown = Array(body.prefix(Theme.Limits.planMaxLines))
+                let footer = body.count > shown.count
+                    ? Format.moreLines(body.count - shown.count) + Theme.Glyphs.separator + "open in the terminal"
+                    : nil
+                MarkdownView(lines: shown, footer: footer, scroll: state.requestDiffScroll)
+                    .layoutPriority(-1)
+            }
+
+            Spacer(minLength: 0)
+                .layoutPriority(-2)
+
+            RequestFooter(state: state, sessionId: request.sessionId)
+        }
+    }
+}
+
 /// Preview only: no hook can answer a question, so the one action (in the strip) is teleport.
 @MainActor
 struct QuestionCard: View {

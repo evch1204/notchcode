@@ -37,7 +37,7 @@ const CARRIED = ["padding", "refreshInterval"];
 export function wantedHooks(cmd) {
   const passive = (kind) => ({ type: "command", command: cmd(kind), timeout: 5, async: true });
   return {
-    PermissionRequest: { hooks: [{ type: "command", command: cmd("permission"), timeout: 65 }] },
+    PermissionRequest: { hooks: [{ type: "command", command: cmd("permission"), timeout: 305 }] },
     PreToolUse: {
       matcher: "Bash",
       // Only `git commit` reaches the app; every other Bash call skips the hook entirely.

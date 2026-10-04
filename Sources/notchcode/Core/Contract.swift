@@ -74,6 +74,8 @@ struct HookEnvelope: Codable {
     var resolvedCWD: String { cwd ?? payload["cwd"]?.stringValue ?? "" }
     var resolvedTranscriptPath: String? { transcriptPath ?? payload["transcript_path"]?.stringValue }
     var isBlocking: Bool { kind == .permission || kind == .preTool }
+    /// A PermissionRequest for `ExitPlanMode`: Claude finished a plan and asks to leave plan mode.
+    var isPlanRequest: Bool { kind == .permission && payload["tool_name"]?.stringValue == "ExitPlanMode" }
 }
 
 /// The working-tree report a hook attaches to `user_prompt` and Bash `post_tool` envelopes,
@@ -138,6 +140,13 @@ struct HookReply: Codable {
     var decision: Decision
     var always: Bool = false        // allow and remember (the hook emits updatedPermissions)
     var reason: String? = nil
+    /// The rules the hook sends as `updatedPermissions`; absent from the line when nil.
+    var updatedPermissions: JSONValue? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case id, decision, always, reason
+        case updatedPermissions = "updated_permissions"
+    }
 }
 
 /// Sends the owner's answer to the waiting hook. Returns true when the hook got the reply;
@@ -241,7 +250,7 @@ struct Preferences: Equatable, Codable {
 
 /// A blocking request waiting for the owner.
 struct PendingRequest: Identifiable, Equatable {
-    enum Kind: Equatable { case permission, commit }
+    enum Kind: Equatable { case permission, commit, plan }
     var id: String                  // envelope id
     var kind: Kind
     var sessionId: String

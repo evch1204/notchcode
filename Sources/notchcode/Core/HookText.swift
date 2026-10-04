@@ -140,6 +140,59 @@ enum HookText {
         }
     }
 
+    /// A plan's title: its first ATX heading (`#` to `######`) without the marks and a leading
+    /// "Plan:" or "Plan –". Front matter and fenced code are skipped. Nil when there is none.
+    ///
+    ///     "# Plan: Add the hook\n…"      "Add the hook"
+    ///     "## Steps"                     "Steps"
+    static func planTitle(_ markdown: String) -> String? {
+        let lines = markdown.fileLines
+        guard let index = planHeadingIndex(lines) else { return nil }
+        var text = lines[index].trimmingCharacters(in: .whitespaces).drop(while: { $0 == "#" })
+            .trimmingCharacters(in: .whitespaces)
+        for prefix in ["plan:", "plan –", "plan —", "plan -"] where text.lowercased().hasPrefix(prefix) {
+            text = text.dropFirst(prefix.count).trimmingCharacters(in: .whitespaces)
+            break
+        }
+        return text.isEmpty ? nil : text
+    }
+
+    /// The plan's lines without the heading `planTitle` shows (and one blank line after it).
+    /// Front matter stays; the Markdown renderer shows it as code.
+    static func planBody(_ markdown: String) -> [String] {
+        let source = markdown.fileLines
+        var lines = source.map(String.init)
+        guard let index = planHeadingIndex(source) else { return lines }
+        lines.remove(at: index)
+        if index < lines.count, lines[index].trimmingCharacters(in: .whitespaces).isEmpty {
+            lines.remove(at: index)
+        }
+        return lines
+    }
+
+    /// The index of the first ATX heading outside front matter and fenced code.
+    private static func planHeadingIndex(_ lines: [Substring]) -> Int? {
+        var inFrontMatter = lines.first?.trimmingCharacters(in: .whitespaces) == "---"
+        var fence: String? = nil
+        for (i, raw) in lines.enumerated() {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if inFrontMatter {
+                if i > 0 && (line == "---" || line == "...") { inFrontMatter = false }
+                continue
+            }
+            if let open = fence {
+                if line.hasPrefix(open) { fence = nil }
+                continue
+            }
+            if line.hasPrefix("```") || line.hasPrefix("~~~") { fence = String(line.prefix(3)); continue }
+            let marks = line.prefix(while: { $0 == "#" }).count
+            guard (1...6).contains(marks) else { continue }
+            let rest = line.dropFirst(marks)
+            if rest.isEmpty || rest.first == " " || rest.first == "\t" { return i }
+        }
+        return nil
+    }
+
     /// Pulls the subject line out of `git commit -m "..."` or a heredoc message.
     static func commitSubject(from command: String) -> String? {
         let heredocMarkers = ["<<'EOF'", "<<\"EOF\"", "<<EOF", "<< 'EOF'", "<< EOF"]

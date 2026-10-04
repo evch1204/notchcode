@@ -291,6 +291,8 @@ final class AppState: ObservableObject, HookEventSink, TranscriptWatcherSink {
     var cardHeight: CGFloat {
         switch cardContent {
         case .request(let req):
+            // A plan has no diff; the others grow while theirs is open.
+            if req.kind == .plan { return Theme.Size.planCardHeight }
             if isCardOpen, requestDiffPath(for: req) != nil { return Theme.Size.requestCardHeightExpanded }
             return req.kind == .commit ? Theme.Size.commitCardHeight : Theme.Size.requestCardHeight
         case .question: return Theme.Size.questionCardHeight
