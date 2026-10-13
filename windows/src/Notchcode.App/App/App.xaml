@@ -1,0 +1,12 @@
+<!--
+  App.xaml
+  Port of Sources/notchcode/App/NotchcodeApp.swift: a window-less app whose only surface is the
+  notch window (made in App.xaml.cs), Settings included. It quits only from the card (Ctrl Q,
+  Settings' Quit) or the tray icon's menu.
+-->
+<Application x:Class="Notchcode.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnExplicitShutdown">
+    <Application.Resources />
+</Application>
