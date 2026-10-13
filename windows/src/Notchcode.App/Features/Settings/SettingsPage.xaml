@@ -1,0 +1,8 @@
+<UserControl x:Class="Notchcode.Features.Settings.SettingsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Focusable="False">
+    <!-- Settings as a page inside the card. The rows are built in SettingsPage.xaml.cs from
+         AppState.Prefs, so every value comes from Theme and the page re-renders on a change. -->
+    <Grid x:Name="Root" />
+</UserControl>
