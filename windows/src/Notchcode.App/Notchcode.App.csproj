@@ -1,0 +1,63 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>notchcode</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- The app's version (Settings → About reads it from the assembly). -->
+    <Version>0.1.0</Version>
+    <!-- AssemblyInformationalVersion stays "0.1.0" (no "+<commit>" suffix) for the About row. -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <!-- WPF text layout needs ICU: InvariantGlobalization crashes the first TextBlock (found in wave 0). -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <!-- `dotnet publish`: one self-contained notchcode.exe for win-x64 (no runtime to install),
+       with notchcode-hook.exe beside it. Debug builds stay framework-dependent (DOTNET_ROOT). -->
+  <PropertyGroup Condition="'$(_IsPublishing)' == 'true'">
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <!-- App.xaml lives in App/ (the plan's layout), so it is named as the application definition here. -->
+  <ItemGroup>
+    <Page Remove="App/App.xaml" />
+    <ApplicationDefinition Include="App/App.xaml" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Notchcode.Tests" />
+    <Using Include="Notchcode.Core" />
+  </ItemGroup>
+
+  <!-- The hook exe beside the app. Every build publishes the hook (self-contained single file,
+       Release; incremental, so a build that changed nothing is quick) and copies it next to
+       notchcode.exe, where HooksInstaller.InstallScripts looks first, so the copy the app puts
+       in %LOCALAPPDATA%\notchcode\bin is never an old one. `-p:SkipHookPublish=true` skips it. -->
+  <PropertyGroup>
+    <HookProject>$(MSBuildThisFileDirectory)..\Notchcode.Hook\Notchcode.Hook.csproj</HookProject>
+    <HookPublishDir>$(MSBuildThisFileDirectory)..\Notchcode.Hook\bin\Release\net10.0\win-x64\publish\</HookPublishDir>
+  </PropertyGroup>
+
+  <!-- Not an assembly reference: it puts the hook in the restore graph (so its packages are
+       there for the publish below) and builds it first. -->
+  <ItemGroup>
+    <ProjectReference Include="$(HookProject)" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" Private="false" />
+  </ItemGroup>
+
+  <Target Name="PublishHookBesideApp" AfterTargets="Build"
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipHookPublish)' != 'true'">
+    <MSBuild Projects="$(HookProject)" Targets="Publish" Properties="Configuration=Release" />
+    <Copy SourceFiles="$(HookPublishDir)notchcode-hook.exe" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="CopyHookToPublishDir" AfterTargets="Publish" Condition="'$(SkipHookPublish)' != 'true'">
+    <Copy SourceFiles="$(HookPublishDir)notchcode-hook.exe" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

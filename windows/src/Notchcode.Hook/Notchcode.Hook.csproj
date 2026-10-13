@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The hook and status line forwarder. Self-contained single file so it needs no installed runtime. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>notchcode-hook</AssemblyName>
+    <RootNamespace>Notchcode.Hook</RootNamespace>
+    <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <DisableTransitiveFrameworkReferenceDownloads>true</DisableTransitiveFrameworkReferenceDownloads>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>partial</TrimMode>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Start fast: no tiered PGO warm-up work, ready-to-run code, no unused runtime features. -->
+    <TieredPGO>false</TieredPGO>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <UseSystemResourceKeys>true</UseSystemResourceKeys>
+    <EventSourceSupport>false</EventSourceSupport>
+  </PropertyGroup>
+
+  <!-- The paths, shared with the app. The envelope itself is written by hand in Program.cs
+       (as hooks/notchcode-hook.sh writes it), so the trimmed exe carries no reflection-based
+       JSON; the app's HookEnvelope.FromLine reads it (HookExeTests prove the round trip). -->
+  <ItemGroup>
+    <Compile Include="../Notchcode.App/Core/Paths.cs" Link="Core/Paths.cs" />
+  </ItemGroup>
+
+</Project>
