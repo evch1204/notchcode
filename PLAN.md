@@ -253,6 +253,10 @@ Unix socket at `~/Library/Application Support/notchcode/notchcode.sock`. Hook sc
 - Full diff review in the notch.
 - Displays without a notch. Later: a floating pill at top centre.
 
+## Windows port (2026-10-12)
+
+The owner wants the same app on a Windows 11 PC with no notch: a black shape at the top centre of the primary monitor, same design, same keys, same hooks. It is a second implementation in C# and WPF under `windows/`, built in parallel waves by Opus agents from this spec, with the Swift app untouched. Every Windows-only decision (window flags, named pipe, the compiled hook exe, fonts, key names, tray icon, hotkey fallback) lives in `windows/PLAN.md`; this file stays the spec for both.
+
 ## References
 
 - Boring Notch (open source) for window placement and the expand animation.

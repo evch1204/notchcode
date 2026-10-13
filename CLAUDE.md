@@ -27,3 +27,19 @@ A notch app for macOS that surfaces Claude Code events as an interactive popup. 
 ```sh
 xcodegen generate --quiet && xcodebuild -scheme notchcode build
 ```
+
+## Windows port (`windows/`)
+
+A second implementation of the same spec for Windows 11, planned 2026-10-12. `windows/PLAN.md` holds the Windows decisions; the root `PLAN.md` stays the spec for both.
+
+- C# and WPF only. No Electron, no WebView2, no web view anywhere.
+- The Swift app under `Sources/`, `hooks/`, `scripts/` and `plugin/` is the reference and is never changed by Windows work.
+- The same rules apply: hooks only (plus the settings.json and git exceptions), one theme file (`windows/src/Notchcode.App/UI/Theme.cs`), the owner's existing hooks in `~/.claude/settings.json` are never overwritten, closed state is pure black with no chrome.
+- The hook is a self-contained exe (`notchcode-hook.exe`): prints nothing but a decision line, no dependencies, exits 0 when the app is not running.
+- Toolchain: the .NET LTS SDK at `%LOCALAPPDATA%\Microsoft\dotnet` (on the user PATH). No Visual Studio needed.
+
+Checks before a commit that touches `windows/`:
+
+```powershell
+cd windows; dotnet build notchcode.sln -c Debug; dotnet test tests/Notchcode.Tests
+```

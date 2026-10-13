@@ -26,3 +26,9 @@ notchcode.xcodeproj/
 
 # Claude Code agent worktrees
 .claude/worktrees/
+
+# Windows port (.NET)
+windows/**/bin/
+windows/**/obj/
+windows/.vs/
+windows/**/*.user
