@@ -1,0 +1,8 @@
+<UserControl x:Class="Notchcode.Features.Git.GitTab"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Focusable="False">
+    <!-- The Git tool (Direction F). The regions are built in GitTab.xaml.cs from AppState:
+         the closed side (header, rail, stage) and the branch picker, both always in the tree. -->
+    <Grid x:Name="Root" ClipToBounds="False" />
+</UserControl>
